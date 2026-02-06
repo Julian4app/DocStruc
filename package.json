@@ -1,0 +1,20 @@
+{
+  "name": "docstruc-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+  },
+  "devDependencies": {
+    "turbo": "^1.10.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "npm@10.0.0"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@docstruc/api",
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@docstruc/logic": "^0.0.0",
+    "@supabase/supabase-js": "^2.38.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

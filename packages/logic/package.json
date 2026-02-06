@@ -1,0 +1,12 @@
+{
+  "name": "@docstruc/logic",
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

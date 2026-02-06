@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus Admin</title>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        var div = document.createElement('div');
+        div.style.color = 'red';
+        div.style.backgroundColor = '#ffe6e6';
+        div.style.padding = '20px';
+        div.style.border = '2px solid red';
+        div.style.margin = '20px';
+        div.style.fontFamily = 'monospace';
+        div.style.zIndex = '9999';
+        div.style.position = 'fixed';
+        div.style.top = '0';
+        div.style.left = '0';
+        div.style.width = '100%';
+        div.innerHTML = '<h3>Global Runtime Error</h3><p>' + message + '</p><p>Source: ' + source + ':' + lineno + '</p>';
+        document.body.appendChild(div);
+        console.error('Captured by global handler:', error);
+      };
+    </script>
+    <style>
+      #root { display: flex; flex: 1; height: 100vh; }
+      html, body { height: 100%; margin: 0; }
+    </style>
+    <script>
+      // Polyfill global immediately to prevent 'ReferenceError: global is not defined'
+      if (typeof global === 'undefined') {
+        window.global = window;
+      }
+      // Polyfill process if missing (needed for some RN libs)
+      if (typeof process === 'undefined') {
+        window.process = { env: { NODE_ENV: 'development' } };
+      }
+      // Polyfill __DEV__
+      if (typeof __DEV__ === 'undefined') {
+        window.__DEV__ = true;
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
