@@ -1,26 +1,29 @@
 import * as React from "react";
-import { TextInput as RNTextInput, View, Text, StyleSheet } from "react-native";
+import { TextInput as RNTextInput, View, Text, StyleSheet, TextInputProps, StyleProp, ViewStyle, TextStyle } from "react-native";
 import { colors, spacing } from "@docstruc/theme";
 
-export interface InputProps {
-  label: string;
+export interface InputProps extends TextInputProps {
+  label?: string;
   value: string;
-  onChangeText: (text: string) => void;
+  onChangeText?: (text: string) => void;
   placeholder?: string;
   secureTextEntry?: boolean;
+  style?: StyleProp<TextStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
-export function Input({ label, value, onChangeText, placeholder, secureTextEntry }: InputProps) {
+export function Input({ label, value, onChangeText, placeholder, secureTextEntry, style, containerStyle, ...props }: InputProps) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.container, containerStyle]}>
+      {label && <Text style={styles.label}>{label}</Text>}
       <RNTextInput
-        style={styles.input}
+        style={[styles.input, style]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         secureTextEntry={secureTextEntry}
         placeholderTextColor={colors.textSecondary}
+        {...props}
       />
     </View>
   );

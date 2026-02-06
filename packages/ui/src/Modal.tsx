@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { colors, spacing } from '@docstruc/theme';
 import { Button } from './Button';
+import { X } from 'lucide-react';
 
 interface CustomModalProps {
   visible: boolean;
@@ -14,21 +15,28 @@ interface CustomModalProps {
 export function CustomModal({ visible, onClose, title, children, footer }: CustomModalProps) {
   return (
     <Modal
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       visible={visible}
       onRequestClose={onClose}
     >
       <View style={styles.centeredView}>
+        {/* Backdrop click handler could be added here if View supports onClick on web */}
+        <TouchableOpacity 
+            style={StyleSheet.absoluteFill} 
+            activeOpacity={1} 
+            onPress={onClose}
+        />
+        
         <View style={styles.modalView}>
           <View style={styles.header}>
             <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={styles.closeButton}>✕</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <X size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
           
-          <ScrollView style={styles.content}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {children}
           </ScrollView>
 
@@ -44,47 +52,54 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)', // Slate-900 with opacity
     padding: spacing.m,
+    // @ts-ignore
+    backdropFilter: 'blur(4px)',
   },
   modalView: {
     width: '100%',
-    maxWidth: 500,
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: spacing.l,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    maxHeight: '80%',
+    maxWidth: 480,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#64748b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
+    maxHeight: '85%',
+    borderWidth: 1,
+    borderColor: '#e2e8f0'
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.m,
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9'
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
   },
-  closeButton: {
-    fontSize: 24,
-    color: colors.textSecondary,
-    fontWeight: 'bold',
+  closeBtn: {
+      padding: 4,
+      borderRadius: 4,
   },
   content: {
-    marginBottom: spacing.m,
+    marginBottom: 0,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: 12,
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9'
   },
 });

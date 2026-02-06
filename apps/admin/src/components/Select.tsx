@@ -85,7 +85,7 @@ export function Select({ label, value, options, onChange, placeholder = "Select.
 const styles = StyleSheet.create({
     container: {
         marginBottom: 16,
-        zIndex: 10, // Ensure dropdown goes over other elements
+        zIndex: 50, // Higher z-index
         position: 'relative'
     },
     label: {

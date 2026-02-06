@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Button, Input, CustomModal } from '@docstruc/ui';
 import { TagInput } from '../components/TagInput';
 import { Select } from '../components/Select';
+import { useToast } from '../components/ToastContext';
 import { colors } from '@docstruc/theme';
 import { Building, Clock, Folder, Save, User, LayoutDashboard, FileText, History as HistoryIcon, CreditCard, ChevronDown, Upload, Trash2, Download } from 'lucide-react';
 
@@ -31,6 +32,7 @@ const getStatusColor = (status: string) => {
 export default function CustomerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('General');
   
   // New Sub-Tab State
@@ -61,6 +63,10 @@ export default function CustomerDetail() {
   // New Contact Modal State
   const [showContactModal, setShowContactModal] = useState(false);
   const [newContact, setNewContact] = useState({ first_name: '', surname: '', email: '', department: '' });
+
+  // Invoice Edit Modal
+  const [editInvoice, setEditInvoice] = useState<any>(null);
+  const [invoiceNote, setInvoiceNote] = useState('');
 
   // Logo Modal
   const [showLogoModal, setShowLogoModal] = useState(false);
@@ -137,20 +143,27 @@ export default function CustomerDetail() {
   // Helper for History Logging
   const addToHistory = async (action: string, details: string) => {
       try {
-          // Check if user table exists or just hardcode 'Admin' for now
-          // We use 'System' or 'Admin' as default
+          // Check if details contains Invoice ID
+          const invoiceIdMatch = details.match(/Invoice #([a-zA-Z0-9]+)/);
+          const relatedId = invoiceIdMatch ? invoiceIdMatch[1] : null;
+
           const { data, error } = await supabase.from('company_history').insert([{
               company_id: id,
               action,
               details,
-              created_by: 'Admin' 
+              created_by: 'Admin',
+              created_at: new Date().toISOString(),
+              // Store related ID in metadata if column existed, but we'll rely on text parsing for display for now
           }]).select().single();
           
-          if (!error && data) {
-              setHistory([data, ...history]);
+          if (error) {
+              console.error('[History] Write Error:', error);
+              showToast(`History Save Failed: ${error.message}`, 'error');
+          } else if (data) {
+              setHistory(prev => [data, ...prev]);
           }
       } catch (e) {
-          console.error('History log error', e);
+          console.error('[History] Critical Exception:', e);
       }
   };
 
@@ -163,11 +176,11 @@ export default function CustomerDetail() {
           if (error) throw error;
           
           setCompany({ ...company, ...updates });
-          addToHistory('Company Updated', `Updated fields: ${Object.keys(updateFields).join(', ')}`);
-          alert('Saved!');
+          await addToHistory('Company Updated', `Updated fields: ${Object.keys(updateFields).join(', ')}`);
+          showToast('Saved!', 'success');
       } catch (e) {
           console.error(e);
-          alert('Error saving');
+          showToast('Error saving', 'error');
       }
   };
 
@@ -181,9 +194,11 @@ export default function CustomerDetail() {
           setNotes([data, ...notes]);
           setNewNote('');
           setNewNoteTags([]);
-          addToHistory('Note Added', 'New CRM note added');
+          await addToHistory('Note Added', 'New CRM note added');
+          showToast('Note added', 'success');
       } catch (e) {
           console.error(e);
+          showToast('Failed to add note', 'error');
       }
   };
 
@@ -198,9 +213,11 @@ export default function CustomerDetail() {
           
           setNotes(notes.map(n => n.id === noteId ? { ...n, content: editNoteContent, tags: editNoteTags, updated_at: new Date() } : n));
           setEditingNoteId(null);
+          await addToHistory('Note Updated', 'CRM note updated');
+          showToast('Note updated', 'success');
       } catch (e) {
           console.error(e);
-          alert('Failed to update note');
+          showToast('Failed to update note', 'error');
       }
   };
 
@@ -235,11 +252,11 @@ export default function CustomerDetail() {
                 
                 console.log('File URL:', publicUrl);
                 onUpload(publicUrl);
-                alert('Upload successful');
+                showToast('Upload successful', 'success');
 
             } catch (err: any) {
                 console.error('Upload catch block:', err);
-                alert(`Upload failed: ${err.message || JSON.stringify(err)}. Ensure bucket '${bucket}' exists and is public.`);
+                showToast(`Upload failed: ${err.message}`, 'error');
             } finally {
                 setLoading(false);
             }
@@ -259,9 +276,11 @@ export default function CustomerDetail() {
            }]).select().single();
            if (error) throw error;
            setFiles([...files, data]);
-           addToHistory('File Uploaded', `Uploaded file: ${fileName}`);
+           await addToHistory('File Uploaded', `Uploaded file: ${fileName}`);
+           showToast('File added to customer', 'success');
        } catch(e) {
            console.error(e);
+           showToast('Failed to link file', 'error');
        }
   };
 
@@ -277,9 +296,11 @@ export default function CustomerDetail() {
            }]).select().single();
            if (error) throw error;
            setFiles([...files, data]); // Will update 'Recipes' tab view as filter
-           addToHistory('Recipe Uploaded', `Uploaded recipe: ${fileName}`);
+           await addToHistory('Recipe Uploaded', `Uploaded recipe: ${fileName}`);
+           showToast('Recipe uploaded', 'success');
        } catch(e) {
            console.error(e);
+           showToast('Failed to upload recipe', 'error');
        }
   };
 
@@ -289,12 +310,49 @@ export default function CustomerDetail() {
            if (error) throw error;
            // Update local state
            setInvoices(invoices.map(i => i.id === invoiceId ? { ...i, ...updates } : i));
-           if (updates.status) addToHistory('Invoice Updated', `Invoice status changed to ${updates.status}`);
-           alert('Invoice Updated');
+           
+           // Log history
+           const logDetails = updates.status 
+                ? `Invoice #${invoiceId ? invoiceId.substring(0,8) : 'Unknown'} status changed to ${updates.status}`
+                : updates.notes 
+                    ? `Invoice #${invoiceId ? invoiceId.substring(0,8) : 'Unknown'} notes updated`
+                    : `Invoice #${invoiceId ? invoiceId.substring(0,8) : 'Unknown'} updated`;
+           
+           await addToHistory('Invoice Updated', logDetails);
+           
+           showToast('Invoice Updated', 'success');
       } catch (e) {
            console.error(e);
-           alert('Error updating invoice');
+           showToast('Error updating invoice', 'error');
       }
+  };
+
+  const handleAddInvoiceNote = async () => {
+    if (!editInvoice || !invoiceNote.trim()) return;
+    try {
+        const newNoteObj = {
+            text: invoiceNote,
+            created_at: new Date().toISOString(),
+            created_by: 'Admin' 
+        };
+        
+        const currentNotes = Array.isArray(editInvoice.notes) ? editInvoice.notes : [];
+        const updatedNotes = [...currentNotes, newNoteObj]; // Append new note
+        
+        // If we are adding a note, we might also want to set status to Individual if implied, 
+        // but user request says "he needs to be able to set to individual and a note". Distinct actions or combined? 
+        // I will keep them distinct but allow doing both in the modal.
+        
+        await handleUpdateInvoice(editInvoice.id, { notes: updatedNotes });
+        
+        // Update local editInvoice state to show the new note immediately in modal
+        setEditInvoice({ ...editInvoice, notes: updatedNotes });
+        setInvoiceNote('');
+        showToast('Note added', 'success');
+    } catch(e) {
+        console.error(e);
+        showToast('Failed to add note', 'error');
+    }
   };
 
   const handleUpdateSubscription = async () => {
@@ -351,15 +409,18 @@ export default function CustomerDetail() {
                 }
           }
 
-          alert('Subscription updated!');
+          showToast('Subscription updated!', 'success');
       } catch (e) {
           console.error(e);
-          alert('Failed to update subscription');
+          showToast('Failed to update subscription', 'error');
       }
   };
 
   const handleCreateContact = async () => {
-      if (!newContact.first_name || !newContact.surname) return alert('Name required');
+      if (!newContact.first_name || !newContact.surname) {
+          showToast('Name required', 'error');
+          return;
+      }
       
       try {
           const { data, error } = await supabase.from('contact_persons').insert([{
@@ -376,12 +437,14 @@ export default function CustomerDetail() {
           setCompany({ ...company, contact_person_id: data.id });
           await supabase.from('companies').update({ contact_person_id: data.id }).eq('id', id);
           
+          await addToHistory('Contact Created', `Created ${data.first_name} ${data.surname} and assigned as primary.`);
+
           setShowContactModal(false);
           setNewContact({ first_name: '', surname: '', email: '', department: '' });
-          alert('Contact created and assigned!');
+          showToast('Contact created and assigned!', 'success');
       } catch (e) {
           console.error(e);
-          alert('Failed to create contact');
+          showToast('Failed to create contact', 'error');
       }
   };
 
@@ -391,10 +454,11 @@ export default function CustomerDetail() {
            if (error) throw error;
            setCompany({ ...company, logo_url: url });
            setShowLogoModal(false);
-           addToHistory('Logo Updated', 'Company logo changed');
+           await addToHistory('Logo Updated', 'Company logo changed');
+           showToast('Logo updated', 'success');
       } catch (e: any) {
            console.error(e);
-           alert('Error updating logo');
+           showToast('Error updating logo', 'error');
       }
   };
 
@@ -404,9 +468,11 @@ export default function CustomerDetail() {
            if (error) throw error;
            setCompany({ ...company, logo_url: null });
            setShowLogoModal(false);
-           addToHistory('Logo Removed', 'Company logo removed');
+           await addToHistory('Logo Removed', 'Company logo removed');
+           showToast('Logo removed', 'success');
       } catch (e) {
            console.error(e);
+           showToast('Error removing logo', 'error');
       }
   };
 
@@ -641,15 +707,30 @@ export default function CustomerDetail() {
                      <View style={styles.cardHeader}>
                         <Text style={styles.cardTitle}>Audit Log</Text>
                      </View>
-                     {history.map((h, i) => (
-                         <View key={i} style={styles.historyItem}>
+                    {history.map((h, i) => (
+                        <TouchableOpacity 
+                            key={i} 
+                            style={styles.historyItem}
+                            onPress={() => {
+                                // Try to extract Invoice ID
+                                const match = h.details?.match(/Invoice #([a-zA-Z0-9-]+)/);
+                                if (match && match[1]) {
+                                    // Search for invoice in local list to open modal
+                                    const targetInv = invoices.find(inv => inv.id.startsWith(match[1]) || inv.id === match[1]);
+                                    if (targetInv) {
+                                        setEditInvoice(targetInv);
+                                    }
+                                }
+                            }}
+                            activeOpacity={0.7}
+                        >
                              <Clock size={16} color="#94a3b8" />
                              <View>
                                  <Text style={styles.historyAction}>{h.action}</Text>
                                  <Text style={styles.historyDetails}>{h.details}</Text>
                              </View>
                              <Text style={styles.historyTime}>{new Date(h.created_at).toLocaleDateString()}</Text>
-                         </View>
+                         </TouchableOpacity>
                      ))}
                  </View>
             )}
@@ -718,24 +799,35 @@ export default function CustomerDetail() {
                              <View style={{ gap: 12 }}>
                                  {invoices.length === 0 && <Text style={{ color: '#94a3b8', fontSize: 13 }}>No invoices yet.</Text>}
                                  {invoices.slice(0, 5).map(inv => (
-                                     <View key={inv.id} style={styles.historyItem}>
+                                     <TouchableOpacity 
+                                        activeOpacity={0.7}
+                                        key={inv.id} 
+                                        style={[styles.historyItem]}
+                                        onPress={() => setEditInvoice(inv)}
+                                     >
                                          <View>
                                              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>#{inv.id.substring(0,8)}</Text>
                                              <Text style={{ fontSize: 12, color: '#64748b' }}>{new Date(inv.due_date).toLocaleDateString()}</Text>
+                                             {inv.status === 'Individual' && inv.notes && Array.isArray(inv.notes) && inv.notes.length > 0 && (
+                                                <Text numberOfLines={1} style={{ fontSize: 11, color: '#3b82f6', marginTop: 2, maxWidth: 200, fontStyle: 'italic' }}>
+                                                    Note: {inv.notes[inv.notes.length - 1].text || inv.notes[inv.notes.length - 1]}
+                                                </Text>
+                                             )}
                                          </View>
                                          <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
                                              <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>${inv.amount}</Text>
-                                             <View style={[
+                                             <View 
+                                                style={[
                                                  styles.miniTag, 
-                                                 { backgroundColor: inv.status === 'Paid' ? '#dcfce7' : inv.status === 'Open' ? '#fef9c3' : '#fee2e2' }
+                                                 { backgroundColor: inv.status === 'Paid' ? '#dcfce7' : inv.status === 'Open' ? '#fef9c3' : inv.status === 'Overdue' ? '#fee2e2' : inv.status === 'Individual' ? '#dbeafe' : '#f1f5f9' }
                                              ]}>
                                                  <Text style={[
                                                      styles.miniTagText,
-                                                     { color: inv.status === 'Paid' ? '#166534' : inv.status === 'Open' ? '#854d0e' : '#991b1b' }
-                                                 ]}>{inv.status}</Text>
+                                                     { color: inv.status === 'Paid' ? '#166534' : inv.status === 'Open' ? '#854d0e' : inv.status === 'Overdue' ? '#991b1b' : inv.status === 'Individual' ? '#1e40af' : '#334155' }
+                                                 ]}>{inv.status || 'Unknown'}</Text>
                                              </View>
                                          </View>
-                                     </View>
+                                     </TouchableOpacity>
                                  ))}
                              </View>
                          </View>
@@ -759,6 +851,8 @@ export default function CustomerDetail() {
                 </View>
             </CustomModal>
 
+        </ScrollView>
+
             {/* Logo Modal */}
             <CustomModal
                 visible={showLogoModal}
@@ -768,7 +862,7 @@ export default function CustomerDetail() {
                 <View style={{ gap: 16, padding: 8 }}>
                     <View style={{ alignItems: 'center', marginBottom: 16 }}>
                         {company.logo_url ? (
-                            <img src={company.logo_url} style={{ width: 128, height: 128, objectFit: 'contain', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                             <Image source={{ uri: company.logo_url }} style={{ width: 128, height: 128, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', resizeMode: 'contain' }} />
                         ) : (
                             <View style={{ width: 128, height: 128, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', borderRadius: 8 }}>
                                 <Upload size={32} color="#cbd5e1" />
@@ -780,7 +874,10 @@ export default function CustomerDetail() {
                         variant="primary" 
                         onClick={() => handlePickFile('logos', 'public', (url) => handleUpdateLogo(url))}
                     >
-                        <Upload size={16} style={{marginRight:8}} /> Upload New Logo
+                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Upload size={16} color="white" /> 
+                            <Text style={{ color: 'white' }}>Upload New Logo</Text>
+                        </View>
                     </Button>
                     
                     {company.logo_url && (
@@ -788,7 +885,10 @@ export default function CustomerDetail() {
                             variant="secondary" 
                             onClick={() => window.open(company.logo_url, '_blank')}
                         >
-                            <Download size={16} style={{marginRight:8}} /> Download Current
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Download size={16} color="#475569" /> 
+                                <Text style={{ color: '#475569' }}>Download Current</Text>
+                            </View>
                         </Button>
                     )}
                     
@@ -804,34 +904,67 @@ export default function CustomerDetail() {
                 </View>
             </CustomModal>
 
-            {/* Logo Update Modal */}
+            {/* Invoice Edit Modal */}
             <CustomModal
-                visible={showLogoModal}
-                onClose={() => setShowLogoModal(false)}
-                title="Update Company Logo"
+                visible={!!editInvoice}
+                onClose={() => setEditInvoice(null)}
+                title={editInvoice ? `Manage Invoice #${editInvoice.id.substring(0,8)}` : 'Manage Invoice'}
             >
-                <View style={{ gap: 16, padding: 8 }}>
-                    <Text style={{ fontSize: 14, color: '#475569' }}>Change the company logo. Recommended size: 256x256px</Text>
-                    
-                    {/* Current Logo Preview */}
-                    {company.logo_url && (
-                        <View style={styles.logoPreview}>
-                            <img src={company.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                {editInvoice && (
+                <View style={{ gap: 20, padding: 8 }}>
+                    <View style={{ zIndex: 9999, elevation: 9999 }}>
+                        <Select 
+                            label="Invoice Status"
+                            value={editInvoice.status}
+                            options={[
+                                { label: 'Open', value: 'Open' },
+                                { label: 'Paid', value: 'Paid' },
+                                { label: 'Overdue', value: 'Overdue' },
+                                { label: 'Individual', value: 'Individual' }
+                            ]}
+                            onChange={async (v) => {
+                                const next = String(v);
+                                setEditInvoice((prev: any) => ({...prev, status: next}));
+                                await handleUpdateInvoice(editInvoice.id, { status: next });
+                            }}
+                        />
+                    </View>
+
+                    <View style={{ borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 16 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 12 }}>Internal Notes</Text>
+                        
+                        <ScrollView style={{ maxHeight: 200, marginBottom: 16 }} nestedScrollEnabled>
+                            <View style={{ gap: 8 }}>
+                                {(!editInvoice.notes || !Array.isArray(editInvoice.notes) || editInvoice.notes.length === 0) && (
+                                    <Text style={{ color: '#94a3b8', fontSize: 13, fontStyle: 'italic' }}>No notes yet.</Text>
+                                )}
+                                {Array.isArray(editInvoice.notes) && editInvoice.notes.map((n: any, i: number) => (
+                                    <View key={i} style={{ backgroundColor: '#f8fafc', padding: 12, borderRadius: 8 }}>
+                                        <Text style={{ fontSize: 13, color: '#334155', marginBottom: 4 }}>{n.text}</Text>
+                                        <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                                            {n.created_at ? new Date(n.created_at).toLocaleString() : 'Just now'} • {n.created_by || 'System'}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </ScrollView>
+
+                        <View style={{ gap: 8 }}>
+                            <Input 
+                                placeholder="Add a note (e.g. Reason for individual status)..." 
+                                value={invoiceNote}
+                                onChangeText={setInvoiceNote}
+                                multiline
+                                numberOfLines={3}
+                            />
+                            <Button onClick={handleAddInvoiceNote} variant="secondary" disabled={!invoiceNote.trim()}>
+                                Add Note
+                            </Button>
                         </View>
-                    )}
-                    
-                    <Button variant="secondary" onClick={() => handlePickFile('logos', 'company_logos', handleUpdateLogo)} style={{ width: '100%' }}>
-                        <Upload size={16} /> Upload New Logo
-                    </Button>
-                    
-                    {company.logo_url && (
-                        <Button variant="danger" onClick={handleRemoveLogo} style={{ width: '100%' }}>
-                            <Trash2 size={16} /> Remove Logo
-                        </Button>
-                    )}
+                    </View>
                 </View>
+                )}
             </CustomModal>
-        </ScrollView>
     </View>
   );
 }
@@ -841,7 +974,9 @@ const styles = StyleSheet.create({
     gap: 24,
     width: '100%',
     flex: 1,
-    paddingBottom: 40
+    // Remove paddingBottom to avoid double padding if ScreenLayout has one, or keep it if needed.
+    // Important: Avoid 'position: relative' if it conflicts with modal portals on web,
+    // though React Native Web Modal usually uses a Portal.
   },
   header: {
       backgroundColor: 'white',

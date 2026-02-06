@@ -10,7 +10,7 @@ export interface CardProps {
 }
 
 export function Card({ children, style, onPress, variant = 'default' }: CardProps) {
-  const Container = onPress ? TouchableOpacity : View;
+  const Container = (onPress ? TouchableOpacity : View) as React.ElementType; // Fix for JSX element type error
   
   return (
     <Container 

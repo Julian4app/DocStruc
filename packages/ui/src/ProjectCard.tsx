@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   },
   address: {
     fontSize: 14,
-    color: colors.textStart || '#4B5563',
+    color: '#4B5563',
     marginBottom: spacing.s,
   },
   description: {

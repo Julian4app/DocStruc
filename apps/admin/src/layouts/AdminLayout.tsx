@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -27,6 +27,33 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [profile, setProfile] = useState<{ first_name?: string, last_name?: string } | null>(null);
+
+  useEffect(() => {
+      fetchProfile();
+      // Subscribe to profile changes
+      const channel = supabase.channel('current_user_profile')
+        .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'profiles' 
+        }, (payload) => {
+             // Check if it's our user (simplified, ideally we check payload.new.id === user.id)
+             // For now just re-fetch to be safe or use payload
+             fetchProfile(); 
+        })
+        .subscribe();
+        
+      return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+          const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
+          if (data) setProfile(data);
+      }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -109,10 +136,14 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         {/* User Mini Profile */}
         <View style={styles.userProfile}>
             <View style={styles.avatar}>
-               <Text style={{color:'#fff', fontWeight:'bold'}}>JD</Text>
+               <Text style={{color:'#fff', fontWeight:'bold'}}>
+                  {profile && profile.first_name ? `${profile.first_name[0]}${profile.last_name ? profile.last_name[0] : ''}` : 'U'}
+               </Text>
             </View>
             <View>
-                <Text style={styles.userName}>Julian Doe</Text>
+                <Text style={styles.userName}>
+                    {profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User' : 'Loading...'}
+                </Text>
                 <Text style={styles.userRole}>Super Admin</Text>
             </View>
         </View>

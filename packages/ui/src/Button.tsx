@@ -8,10 +8,12 @@ export interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'outline';
   style?: StyleProp<ViewStyle>;
   size?: 'small' | 'medium' | 'large';
+  disabled?: boolean;
 }
 
-export function Button({ children, onClick, variant = 'primary', style, size = 'medium' }: ButtonProps) {
+export function Button({ children, onClick, variant = 'primary', style, size = 'medium', disabled }: ButtonProps) {
   const getBackgroundColor = () => {
+    if (disabled && variant !== 'outline') return '#e2e8f0'; // gray-200
     switch (variant) {
       case 'secondary': return colors.secondary;
       case 'outline': return 'transparent';
@@ -20,6 +22,7 @@ export function Button({ children, onClick, variant = 'primary', style, size = '
   };
 
   const getTextColor = () => {
+    if (disabled) return '#64748b'; // gray-500
     if (variant === 'outline') return colors.primary;
     return 'white';
   };
@@ -27,6 +30,7 @@ export function Button({ children, onClick, variant = 'primary', style, size = '
   return (
     <TouchableOpacity
       onPress={onClick}
+      disabled={disabled}
       style={[
         styles.button,
         size === 'large' && styles.buttonLarge,

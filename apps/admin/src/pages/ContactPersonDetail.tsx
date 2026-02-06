@@ -4,11 +4,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button, Input } from '@docstruc/ui';
 import { TagInput } from '../components/TagInput';
+import { Select } from '../components/Select';
+import { useToast } from '../components/ToastContext';
 import { ArrowLeft, Save, User, Building, Briefcase, Mail, Tag } from 'lucide-react';
 
 export default function ContactPersonDetail() {
   const { id } = useParams(); // if id 'new', then create mode
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(id !== 'new');
   const [saving, setSaving] = useState(false);
   
@@ -81,11 +84,11 @@ export default function ContactPersonDetail() {
         if (error) throw error;
       }
       
-      alert('Contact saved successfully');
+      showToast('Contact saved successfully', 'success');
       navigate('/contacts');
     } catch (e) {
       console.error(e);
-      alert('Failed to save contact');
+      showToast('Failed to save contact', 'error');
     } finally {
       setSaving(false);
     }
@@ -152,17 +155,15 @@ export default function ContactPersonDetail() {
              </View>
 
              <View style={styles.field}>
-                 <Text style={styles.label}>Company</Text>
-                 <View style={styles.selectWrapper}>
-                     <select 
-                        value={form.company || ''} 
-                        onChange={(e) => setForm({...form, company: e.target.value})}
-                        style={styles.selectInput as any}
-                     >
-                         <option value="">Select Company...</option>
-                         {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                     </select>
-                 </View>
+                 <Select
+                    label="Company"
+                    value={form.company || ''}
+                    onChange={(v) => setForm({...form, company: String(v)})}
+                    options={[
+                        { label: 'Select Company...', value: '' },
+                        ...companies.map(c => ({ label: c.name, value: c.name }))
+                    ]}
+                 />
              </View>
 
              <View style={styles.row}>

@@ -20,6 +20,7 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import { AdminLayout } from './layouts/AdminLayout';
 import { Button } from '@docstruc/ui';
+import { ToastProvider } from './components/ToastContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -62,8 +63,9 @@ function LayoutWrapper({ children, title, actions }: { children: React.ReactNode
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <ToastProvider>
+        <BrowserRouter>
+        <Routes>
         <Route path="/login" element={<Login />} />
         
         <Route path="/" element={
@@ -182,5 +184,6 @@ export default function App() {
          <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
