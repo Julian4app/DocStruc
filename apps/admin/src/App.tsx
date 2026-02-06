@@ -15,6 +15,9 @@ import SubscriptionTypeDetail from './pages/SubscriptionTypeDetail';
 import Tags from './pages/Tags';
 import TagDetail from './pages/TagDetail';
 import PlaceholderPage from './pages/Placeholder'; // Import placeholder
+import Subscriptions from './pages/Subscriptions';
+import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import { AdminLayout } from './layouts/AdminLayout';
 import { Button } from '@docstruc/ui';
 
@@ -90,7 +93,7 @@ export default function App() {
         <Route path="/subscriptions" element={
           <ProtectedRoute>
              <LayoutWrapper title="Subscriptions">
-                <PlaceholderPage title="Subscriptions" />
+                <Subscriptions />
              </LayoutWrapper>
           </ProtectedRoute>
         } />
@@ -138,7 +141,7 @@ export default function App() {
         <Route path="/profile" element={
           <ProtectedRoute>
              <LayoutWrapper title="Profile">
-                <PlaceholderPage title="Admin Profile" />
+                <Profile />
              </LayoutWrapper>
           </ProtectedRoute>
         } />
@@ -170,7 +173,7 @@ export default function App() {
         <Route path="/settings" element={
           <ProtectedRoute>
              <LayoutWrapper title="Settings">
-                <PlaceholderPage title="Settings" />
+                <Settings />
              </LayoutWrapper>
           </ProtectedRoute>
         } />

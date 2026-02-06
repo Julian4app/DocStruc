@@ -1,9 +1,21 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
-import { Button } from '@docstruc/ui';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Contact, 
+  CreditCard, 
+  Tags, 
+  Settings, 
+  UserCircle, 
+  LogOut, 
+  Menu,
+  Bell,
+  Search,
+  ChevronRight
+} from 'lucide-react';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -22,47 +34,52 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
 
   const menuGroups = [
     {
-      title: 'MENU',
+      title: 'ANALYTICS & CRM',
       items: [
-        { label: 'Dashboard', path: '/' },
-        { label: 'Customers', path: '/customers' },
-        { label: 'Contact Persons', path: '/contacts' },
-        { label: 'Subscription Types', path: '/subscription-types' },
-        { label: 'Tags', path: '/tags' },
+        { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+        { label: 'Customers', path: '/customers', icon: Users },
+        { label: 'Contact Persons', path: '/contacts', icon: Contact },
+        { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard }, // Reusing SubscriptionTypes generic path
+        { label: 'Tags', path: '/tags', icon: Tags },
       ]
     }
   ];
 
   const bottomMenu = [
-    { label: 'Settings', path: '/settings' },
-    { label: 'Profile', path: '/profile' },
-    { label: 'Logout', path: '/logout', action: handleLogout },
+    { label: 'Settings', path: '/settings', icon: Settings },
+    { label: 'Profile', path: '/profile', icon: UserCircle },
   ];
 
   return (
     <View style={styles.container}>
-      {/* Sidebar */}
+      {/* Sidebar - Desktop */}
       <View style={styles.sidebar}>
         <View style={styles.sidebarHeader}>
-          <Text style={styles.logoText}>Nexus</Text> 
-          {/* User requested name "Donezo" or "Nexus" from image? "Nexus" is on the image provided in prompt text (attachment seems to show layout like Nexus/Donezo themes) */}
+          <View style={styles.logoBadge}>
+            <Text style={styles.logoBadgeText}>N</Text>
+          </View>
+          <Text style={styles.logoText}>Nexus<Text style={{ fontWeight: '300', color: '#94a3b8' }}>Admin</Text></Text> 
         </View>
 
-        <ScrollView style={styles.navScroll}>
+        <ScrollView style={styles.navScroll} contentContainerStyle={{ paddingVertical: 20 }}>
           {menuGroups.map((group, groupIndex) => (
             <View key={groupIndex} style={styles.menuGroup}>
               {group.title && <Text style={styles.menuGroupTitle}>{group.title}</Text>}
               {group.items.map((item) => {
                 const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+                const Icon = item.icon;
                 return (
                   <TouchableOpacity
                     key={item.path}
                     style={[styles.navItem, isActive && styles.navItemActive]}
                     onPress={() => navigate(item.path)}
+                    activeOpacity={0.7}
                   >
+                    <Icon size={20} color={isActive ? '#38bdf8' : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
                     <Text style={[styles.navText, isActive && styles.navTextActive]}>
                       {item.label}
                     </Text>
+                    {isActive && <View style={styles.activeIndicator} />}
                   </TouchableOpacity>
                 );
               })}
@@ -71,15 +88,33 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         </ScrollView>
         
         <View style={styles.bottomNav}>
-            {bottomMenu.map((item) => (
+            {bottomMenu.map((item) => {
+                const Icon = item.icon;
+                return (
                 <TouchableOpacity
                     key={item.label}
                     style={styles.navItem}
-                    onPress={() => item.action ? item.action() : navigate(item.path)}
+                    onPress={() => navigate(item.path)}
                 >
+                    <Icon size={20} color="#94a3b8" />
                     <Text style={styles.navText}>{item.label}</Text>
                 </TouchableOpacity>
-            ))}
+            )})}
+            <TouchableOpacity style={[styles.navItem, { marginTop: 8 }]} onPress={handleLogout}>
+                <LogOut size={20} color="#ef4444" />
+                <Text style={[styles.navText, { color: '#ef4444' }]}>Logout</Text>
+            </TouchableOpacity>
+        </View>
+        
+        {/* User Mini Profile */}
+        <View style={styles.userProfile}>
+            <View style={styles.avatar}>
+               <Text style={{color:'#fff', fontWeight:'bold'}}>JD</Text>
+            </View>
+            <View>
+                <Text style={styles.userName}>Julian Doe</Text>
+                <Text style={styles.userRole}>Super Admin</Text>
+            </View>
         </View>
       </View>
 
@@ -87,21 +122,29 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
       <View style={styles.main}>
         {/* Header Bar */}
         <View style={styles.header}>
-            <View>
+            <View style={styles.headerLeft}>
+                 <Text style={styles.pageBreadcrumb}>Pages / {title}</Text>
                  <Text style={styles.pageTitle}>{title}</Text>
-                 {subtitle && <Text style={styles.pageSubtitle}>{subtitle}</Text>}
             </View>
-            <View style={styles.actions}>
-                {actions}
-                <View style={styles.headerProfile}>
-                     <View style={[styles.avatarPlaceholder, { width: 40, height: 40, backgroundColor: '#ddd' }]} />
+            
+            {/* @ts-ignore */}
+            <View style={styles.headerRight as any}>
+                <View style={styles.searchBar}>
+                    <Search size={16} color="#94a3b8" />
+                    <Text style={{ color: '#cbd5e1', marginLeft: 8, fontSize: 13 }}>Search...</Text>
                 </View>
+                <TouchableOpacity style={styles.iconBtn}>
+                    <Bell size={20} color="#64748b" />
+                    <View style={styles.notificationDot} />
+                </TouchableOpacity>
+                {actions && <View style={styles.actionDelimiter} />}
+                {actions}
             </View>
         </View>
 
         {/* Content Scroll */}
-        <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
-            {children}
+        <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentContainer}>
+             {children as any}
         </ScrollView>
       </View>
     </View>
@@ -112,138 +155,207 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
+    backgroundColor: '#f1f5f9', // Slate 100
     height: '100%',
-    backgroundColor: '#F3F4F6',
-    fontFamily: 'Inter, sans-serif'
+    overflow: 'hidden'
   },
+  // Sidebar
   sidebar: {
     width: 260,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#0f172a', // Slate 900
     borderRightWidth: 1,
-    borderRightColor: '#E5E7EB',
+    borderRightColor: '#1e293b',
     display: 'flex',
-    flexDirection: 'column',
-    paddingVertical: 24,
-    paddingHorizontal: 20
+    flexDirection: 'column'
   },
   sidebarHeader: {
-    marginBottom: 40,
+    height: 80,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b'
+  },
+  logoBadge: {
+      width: 32,
+      height: 32,
+      backgroundColor: '#38bdf8', // Sky 400
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12
+  },
+  logoBadgeText: {
+      color: 'white',
+      fontWeight: '900',
+      fontSize: 18
   },
   logoText: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.primary, // Or specific 'Nexus' purple
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f8fafc',
+    letterSpacing: 0.5
   },
   navScroll: {
     flex: 1,
   },
   menuGroup: {
-    marginBottom: 30,
+      marginBottom: 24
   },
   menuGroupTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    marginBottom: 10,
-    paddingHorizontal: 10,
-    letterSpacing: 0.5
+      color: '#475569',
+      fontSize: 11,
+      fontWeight: '700',
+      paddingHorizontal: 24,
+      marginBottom: 8,
+      letterSpacing: 1
   },
   navItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    gap: 12,
+    position: 'relative'
   },
   navItemActive: {
-    backgroundColor: colors.primary + '10', // Light opacity primary
-    // borderRightWidth: 3,
-    // borderRightColor: colors.primary
+    backgroundColor: 'rgba(56, 189, 248, 0.1)'
   },
   navText: {
-    fontSize: 15,
-    color: '#6B7280',
+    fontSize: 14,
+    color: '#94a3b8',
     fontWeight: '500'
   },
   navTextActive: {
-    color: colors.primary,
-    fontWeight: '700',
+    color: '#38bdf8', // Sky 400
+    fontWeight: '600'
+  },
+  activeIndicator: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 3,
+      backgroundColor: '#38bdf8',
+      borderTopLeftRadius: 4,
+      borderBottomLeftRadius: 4
   },
   bottomNav: {
-      marginTop: 'auto',
       borderTopWidth: 1,
-      borderTopColor: '#E5E7EB',
-      paddingTop: 16
+      borderTopColor: '#1e293b',
+      paddingVertical: 16
   },
-  sidebarFooter: {
+  userProfile: {
+      padding: 16,
+      backgroundColor: '#020617',
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 20,
-      paddingTop: 20,
-      borderTopWidth: 1,
-      borderTopColor: '#f3f4f6'
+      gap: 12
   },
-  avatarPlaceholder: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: '#E5E7EB',
-      marginRight: 12
+  avatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: '#334155',
+      alignItems: 'center',
+      justifyContent: 'center'
   },
-  footerName: {
-      fontSize: 14,
-      fontWeight: 'bold',
-      color: '#374151'
+  userName: {
+      color: '#f8fafc',
+      fontSize: 13,
+      fontWeight: '600'
   },
-  footerEmail: {
-      fontSize: 12,
-      color: '#9CA3AF'
+  userRole: {
+      color: '#64748b',
+      fontSize: 11
   },
+
+  // Main Content
   main: {
     flex: 1,
-    display: 'flex',
     flexDirection: 'column',
+    position: 'relative'
   },
   header: {
-    height: 90,
-    backgroundColor: '#FFFFFF', // Transparent or white? Image shows white/clean
-    // borderBottomWidth: 1,
-    // borderBottomColor: '#E5E7EB',
+    height: 80,
+    backgroundColor: 'rgba(255,255,255,0.8)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 40,
+    paddingHorizontal: 32,
+    // borderBottomWidth: 1,
+    // borderBottomColor: '#e2e8f0',
+    // backdropFilter: 'blur(10px)', // Glassmorphism
+    zIndex: 10
+  },
+  headerLeft: {
+      gap: 4
+  },
+  pageBreadcrumb: {
+      fontSize: 12,
+      color: '#64748b'
   },
   pageTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
+      fontSize: 24,
+      fontWeight: '800',
+      color: '#0f172a',
+      letterSpacing: -0.5
   },
-  pageSubtitle: {
-      fontSize: 14,
-      color: '#6B7280',
-      marginTop: 4
+  headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16
   },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16
+  searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'white',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      width: 240,
+      height: 40
   },
-  headerProfile: {
-      marginLeft: 20
+  iconBtn: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 20,
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#e2e8f0'
   },
-  content: {
-    flex: 1,
+  notificationDot: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#fb7185',
+      borderWidth: 1,
+      borderColor: 'white'
   },
-  contentInner: {
-    padding: 40,
-    paddingTop: 10,
-    maxWidth: 1600,
-    width: '100%',
-    alignSelf: 'center', // Center content if huge screen
+  actionDelimiter: {
+      width: 1,
+      height: 24,
+      backgroundColor: '#e2e8f0',
+      marginHorizontal: 8
+  },
+  headerActions: {
+      position: 'absolute',
+      right: 32,
+      top: 80 + 24 // Below header? No, just passed as prop logic needs adjustment
+  },
+  
+  contentScroll: {
+      flex: 1,
+  },
+  contentContainer: {
+      padding: 32,
+      paddingBottom: 60
   }
 });

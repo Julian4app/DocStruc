@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     flex: 1,
-    height: 'fit-content',
+    // height: 'fit-content',
     maxWidth: 500
   },
   usageColumn: {

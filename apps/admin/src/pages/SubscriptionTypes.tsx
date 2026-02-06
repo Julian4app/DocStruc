@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button } from '@docstruc/ui';
+import { Plus, Check, Trash2, CreditCard } from 'lucide-react';
 
 export default function SubscriptionTypes() {
   const navigate = useNavigate();
@@ -25,14 +26,14 @@ export default function SubscriptionTypes() {
       setTypes(data || []);
     } catch (e) {
       console.error(e);
-      alert('Error loading subscription types');
+      // alert('Error loading subscription types');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure? This might affect existing subscriptions.')) return;
+  const handleDelete = async (id: string, title?: string) => {
+    if (!confirm(`Are you sure you want to delete '${title || 'this plan'}'? This might affect existing subscriptions.`)) return;
     try {
       const { error } = await supabase.from('subscription_types').delete().eq('id', id);
       if (error) throw error;
@@ -43,137 +44,256 @@ export default function SubscriptionTypes() {
     }
   };
 
-  if (loading) return <View style={{ padding: 40 }}><ActivityIndicator /></View>;
+  if (loading) return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#0f172a" />
+      </View>
+  );
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={{ color: '#6B7280' }}>Manage the subscription plans available to customers.</Text>
-        <Button onClick={() => navigate('/subscription-types/new')} variant="primary">Add New Plan</Button>
+        <View>
+            <Text style={styles.title}>Subscription Plans</Text>
+            <Text style={styles.subtitle}>Manage pricing tiers and feature sets.</Text>
+        </View>
+        <Button onClick={() => navigate('/subscription-types/new')} variant="primary" style={styles.createBtn}>
+            <Plus size={18} color="white" />
+            <Text style={{ color: 'white', fontWeight: '600' }}>Add Plan</Text>
+        </Button>
       </View>
 
-      <View style={styles.grid}>
-          {types.length === 0 && <Text>No subscription types found.</Text>}
-          {types.map(t => (
-              <TouchableOpacity 
-                 key={t.id} 
-                 style={styles.card}
-                 onPress={() => navigate(`/subscription-types/${t.id}`)}
-              >
-                  <View style={styles.cardHeader}>
-                      <Text style={styles.cardTitle}>{t.title}</Text>
-                      <Text style={styles.price}>${t.price}<Text style={styles.currency}>/mo</Text></Text>
-                  </View>
-                  
-                  {t.discount > 0 && (
-                      <View style={styles.badge}>
-                          <Text style={styles.badgeText}>{t.discount}% OFF</Text>
-                      </View>
-                  )}
+      {/* Pricing Grid */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {types.length === 0 ? (
+            <View style={styles.emptyState}>
+                <CreditCard size={48} color="#cbd5e1" />
+                <Text style={styles.emptyText}>No subscription plans active.</Text>
+            </View>
+        ) : (
+            <View style={styles.grid}>
+                {types.map(t => (
+                    <TouchableOpacity 
+                        key={t.id} 
+                        style={styles.card}
+                        onPress={() => navigate(`/subscription-types/${t.id}`)}
+                    >
+                        <View style={styles.cardContent}>
+                            <View style={styles.planHeader}>
+                                <Text style={styles.planName}>{t.title}</Text>
+                                <View style={styles.priceRow}>
+                                    <Text style={styles.currency}>$</Text>
+                                    <Text style={styles.price}>{t.price}</Text>
+                                    <Text style={styles.period}>/mo</Text>
+                                </View>
+                                {t.discount > 0 && <View style={styles.discountBadge}><Text style={styles.discountText}>{t.discount}% OFF</Text></View>}
+                            </View>
 
-                  <Text style={styles.description} numberOfLines={2}>{t.description || 'No description'}</Text>
+                            <Text style={styles.description} numberOfLines={3}>{t.description || 'No description provided.'}</Text>
+                            
+                            <View style={styles.divider} />
 
-                  <View style={styles.features}>
-                      {(Array.isArray(t.features) ? t.features : []).slice(0, 3).map((f: string, i: number) => (
-                          <Text key={i} style={styles.featureItem}>• {f}</Text>
-                      ))}
-                      {(Array.isArray(t.features) ? t.features : []).length > 3 && <Text style={{ fontSize: 12, color: '#9CA3AF' }}>+ more</Text>}
-                  </View>
-
-                  <View style={styles.footer}>
-                      <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDelete(t.id); }}>
-                          <Text style={{ color: '#EF4444', fontWeight: '500' }}>Delete</Text>
-                      </TouchableOpacity>
-                  </View>
-              </TouchableOpacity>
-          ))}
-      </View>
+                            <View style={styles.featuresList}>
+                                {(Array.isArray(t.features) ? t.features : []).slice(0, 5).map((f: string, i: number) => (
+                                    <View key={i} style={styles.featureItem}>
+                                        <Check size={16} color="#10b981" />
+                                        <Text style={styles.featureText} numberOfLines={1}>{f}</Text>
+                                    </View>
+                                ))}
+                                {(Array.isArray(t.features) ? t.features : []).length > 5 && (
+                                    <Text style={styles.moreFeatures}>+ {(t.features.length - 5)} more features</Text>
+                                )}
+                            </View>
+                        </View>
+                        
+                        <View style={styles.cardFooter}>
+                            <TouchableOpacity 
+                                onPress={(e) => { e.stopPropagation(); handleDelete(t.id, t.title); }}
+                                style={styles.deleteBtn}
+                            >
+                                <Trash2 size={16} color="#ef4444" />
+                                <Text style={styles.deleteText}>Delete</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
+                ))}
+            </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: 24,
     flex: 1,
+    padding: 32,
+    gap: 32,
+    maxWidth: 1200,
+    width: '100%',
+    marginHorizontal: 'auto'
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'flex-end'
   },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.5,
+    marginBottom: 4
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#64748b'
+  },
+  createBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 16
+  },
+  
+  // Grid
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 24
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 24,
+      alignItems: 'stretch'
   },
   card: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    width: 300,
-    borderWidth: 1,
-    borderColor: '#E5E7EB'
-  },
-  cardHeader: {
-      flexDirection: 'row',
+      width: 320,
+      backgroundColor: 'white',
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      shadowColor: '#64748b',
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 10 },
+      display: 'flex',
+      flexDirection: 'column',
       justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 8
+      overflow: 'hidden'
   },
-  cardTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#111827',
+  cardContent: {
+      padding: 24,
       flex: 1
   },
-  price: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: '#111827'
+  planHeader: {
+      alignItems: 'center', // Center align for pricing card look
+      marginBottom: 16
+  },
+  planName: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#0f172a',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginBottom: 8
+  },
+  priceRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start'
   },
   currency: {
-      fontSize: 12,
-      color: '#6B7280',
-      fontWeight: 'normal'
+      fontSize: 20,
+      fontWeight: '600',
+      color: '#334155',
+      marginTop: 4
   },
-  badge: {
-      backgroundColor: '#FEF3C7',
+  price: {
+      fontSize: 48,
+      fontWeight: '800',
+      color: '#0f172a',
+      letterSpacing: -1
+  },
+  period: {
+      fontSize: 16,
+      color: '#64748b',
+      alignSelf: 'flex-end',
+      marginBottom: 8,
+      marginLeft: 4
+  },
+  discountBadge: {
+      backgroundColor: '#fee2e2',
       paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingVertical: 2,
       borderRadius: 12,
-      alignSelf: 'flex-start',
-      marginBottom: 12
+      marginTop: 4
   },
-  badgeText: {
-      color: '#D97706',
-      fontSize: 12,
-      fontWeight: 'bold'
+  discountText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#ef4444'
   },
   description: {
-      color: '#6B7280',
       fontSize: 14,
-      marginBottom: 16,
-      height: 40
-  },
-  features: {
-      gap: 4,
-      flex: 1,
+      color: '#64748b',
+      textAlign: 'center',
+      lineHeight: 20,
       marginBottom: 24
   },
-  featureItem: {
-      fontSize: 13,
-      color: '#374151'
+  divider: {
+      height: 1,
+      backgroundColor: '#f1f5f9',
+      width: '100%',
+      marginBottom: 24
   },
-  footer: {
-      borderTopWidth: 1,
-      borderTopColor: '#F3F4F6',
-      paddingTop: 16,
+  featuresList: {
+      gap: 12
+  },
+  featureItem: {
       flexDirection: 'row',
-      justifyContent: 'flex-end'
+      alignItems: 'center',
+      gap: 10
+  },
+  featureText: {
+      fontSize: 14,
+      color: '#334155',
+      flex: 1
+  },
+  moreFeatures: {
+      fontSize: 12,
+      color: '#94a3b8',
+      fontStyle: 'italic',
+      marginLeft: 26,
+      marginTop: 4
+  },
+  
+  cardFooter: {
+      padding: 16,
+      backgroundColor: '#f8fafc',
+      borderTopWidth: 1,
+      borderTopColor: '#f1f5f9',
+      alignItems: 'center'
+  },
+  deleteBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      padding: 8,
+      opacity: 0.8
+  },
+  deleteText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: '#ef4444'
+  },
+
+  // Empty
+  emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 60,
+      width: '100%'
+  },
+  emptyText: {
+      color: '#94a3b8',
+      marginTop: 16
   }
 });
+

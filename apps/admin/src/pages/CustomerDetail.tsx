@@ -1,43 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button, Input, CustomModal } from '@docstruc/ui';
 import { TagInput } from '../components/TagInput';
+import { Select } from '../components/Select';
 import { colors } from '@docstruc/theme';
+import { Building, Clock, Folder, Save, User, LayoutDashboard, FileText, History as HistoryIcon, CreditCard, ChevronDown, Upload, Trash2, Download } from 'lucide-react';
 
-const TABS = ['General', 'Notes', 'Files', 'Subscription', 'History'];
+const TABS = [
+  { id: 'General', label: 'Overview', icon: LayoutDashboard },
+  { id: 'Notes', label: 'Notes', icon: FileText },
+  { id: 'Files', label: 'Files', icon: Folder },
+  { id: 'Subscription', label: 'Subscription', icon: CreditCard },
+  { id: 'History', label: 'History', icon: HistoryIcon }
+];
 
-// Simple Dropdown component mockup since we might not have one in @docstruc/ui
-const Select = ({ label, value, options, onChange }: any) => (
-    <View style={styles.field}>
-        <Text style={styles.label}>{label}</Text>
-        <View style={styles.selectWrapper}>
-            <select 
-                value={value} 
-                onChange={(e) => onChange(e.target.value)}
-                style={styles.selectInput}
-            >
-                <option value="">Select...</option>
-                {options.map((o: any) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-            </select>
-        </View>
-    </View>
-);
+// Select component imported from ../components/Select
 
 const getStatusColor = (status: string) => {
     switch(status) {
-        case 'Active': return { bg: '#D1FAE5', text: '#065F46' }; // Green
-        case 'Inactive': return { bg: '#F3F4F6', text: '#374151' }; // Gray
-        case 'Lead': return { bg: '#DBEAFE', text: '#1E40AF' }; // Blue
-        case 'Paid': return { bg: '#D1FAE5', text: '#065F46' }; 
-        case 'Open': return { bg: '#FEF3C7', text: '#92400E' }; // Yellow
-        case 'Delayed': return { bg: '#FEE2E2', text: '#B91C1C' }; // Red
-        default: return { bg: '#F3F4F6', text: '#374151' };
+        case 'Active': return { bg: '#dcfce7', text: '#166534', border: '#bbf7d0' };
+        case 'Inactive': return { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' };
+        case 'Pending': return { bg: '#fef9c3', text: '#854d0e', border: '#fde047' };
+        default: return { bg: '#f1f5f9', text: '#475569', border: '#e2e8f0' };
     }
 };
+
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -72,6 +61,9 @@ export default function CustomerDetail() {
   // New Contact Modal State
   const [showContactModal, setShowContactModal] = useState(false);
   const [newContact, setNewContact] = useState({ first_name: '', surname: '', email: '', department: '' });
+
+  // Logo Modal
+  const [showLogoModal, setShowLogoModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -393,6 +385,31 @@ export default function CustomerDetail() {
       }
   };
 
+  const handleUpdateLogo = async (url: string) => {
+      try {
+           const { error } = await supabase.from('companies').update({ logo_url: url }).eq('id', id);
+           if (error) throw error;
+           setCompany({ ...company, logo_url: url });
+           setShowLogoModal(false);
+           addToHistory('Logo Updated', 'Company logo changed');
+      } catch (e: any) {
+           console.error(e);
+           alert('Error updating logo');
+      }
+  };
+
+  const handleRemoveLogo = async () => {
+      try {
+           const { error } = await supabase.from('companies').update({ logo_url: null }).eq('id', id);
+           if (error) throw error;
+           setCompany({ ...company, logo_url: null });
+           setShowLogoModal(false);
+           addToHistory('Logo Removed', 'Company logo removed');
+      } catch (e) {
+           console.error(e);
+      }
+  };
+
   if (loading) return <View style={{ padding: 40 }}><ActivityIndicator /></View>;
   if (!company) return <Text>Customer not found</Text>;
 
@@ -403,175 +420,204 @@ export default function CustomerDetail() {
 
   return (
     <View style={styles.container}>
-        {/* Header */}
+        {/* Header Hero Section */}
         <View style={styles.header}>
-            <Text style={styles.title}>{company.name}</Text>
-            <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
-                <Text style={[styles.badgeText, { color: statusStyle.text }]}>{company.status}</Text>
+            <View style={styles.headerTop}>
+                {/* Logo & Name */}
+                <View style={styles.logoRow}>
+                    <TouchableOpacity onPress={() => setShowLogoModal(true)} style={styles.companyLogo}>
+                        {company.logo_url ? (
+                            <img src={company.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        ) : (
+                            <View style={{ alignItems: 'center', gap: 4 }}>
+                                <Upload size={24} color="#64748b" />
+                                <Text style={{ fontSize: 10, color: '#94a3b8' }}>Upload</Text>
+                            </View>
+                        )}
+                        <View style={styles.logoOverlay}>
+                            <Text style={styles.logoOverlayText}>Edit</Text>
+                        </View>
+                    </TouchableOpacity>
+                    <View>
+                        <Text style={styles.companyName}>{company.name}</Text>
+                        <View style={styles.metaRow}>
+                             <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}>
+                                <View style={[styles.statusDot, { backgroundColor: statusStyle.border }]} />
+                                <Text style={[styles.statusText, { color: statusStyle.text }]}>{company.status}</Text>
+                             </View>
+                             <Text style={styles.metaText}>{company.industry || 'Tech'} • Since {new Date(company.created_at).getFullYear()}</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Quick Stats or Actions */}
+                <View style={styles.actionsBox}>
+                    <Button variant="secondary" onClick={() => handleUpdateCompany(company)} style={{ height: 38 }}>
+                        <Save size={16} /> Save Changes
+                    </Button>
+                </View>
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabsRow}>
+                {TABS.map(tab => (
+                    <TouchableOpacity 
+                        key={tab.id} 
+                        style={[styles.tab, activeTab === tab.id && styles.activeTab]}
+                        onPress={() => setActiveTab(tab.id)}
+                    >
+                        <tab.icon size={16} color={activeTab === tab.id ? '#0f172a' : '#64748b'} />
+                        <Text style={[styles.tabText, activeTab === tab.id && styles.activeTabText]}>{tab.label}</Text>
+                        {activeTab === tab.id && <View style={styles.activeLine} />}
+                    </TouchableOpacity>
+                ))}
             </View>
         </View>
 
-        {/* Tabs */}
-        <View style={styles.tabsRow}>
-            {TABS.map(tab => (
-                <TouchableOpacity 
-                    key={tab} 
-                    style={[styles.tab, activeTab === tab && styles.activeTab]}
-                    onPress={() => setActiveTab(tab)}
-                >
-                    <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-                </TouchableOpacity>
-            ))}
-        </View>
-
-        <ScrollView style={styles.content}>
-            {/* GENERAL TAB */}
+        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }}>
+            {/* OVERVIEW TAB */}
             {activeTab === 'General' && (
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>General Information</Text>
-                    <View style={styles.formGrid}>
-                        <View style={styles.field}>
-                            <Text style={styles.label}>Company Name</Text>
-                            <Input value={company.name} onChangeText={(t) => setCompany({...company, name: t})} placeholder="Name" />
-                        </View>
-                        
-                        {/* Address Split */}
-                        <Text style={[styles.label, {marginTop: 8}]}>Address Details</Text>
-                        <View style={styles.row}>
-                             <View style={[styles.field, {flex: 2}]}>
-                                <Input value={company.address || ''} onChangeText={(t) => setCompany({...company, address: t})} placeholder="Street" />
-                             </View>
-                             <View style={[styles.field, {flex: 1}]}>
-                                <Input value={company.zip_code || ''} onChangeText={(t) => setCompany({...company, zip_code: t})} placeholder="ZIP" />
-                             </View>
-                        </View>
-                        <View style={styles.row}>
-                             <View style={[styles.field, {flex: 1}]}>
-                                <Input value={company.city || ''} onChangeText={(t) => setCompany({...company, city: t})} placeholder="City" />
-                             </View>
-                             <View style={[styles.field, {flex: 1}]}>
-                                <Input value={company.country || ''} onChangeText={(t) => setCompany({...company, country: t})} placeholder="Country" />
-                             </View>
-                        </View>
-                        
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
-                            <View style={{ flex: 1 }}>
-                                <Select label="Contact Person" value={company.contact_person_id || ''} options={contactOptions} onChange={(v: string) => setCompany({...company, contact_person_id: v})} />
+                <View style={styles.twoColumnGrid}>
+                    <View style={styles.leftCol}>
+                        <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                                <Text style={styles.cardTitle}>Company Details</Text>
                             </View>
-                            <View style={{ marginBottom: 16, flexDirection: 'row', gap: 8 }}>
-                                <Button onClick={() => setShowContactModal(true)} variant="primary">+ New</Button>
-                                {company.contact_person_id && (
-                                    <Button onClick={() => navigate(`/contacts/${company.contact_person_id}`)} variant="secondary">View</Button>
-                                )}
-                            </View>
-                        </View>
-                        
-                        <Select label="Status" value={company.status} options={statusOptions} onChange={(v: string) => setCompany({...company, status: v})} />
-                        
-                        <View style={styles.row}>
-                            <View style={[styles.field, { flex: 1 }]}>
-                                <Text style={styles.label}>Registered Accounts</Text>
-                                <Input value={String(company.employees_count || 0)} editable={false} style={{ backgroundColor: '#F3F4F6' }} />
-                            </View>
-                            <View style={[styles.field, { flex: 1 }]}>
-                                <Text style={styles.label}>Bought Accounts</Text>
-                                <Input value={String(company.bought_accounts || 0)} onChangeText={(t) => setCompany({...company, bought_accounts: parseInt(t) || 0})} placeholder="0" />
+                            <View style={styles.formStack}>
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Company Name</Text>
+                                    <Input value={company.name} onChangeText={(t) => setCompany({...company, name: t})} />
+                                </View>
+                                <View style={styles.row}>
+                                     <View style={{ flex: 2 }}>
+                                        <Text style={styles.label}>Address</Text>
+                                        <Input value={company.address || ''} onChangeText={(t) => setCompany({...company, address: t})} placeholder="Street" />
+                                     </View>
+                                     <View style={{ flex: 1 }}>
+                                        <Text style={styles.label}>ZIP</Text>
+                                        <Input value={company.zip_code || ''} onChangeText={(t) => setCompany({...company, zip_code: t})} placeholder="12345" />
+                                     </View>
+                                </View>
+                                <View style={styles.row}>
+                                     <View style={{ flex: 1 }}>
+                                        <Input value={company.city || ''} onChangeText={(t) => setCompany({...company, city: t})} placeholder="City" />
+                                     </View>
+                                     <View style={{ flex: 1 }}>
+                                        <Input value={company.country || ''} onChangeText={(t) => setCompany({...company, country: t})} placeholder="Country" />
+                                     </View>
+                                </View>
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Tags</Text>
+                                    <TagInput 
+                                        value={company.tags || []} 
+                                        onChange={(tags) => setCompany({...company, tags})} 
+                                        availableTags={availableTags}
+                                        onTagCreated={fetchAvailableTags}
+                                    />
+                                </View>
                             </View>
                         </View>
                         
-                        <Select label="SuperUser" value={company.superuser_id || ''} options={contactOptions} onChange={(v: string) => setCompany({...company, superuser_id: v})} />
-
-                        <View style={styles.field}>
-                            <Text style={styles.label}>Customer Tags</Text>
-                            <TagInput 
-                                value={company.tags || []} 
-                                onChange={(tags) => setCompany({...company, tags})} 
-                                availableTags={availableTags}
-                                onTagCreated={fetchAvailableTags}
-                            />
-                        </View>
-
-                        <View style={styles.field}>
-                             <Text style={styles.label}>Logo</Text>
-                             <View style={{ gap: 8 }}>
-                                 {company.logo_url && <img src={company.logo_url} style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 8, border: '1px solid #eee' }} />}
-                                 <TouchableOpacity style={styles.uploadBox} onPress={() => handlePickFile('logos', 'companies', (url) => setCompany({...company, logo_url: url}))}>
-                                     <Text style={{ color: '#6B7280' }}>{company.logo_url ? 'Change Logo' : 'Upload Logo'}</Text>
-                                 </TouchableOpacity>
-                             </View>
-                        </View>
-
-                        <View style={styles.field}>
-                            <Text style={styles.label}>Added On</Text>
-                            <Text style={styles.readonlyText}>{new Date(company.created_at).toLocaleString()}</Text>
+                        <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                                <Text style={styles.cardTitle}>Account Settings</Text>
+                            </View>
+                            <View style={styles.formStack}>
+                                <View style={styles.row}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.label}>Employees (Reg.)</Text>
+                                        <Input value={String(company.employees_count || 0)} editable={false} style={{ backgroundColor: '#f8fafc' }} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.label}>Purchased Users</Text>
+                                        <Input value={String(company.bought_accounts || 0)} onChangeText={(t) => setCompany({...company, bought_accounts: parseInt(t) || 0})} />
+                                    </View>
+                                </View>
+                                <Select label="Account Status" value={company.status} options={statusOptions} onChange={(v: string) => setCompany({...company, status: v})} />
+                            </View>
                         </View>
                     </View>
-                    <View style={styles.actionRow}>
-                        <Button onClick={() => handleUpdateCompany(company)} variant="primary">Save Changes</Button>
+
+                    <View style={styles.rightCol}>
+                        <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                                <Text style={styles.cardTitle}>Key Contact</Text>
+                                <TouchableOpacity onPress={() => setShowContactModal(true)}>
+                                    <Text style={styles.linkText}>+ New</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={{ marginBottom: 16 }}>
+                                <Select label="Select Contact" value={company.contact_person_id || ''} options={contactOptions} onChange={(v: string) => setCompany({...company, contact_person_id: v})} />
+                            </View>
+                            
+                            {/* Display Selected Contact Card */}
+                            {company.contact_person_id && contacts.find(c => c.id === company.contact_person_id) && (
+                                <View style={styles.contactCard}>
+                                    <View style={styles.contactAvatar}>
+                                        <User size={20} color="#64748b" />
+                                    </View>
+                                    <View>
+                                        <Text style={styles.contactName}>{contacts.find(c => c.id === company.contact_person_id).first_name} {contacts.find(c => c.id === company.contact_person_id).surname}</Text>
+                                        <Text style={styles.contactEmail}>{contacts.find(c => c.id === company.contact_person_id).email}</Text>
+                                    </View>
+                                </View>
+                            )}
+                        </View>
+                        {/* History widget could go here too */}
                     </View>
                 </View>
             )}
 
             {/* NOTES TAB */}
             {activeTab === 'Notes' && (
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>CRM Notes</Text>
-                    <View style={styles.noteInput}>
+                <View style={styles.tabContainer}>
+                    <View style={styles.notesInputCard}>
                         <Input 
                             value={newNote} 
                             onChangeText={setNewNote} 
-                            placeholder="Write a note..." 
+                            multiline 
+                            numberOfLines={3} 
+                            placeholder="Write a note about this call or meeting..."
+                            style={styles.notesArea}
                         />
-                        <View style={{ marginVertical: 8 }}>
-                           <Text style={[styles.label, { marginBottom: 4 }]}>Tags</Text>
-                           <TagInput 
-                               value={newNoteTags} 
-                               onChange={setNewNoteTags}
-                               availableTags={availableTags}
-                               placeholder="Add tags..."
-                               onTagCreated={fetchAvailableTags}
-                           />
+                        <View style={styles.notesToolbar}>
+                            <View style={{ width: 250 }}>
+                                <TagInput 
+                                    value={newNoteTags} 
+                                    onChange={setNewNoteTags} 
+                                    placeholder="Add tags..." 
+                                    availableTags={availableTags}
+                                />
+                            </View>
+                            <Button onClick={handleAddNote} variant="primary">Add Note</Button>
                         </View>
-                        <Button onClick={handleAddNote} variant="secondary" style={{ marginTop: 8 }}>Add Note</Button>
                     </View>
+
                     <View style={styles.notesList}>
-                        {notes.length === 0 && <Text style={{ color: '#9CA3AF', fontStyle: 'italic' }}>No notes yet.</Text>}
                         {notes.map(note => (
                             <View key={note.id} style={styles.noteItem}>
-                                {editingNoteId === note.id ? (
-                                    <View style={{ gap: 8 }}>
-                                        <Input value={editNoteContent} onChangeText={setEditNoteContent} multiline />
-                                        <View>
-                                            <TagInput 
-                                                value={editNoteTags} 
-                                                onChange={setEditNoteTags}
-                                                availableTags={availableTags}
-                                                onTagCreated={fetchAvailableTags}
-                                            />
-                                        </View>
-                                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                                            <Button onClick={() => handleUpdateNote(note.id)} variant="primary">Save</Button>
-                                            <Button onClick={() => setEditingNoteId(null)} variant="secondary">Cancel</Button>
-                                        </View>
+                                <View style={styles.noteLeft}>
+                                    <View style={styles.noteAvatar}>
+                                        <Text style={styles.noteInitials}>AD</Text>
                                     </View>
-                                ) : (
-                                    <>
-                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                             <Text style={styles.noteContent}>{note.content}</Text>
-                                             <TouchableOpacity onPress={() => { 
-                                                 setEditingNoteId(note.id); 
-                                                 setEditNoteContent(note.content);
-                                                 setEditNoteTags(note.tags || []);
-                                             }}>
-                                                 <Text style={{ color: colors.primary, fontSize: 12 }}>Edit</Text>
-                                             </TouchableOpacity>
+                                    <View style={styles.line} />
+                                </View>
+                                <View style={styles.noteContent}>
+                                    <View style={styles.noteHeader}>
+                                        <Text style={styles.noteAuthor}>Admin</Text>
+                                        <Text style={styles.noteTime}>{new Date(note.created_at).toLocaleString()}</Text>
+                                    </View>
+                                    <Text style={styles.noteText}>{note.content}</Text>
+                                    {note.tags && note.tags.length > 0 && (
+                                        <View style={styles.noteTags}>
+                                            {note.tags.map((t: string) => (
+                                                <View key={t} style={styles.miniTag}>
+                                                    <Text style={styles.miniTagText}>{t}</Text>
+                                                </View>
+                                            ))}
                                         </View>
-                                        <View style={{ marginTop: 4 }}>
-                                            <TagInput value={note.tags || []} onChange={() => {}} availableTags={availableTags} readonly />
-                                        </View>
-                                        <Text style={styles.noteDate}>{new Date(note.created_at).toLocaleString()}</Text>
-                                    </>
-                                )}
+                                    )}
+                                </View>
                             </View>
                         ))}
                     </View>
@@ -580,242 +626,212 @@ export default function CustomerDetail() {
 
             {/* FILES TAB */}
             {activeTab === 'Files' && (
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Files</Text>
-                    <TouchableOpacity style={styles.uploadBox} onPress={() => handlePickFile('company-files', 'general', handleAddFile)}>
-                         <Text style={{ color: '#6B7280' }}>+ Upload New File</Text>
-                    </TouchableOpacity>
-                    <View style={styles.filesList}>
-                        {files.filter(f => !f.tags?.includes('Recipe')).length === 0 && <Text style={{ color: '#9CA3AF' }}>No files uploaded.</Text>}
-                        
-                        {files.filter(f => !f.tags?.includes('Recipe')).map(f => (
-                            <View key={f.id} style={{ padding: 12, borderBottomWidth: 1, borderColor: '#eee' }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                                    <Text style={{ fontWeight: '500' }}>{f.file_name}</Text>
-                                    <a href={f.file_url} target="_blank" style={{ color: colors.primary }}>Download</a>
-                                </View>
-                                <View>
-                                    <TagInput 
-                                        value={f.tags || []}
-                                        onChange={async (newTags) => {
-                                            const { error } = await supabase.from('company_files').update({ tags: newTags }).eq('id', f.id);
-                                            if (!error) {
-                                                setFiles(files.map(file => file.id === f.id ? { ...file, tags: newTags } : file));
-                                            }
-                                        }}
-                                        availableTags={availableTags}
-                                        onTagCreated={fetchAvailableTags}
-                                    />
-                                </View>
-                            </View>
-                        ))}
+                <View style={styles.tabContainer}>
+                    <View style={styles.emptyState}>
+                        <Folder size={48} color="#cbd5e1" />
+                        <Text style={styles.emptyTitle}>No files yet</Text>
+                        <Text style={styles.emptyText}>Upload contracts, NDAs, or invoices here.</Text>
+                        <Button variant="secondary" onClick={() => handlePickFile} style={{marginTop: 16}}>Upload File</Button>
                     </View>
                 </View>
             )}
 
-            {/* SUBSCRIPTION TAB (With SubTabs) */}
-            {activeTab === 'Subscription' && (
+            {activeTab === 'History' && (
                  <View style={styles.card}>
-                    
-                    {/* SubTabs Navigation */}
-                    <View style={{ flexDirection: 'row', gap: 16, marginBottom: 24, borderBottomWidth: 1, borderColor: '#eee', paddingBottom: 8 }}>
-                        {['General', 'Recipes', 'Payments'].map(st => (
-                            <TouchableOpacity key={st} onPress={() => setSubTab(st)}>
-                                <Text style={{ 
-                                    fontWeight: subTab === st ? 'bold' : 'normal',
-                                    color: subTab === st ? colors.primary : '#6B7280',
-                                    paddingBottom: 4,
-                                    borderBottomWidth: subTab === st ? 2 : 0,
-                                    borderColor: colors.primary
-                                }}>{st}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    
-                    {subTab === 'General' && (
-                        <View style={styles.formGrid}>
-                            <Select 
-                                label="Subscription Type" 
-                                value={subscription?.subscription_type_id || ''} 
-                                options={subTypes.map(s => ({ label: `${s.title} ($${s.price})`, value: s.id }))} 
-                                onChange={(v: string) => setSubscription({...subscription, subscription_type_id: v})} 
-                            />
-                            
-                            <Select 
-                                label="Payment Cycle" 
-                                value={subscription?.payment_cycle || 'monthly'} 
-                                options={[{label:'Monthly', value:'monthly'}, {label:'Quarterly', value:'quarterly'}, {label:'Yearly', value:'yearly'}]} 
-                                onChange={(v: string) => setSubscription({...subscription, payment_cycle: v})} 
-                            />
-                            
-                            <View style={styles.field}>
-                                <Text style={styles.label}>Payment Deadline (Days after 1st)</Text>
-                                <Input value={String(subscription?.payment_deadline_days || 7)} onChangeText={(t) => setSubscription({...subscription, payment_deadline_days: parseInt(t)})} />
-                            </View>
-                            
-                            <View style={styles.highlightBox}>
-                                <Text style={styles.highlightLabel}>Next Invoice Amount</Text>
-                                <Text style={styles.highlightValue}>
-                                    {(() => {
-                                        const type = subTypes.find(s => s.id === subscription?.subscription_type_id);
-                                        if (!type) return '$0.00';
-                                        let price = type.price;
-                                        if (subscription?.payment_cycle === 'yearly') price *= 12;
-                                        if (subscription?.payment_cycle === 'quarterly') price *= 3;
-                                        return `$${price.toFixed(2)}`;
-                                    })()} 
-                                </Text>
-                                <Text style={styles.highlightSub}>Will be generated on {new Date().toLocaleDateString()}</Text>
-                            </View>
-                            <View style={styles.actionRow}>
-                                <Button onClick={handleUpdateSubscription} variant="primary">Update Subscription</Button>
-                            </View>
-                        </View>
-                    )}
-
-                    {subTab === 'Recipes' && (
-                        <View>
-                             <TouchableOpacity style={styles.uploadBox} onPress={() => handlePickFile('company-files', 'recipes', handleAddRecipe)}>
-                                 <Text style={{ color: '#6B7280' }}>+ Upload New Recipe PDF</Text>
-                             </TouchableOpacity>
-                             <View style={{ marginTop: 16 }}>
-                                {files.filter(f => f.tags?.includes('Recipe')).length === 0 && <Text style={{ color: '#9CA3AF' }}>No recipes uploaded.</Text>}
-                                {files.filter(f => f.tags?.includes('Recipe')).map(f => (
-                                    <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: '#F9FAFB', borderRadius: 8, marginBottom: 8 }}>
-                                        <View>
-                                            <Text style={{ fontWeight: '600' }}>{f.file_name}</Text>
-                                            <Text style={{ fontSize: 12, color: '#6B7280' }}>Uploaded: {new Date(f.uploaded_at || Date.now()).toLocaleDateString()}</Text>
-                                            <View style={{ marginTop: 8 }}>
-                                                <TagInput
-                                                    value={f.tags || []} 
-                                                    onChange={async (newTags) => {
-                                                        // Ensure 'Recipe' tag stays if it's there? Or allow removing it?
-                                                        // Strategy: Always ensure 'Recipe' is present if in this list
-                                                        const safeTags = newTags.includes('Recipe') ? newTags : [...newTags, 'Recipe'];
-                                                        const { error } = await supabase.from('company_files').update({ tags: safeTags }).eq('id', f.id);
-                                                        if (!error) {
-                                                            setFiles(files.map(file => file.id === f.id ? { ...file, tags: safeTags } : file));
-                                                        }
-                                                    }}
-                                                    availableTags={availableTags}
-                                                    onTagCreated={fetchAvailableTags}
-                                                />
-                                            </View>
-                                        </View>
-                                        <a href={f.file_url} target="_blank" style={{ color: colors.primary, fontWeight: '500' }}>Download</a>
-                                    </View>
-                                ))}
+                     <View style={styles.cardHeader}>
+                        <Text style={styles.cardTitle}>Audit Log</Text>
+                     </View>
+                     {history.map((h, i) => (
+                         <View key={i} style={styles.historyItem}>
+                             <Clock size={16} color="#94a3b8" />
+                             <View>
+                                 <Text style={styles.historyAction}>{h.action}</Text>
+                                 <Text style={styles.historyDetails}>{h.details}</Text>
                              </View>
-                        </View>
-                    )}
+                             <Text style={styles.historyTime}>{new Date(h.created_at).toLocaleDateString()}</Text>
+                         </View>
+                     ))}
+                 </View>
+            )}
 
-                    {subTab === 'Payments' && (
-                        <View>
-                            <View style={styles.listHeader}>
-                                <Text style={[styles.col, { flex: 1 }]}>Due Date</Text>
-                                <Text style={[styles.col, { flex: 1 }]}>Amount</Text>
-                                <Text style={[styles.col, { flex: 1 }]}>Status</Text>
-                                <Text style={[styles.col, { flex: 2 }]}>Notes/Tags</Text>
+             {/* SUBSCRIPTION TAB */}
+            {activeTab === 'Subscription' && (
+                 <View style={styles.twoColumnGrid}>
+                     <View style={styles.leftCol}>
+                        <View style={styles.card}>
+                            <View style={styles.cardHeader}>
+                                <Text style={styles.cardTitle}>Current Plan</Text>
+                                {subscription.subscription_type_id && (
+                                    <View style={[styles.statusBadge, { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }]}>
+                                        <Text style={[styles.statusText, { color: '#166534' }]}>Active</Text>
+                                    </View>
+                                )}
                             </View>
-                            {invoices.length === 0 && <Text style={{ fontStyle: 'italic', margin: 20 }}>No invoices found.</Text>}
                             
-                            {invoices.map(inv => {
-                                const statusColor = getStatusColor(inv.status);
-                                return (
-                                <View key={inv.id} style={styles.row}>
-                                     <Text style={[styles.col, { flex: 1 }]}>{new Date(inv.due_date).toLocaleDateString()}</Text>
-                                     <Text style={[styles.col, { flex: 1, fontWeight: 'bold' }]}>${inv.amount}</Text>
-                                     <View style={{ flex: 1 }}>
-                                         <View style={[styles.badge, { backgroundColor: statusColor.bg, alignSelf: 'flex-start' }]}>
-                                             <select 
-                                                 value={inv.status} 
-                                                 onChange={(e) => handleUpdateInvoice(inv.id, { status: e.target.value })}
-                                                 style={{ 
-                                                     border: 'none', background: 'transparent', 
-                                                     color: statusColor.text, fontWeight: '600', fontSize: 12, outline: 'none'
-                                                  }}
-                                             >
-                                                 <option value="Open">Open</option>
-                                                 <option value="Paid">Paid</option>
-                                                 <option value="Delayed">Delayed</option>
-                                                 <option value="Cancelled">Cancelled</option>
-                                             </select>
+                            <View style={styles.formStack}>
+                                <Select 
+                                    label="Plan Type" 
+                                    value={subscription.subscription_type_id} 
+                                    options={subTypes.map(s => ({ label: `${s.title} ($${s.price})`, value: s.id }))}
+                                    onChange={(v: string) => setSubscription({...subscription, subscription_type_id: v})}
+                                />
+                                
+                                <View style={styles.row}>
+                                    <View style={{ flex: 1 }}>
+                                        <Select 
+                                            label="Billing Cycle" 
+                                            value={subscription.payment_cycle || 'monthly'} 
+                                            options={[
+                                                { label: 'Monthly', value: 'monthly' },
+                                                { label: 'Quarterly', value: 'quarterly' },
+                                                { label: 'Yearly', value: 'yearly' }
+                                            ]}
+                                            onChange={(v: string) => setSubscription({...subscription, payment_cycle: v})}
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.label}>Payment Term (Days)</Text>
+                                        <Input 
+                                            value={String(subscription.payment_deadline_days || 14)} 
+                                            onChangeText={(t) => setSubscription({...subscription, payment_deadline_days: parseInt(t) || 14})} 
+                                            placeholder="14"
+                                            keyboardType="numeric"
+                                        />
+                                    </View>
+                                </View>
+                                
+                                <View style={{ paddingTop: 16 }}>
+                                    <Button onClick={handleUpdateSubscription} variant="primary">Update Subscription</Button>
+                                    <Text style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
+                                        Updating will update the next invoice generation settings.
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                     </View>
+                     
+                     <View style={styles.rightCol}>
+                         <View style={styles.card}>
+                             <View style={styles.cardHeader}>
+                                 <Text style={styles.cardTitle}>Last Invoices</Text>
+                             </View>
+                             <View style={{ gap: 12 }}>
+                                 {invoices.length === 0 && <Text style={{ color: '#94a3b8', fontSize: 13 }}>No invoices yet.</Text>}
+                                 {invoices.slice(0, 5).map(inv => (
+                                     <View key={inv.id} style={styles.historyItem}>
+                                         <View>
+                                             <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>#{inv.id.substring(0,8)}</Text>
+                                             <Text style={{ fontSize: 12, color: '#64748b' }}>{new Date(inv.due_date).toLocaleDateString()}</Text>
+                                         </View>
+                                         <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+                                             <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>${inv.amount}</Text>
+                                             <View style={[
+                                                 styles.miniTag, 
+                                                 { backgroundColor: inv.status === 'Paid' ? '#dcfce7' : inv.status === 'Open' ? '#fef9c3' : '#fee2e2' }
+                                             ]}>
+                                                 <Text style={[
+                                                     styles.miniTagText,
+                                                     { color: inv.status === 'Paid' ? '#166534' : inv.status === 'Open' ? '#854d0e' : '#991b1b' }
+                                                 ]}>{inv.status}</Text>
+                                             </View>
                                          </View>
                                      </View>
-                                     <View style={{ flex: 2, gap: 4 }}>
-                                         <Input 
-                                            value={inv.notes || ''} 
-                                            onChangeText={(t) => setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, notes: t } : i))}
-                                            onBlur={() => handleUpdateInvoice(inv.id, { notes: inv.notes })}
-                                            placeholder="Note..." 
-                                            style={{ height: 30, fontSize: 12 }}
-                                         />
-                                         <TagInput 
-                                             value={inv.tags || []} 
-                                             onChange={(newTags) => {
-                                                 // Optimistic update
-                                                 setInvoices(prev => prev.map(i => i.id === inv.id ? { ...i, tags: newTags } : i));
-                                                 handleUpdateInvoice(inv.id, { tags: newTags });
-                                             }}
-                                             availableTags={availableTags}
-                                             onTagCreated={fetchAvailableTags}
-                                         />
-                                     </View>
-                                </View>
-                            )})}
-                        </View>
+                                 ))}
+                             </View>
+                         </View>
+                     </View>
+                 </View>
+            )}
+
+            {/* Create Contact Modal */}
+            <CustomModal
+                visible={showContactModal}
+                onClose={() => setShowContactModal(false)}
+                title="Create New Contact"
+            >
+                <View style={{ gap: 16, padding: 8 }}>
+                    <Input value={newContact.first_name} onChangeText={t => setNewContact({...newContact, first_name: t})} placeholder="First Name" />
+                    <Input value={newContact.surname} onChangeText={t => setNewContact({...newContact, surname: t})} placeholder="Surname" />
+                    <Input value={newContact.email} onChangeText={t => setNewContact({...newContact, email: t})} placeholder="Email Address" />
+                    <Input value={newContact.department} onChangeText={t => setNewContact({...newContact, department: t})} placeholder="Department / Role" />
+                    
+                    <Button onClick={handleCreateContact} variant="primary">Create Contact</Button>
+                </View>
+            </CustomModal>
+
+            {/* Logo Modal */}
+            <CustomModal
+                visible={showLogoModal}
+                onClose={() => setShowLogoModal(false)}
+                title="Manage Logo"
+            >
+                <View style={{ gap: 16, padding: 8 }}>
+                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                        {company.logo_url ? (
+                            <img src={company.logo_url} style={{ width: 128, height: 128, objectFit: 'contain', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                        ) : (
+                            <View style={{ width: 128, height: 128, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', borderRadius: 8 }}>
+                                <Upload size={32} color="#cbd5e1" />
+                            </View>
+                        )}
+                    </View>
+                    
+                    <Button 
+                        variant="primary" 
+                        onClick={() => handlePickFile('logos', 'public', (url) => handleUpdateLogo(url))}
+                    >
+                        <Upload size={16} style={{marginRight:8}} /> Upload New Logo
+                    </Button>
+                    
+                    {company.logo_url && (
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => window.open(company.logo_url, '_blank')}
+                        >
+                            <Download size={16} style={{marginRight:8}} /> Download Current
+                        </Button>
+                    )}
+                    
+                    {company.logo_url && (
+                        <Button 
+                            variant="outline" 
+                            onClick={handleRemoveLogo}
+                            style={{ borderColor: '#ef4444' }}
+                        >
+                            <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Remove Logo</Text>
+                        </Button>
                     )}
                 </View>
-            )}
+            </CustomModal>
 
-            {/* HISTORY TAB */}
-            {activeTab === 'History' && (
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>History</Text>
-                    {history.map((item, idx) => (
-                        <View key={idx} style={styles.historyItem}>
-                             <View style={styles.historyTimeline} />
-                             <View>
-                                 <Text style={styles.historyAction}>{item.action}</Text>
-                                 <Text style={styles.historyDetail}>{item.details}</Text>
-                                 <Text style={styles.historyDate}>{new Date(item.created_at).toLocaleString()}</Text>
-                             </View>
+            {/* Logo Update Modal */}
+            <CustomModal
+                visible={showLogoModal}
+                onClose={() => setShowLogoModal(false)}
+                title="Update Company Logo"
+            >
+                <View style={{ gap: 16, padding: 8 }}>
+                    <Text style={{ fontSize: 14, color: '#475569' }}>Change the company logo. Recommended size: 256x256px</Text>
+                    
+                    {/* Current Logo Preview */}
+                    {company.logo_url && (
+                        <View style={styles.logoPreview}>
+                            <img src={company.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </View>
-                    ))}
+                    )}
+                    
+                    <Button variant="secondary" onClick={() => handlePickFile('logos', 'company_logos', handleUpdateLogo)} style={{ width: '100%' }}>
+                        <Upload size={16} /> Upload New Logo
+                    </Button>
+                    
+                    {company.logo_url && (
+                        <Button variant="danger" onClick={handleRemoveLogo} style={{ width: '100%' }}>
+                            <Trash2 size={16} /> Remove Logo
+                        </Button>
+                    )}
                 </View>
-            )}
+            </CustomModal>
         </ScrollView>
-
-        {/* Create Contact Modal */}
-        <CustomModal 
-            visible={showContactModal} 
-            onClose={() => setShowContactModal(false)}
-            title="Add New Contact Person"
-        >
-            <View style={{ gap: 16, padding: 16 }}>
-                <View style={{ gap: 8 }}>
-                    <Text style={styles.label}>First Name *</Text>
-                    <Input value={newContact.first_name} onChangeText={(t) => setNewContact({...newContact, first_name: t})} placeholder="John" />
-                </View>
-                <View style={{ gap: 8 }}>
-                    <Text style={styles.label}>Surname *</Text>
-                    <Input value={newContact.surname} onChangeText={(t) => setNewContact({...newContact, surname: t})} placeholder="Doe" />
-                </View>
-                <View style={{ gap: 8 }}>
-                    <Text style={styles.label}>Email</Text>
-                    <Input value={newContact.email} onChangeText={(t) => setNewContact({...newContact, email: t})} placeholder="john@example.com" />
-                </View>
-                <View style={{ gap: 8 }}>
-                    <Text style={styles.label}>Department</Text>
-                    <Input value={newContact.department} onChangeText={(t) => setNewContact({...newContact, department: t})} placeholder="Sales" />
-                </View>
-                <View style={{ gap: 8 }}>
-                    <Text style={styles.label}>Company</Text>
-                    <Input value={company.name} editable={false} style={{ backgroundColor: '#F3F4F6' }} />
-                </View>
-                <Button onClick={handleCreateContact} variant="primary" style={{ marginTop: 8 }}>Create & Assign</Button>
-            </View>
-        </CustomModal>
     </View>
   );
 }
@@ -823,195 +839,317 @@ export default function CustomerDetail() {
 const styles = StyleSheet.create({
   container: {
     gap: 24,
+    width: '100%',
     flex: 1,
+    paddingBottom: 40
   },
   header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-      marginBottom: 8
+      backgroundColor: 'white',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      paddingTop: 24,
+      paddingHorizontal: 24,
+      gap: 24
   },
-  title: {
+  headerTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start'
+  },
+  logoRow: {
+      flexDirection: 'row',
+      gap: 16,
+      alignItems: 'center'
+  },
+  companyLogo: {
+      width: 64,
+      height: 64,
+      borderRadius: 12,
+      backgroundColor: '#f8fafc',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      alignItems: 'center',
+      justifyContent: 'center'
+  },
+  companyName: {
       fontSize: 24,
       fontWeight: 'bold',
-      color: '#111827'
+      color: '#0f172a'
   },
-  badge: {
-      backgroundColor: '#DBEAFE',
+  metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginTop: 4
+  },
+  metaText: {
+      fontSize: 13,
+      color: '#64748b'
+  },
+  statusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
       paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12
+      paddingVertical: 2,
+      borderRadius: 100,
+      borderWidth: 1
   },
-  badgeText: {
-      color: '#1E40AF',
-      fontWeight: '600',
-      fontSize: 12
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  
+  actionsBox: {
+      flexDirection: 'row',
+      gap: 8
   },
+  
+  // Tabs
   tabsRow: {
       flexDirection: 'row',
+      gap: 24,
       borderBottomWidth: 1,
-      borderBottomColor: '#E5E7EB',
-      gap: 32
+      borderBottomColor: '#f1f5f9'
   },
   tab: {
-      paddingVertical: 12,
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
-      marginBottom: -1
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingBottom: 16,
+      position: 'relative'
   },
   activeTab: {
-      borderBottomColor: colors.primary
   },
   tabText: {
       fontSize: 14,
       fontWeight: '500',
-      color: '#6B7280'
+      color: '#64748b'
   },
   activeTabText: {
-      color: colors.primary,
+      color: '#0f172a',
       fontWeight: '600'
   },
+  activeLine: {
+      position: 'absolute',
+      bottom: -1,
+      left: 0,
+      right: 0,
+      height: 2,
+      backgroundColor: '#3b82f6',
+      borderTopLeftRadius: 2,
+      borderTopRightRadius: 2
+  },
+  
   content: {
-      marginTop: 8,
       flex: 1
   },
+  
+  // Layout
+  twoColumnGrid: {
+      flexDirection: 'row',
+      gap: 24,
+      flexWrap: 'wrap'
+  },
+  leftCol: {
+      flex: 2,
+      gap: 24,
+      minWidth: 400
+  },
+  rightCol: {
+      flex: 1,
+      gap: 24,
+      minWidth: 300
+  },
+  
+  // Card
   card: {
       backgroundColor: 'white',
       borderRadius: 16,
-      padding: 32,
-      shadowColor: '#000',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      padding: 24,
+      gap: 20,
+      shadowColor: '#64748b',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.05,
-      shadowRadius: 8,
-      marginBottom: 40
+      shadowRadius: 8
   },
-  cardTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#111827',
-      marginBottom: 24
-  },
-  formGrid: {
-      gap: 20
-  },
-  row: {
+  cardHeader: {
       flexDirection: 'row',
-      gap: 24
-  },
-  field: {
-      gap: 8,
-      marginBottom: 16
-  },
-  label: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: '#374151'
-  },
-  readonlyText: {
-      fontSize: 14,
-      color: '#6B7280',
-      paddingTop: 8
-  },
-  actionRow: {
-      marginTop: 32,
-      alignSelf: 'flex-end'
-  },
-  uploadBox: {
-      borderWidth: 2,
-      borderColor: '#E5E7EB',
-      borderStyle: 'dashed',
-      borderRadius: 8,
-      height: 100,
+      justifyContent: 'space-between',
       alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#F9FAFB'
-  },
-  selectWrapper: {
-      borderWidth: 1,
-      borderColor: '#E5E7EB',
-      borderRadius: 8,
-      backgroundColor: 'white',
-      overflow: 'hidden'
-  },
-  selectInput: {
-      width: '100%',
-      height: 48,
-      paddingHorizontal: 12,
-      border: 'none',
-      backgroundColor: 'transparent',
-      fontSize: 16,
-      appearance: 'none', 
-      outline: 'none'
-  },
-  noteInput: {
-      marginBottom: 24
-  },
-  notesList: {
-      gap: 16
-  },
-  noteItem: {
-      padding: 16,
-      backgroundColor: '#F3F4F6',
-      borderRadius: 12
-  },
-  noteContent: {
-      fontSize: 14,
-      color: '#1F2937',
       marginBottom: 8
   },
-  noteDate: {
-      fontSize: 12,
-      color: '#9CA3AF'
+  cardTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#0f172a'
   },
-  historyItem: {
-      flexDirection: 'row',
-      paddingBottom: 24,
-      paddingLeft: 16,
-      borderLeftWidth: 2,
-      borderLeftColor: '#E5E7EB',
-      marginLeft: 8,
-      position: 'relative'
-  },
-  historyTimeline: {
-      position: 'absolute',
-      left: -5,
-      top: 0,
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: '#9CA3AF'
-  },
-  historyAction: {
-      fontWeight: '600',
-      color: '#111827'
-  },
-  historyDetail: {
-      color: '#6B7280',
-      marginBottom: 4
-  },
-  historyDate: {
-      fontSize: 12,
-      color: '#9CA3AF'
-  },
-  highlightBox: {
-      backgroundColor: '#F0F9FF',
-      borderRadius: 8,
-      padding: 16,
-      marginTop: 8
-  },
-  highlightLabel: {
-      fontSize: 12,
-      color: '#0369A1',
+  linkText: {
+      color: '#3b82f6',
+      fontSize: 14,
       fontWeight: '600'
   },
-  highlightValue: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: '#0C4A6E',
-      marginVertical: 4
+  
+  // Forms
+  formStack: { gap: 16 },
+  row: { flexDirection: 'row', gap: 16 },
+  inputGroup: { gap: 6 },
+  label: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  
+  // Select Custom
+  selectWrapper: {
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      borderRadius: 8,
+      backgroundColor: 'white',
+      height: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 8
   },
-  highlightSub: {
-      fontSize: 12,
-      color: '#0369A1'
+  
+  // Contact Card
+  contactCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: '#f8fafc',
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#e2e8f0'
+  },
+  contactAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      alignItems: 'center',
+      justifyContent: 'center'
+  },
+  contactName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  contactEmail: { fontSize: 12, color: '#64748b' },
+
+  // Notes
+  tabContainer: {
+      gap: 24
+  },
+  notesInputCard: {
+      backgroundColor: 'white',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      padding: 16,
+      gap: 16,
+      shadowColor: '#64748b',
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      marginBottom: 24
+  },
+  notesArea: {
+      minHeight: 80,
+      backgroundColor: '#f8fafc',
+      borderWidth: 0,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 14
+  },
+  notesToolbar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginTop: 8
+  },
+  notesList: {
+      gap: 20
+  },
+  noteItem: {
+      flexDirection: 'row',
+      gap: 16
+  },
+  noteLeft: {
+      alignItems: 'center',
+      width: 32
+  },
+  noteAvatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: '#3b82f6',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2
+  },
+  noteInitials: {
+      color: 'white',
+      fontSize: 11,
+      fontWeight: '700'
+  },
+  line: {
+      width: 2,
+      flex: 1,
+      backgroundColor: '#e2e8f0',
+      marginTop: 4
+  },
+  noteContent: {
+      flex: 1,
+      backgroundColor: 'white',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      padding: 16,
+      gap: 8
+  },
+  noteHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between'
+  },
+  noteAuthor: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  noteTime: { fontSize: 11, color: '#94a3b8' },
+  noteText: { fontSize: 14, color: '#334155', lineHeight: 20 },
+  noteTags: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  miniTag: { backgroundColor: '#f1f5f9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  miniTagText: { fontSize: 11, color: '#64748b', fontWeight: '500' },
+
+  // Empty State
+  emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 60,
+      backgroundColor: 'white',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      borderStyle: 'dashed'
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginTop: 16 },
+  emptyText: { fontSize: 14, color: '#64748b', marginTop: 4 },
+
+  // History
+  historyItem: {
+      flexDirection: 'row',
+      gap: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f1f5f9',
+      alignItems: 'flex-start'
+  },
+  historyAction: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  historyDetails: { fontSize: 13, color: '#64748b' },
+  historyTime: { fontSize: 12, color: '#94a3b8', marginLeft: 'auto' },
+
+  // Logo Preview
+  logoPreview: {
+      width: '100%',
+      height: 150,
+      borderRadius: 12,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#f8fafc',
+      alignItems: 'center',
+      justifyContent: 'center'
   }
 });

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button, Input } from '@docstruc/ui';
 import { TagInput } from '../components/TagInput';
+import { ArrowLeft, Save, User, Building, Briefcase, Mail, Tag } from 'lucide-react';
 
 export default function ContactPersonDetail() {
   const { id } = useParams(); // if id 'new', then create mode
@@ -90,43 +91,73 @@ export default function ContactPersonDetail() {
     }
   };
 
-  if (loading) return <View style={{ padding: 40 }}><ActivityIndicator /></View>;
+  if (loading) return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#0f172a" />
+      </View>
+  );
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-         <Button onClick={() => navigate('/contacts')} variant="secondary">Back</Button>
-         <Text style={styles.title}>{id === 'new' ? 'New Contact Person' : 'Edit Contact Person'}</Text>
+         <TouchableOpacity onPress={() => navigate('/contacts')} style={styles.backButton}>
+             <ArrowLeft size={20} color="#64748b" />
+             <Text style={styles.backText}>Back to Contacts</Text>
+         </TouchableOpacity>
+         <View style={styles.headerRow}>
+             <View>
+                 <Text style={styles.title}>{id === 'new' ? 'Create New Contact' : 'Edit Contact Details'}</Text>
+                 <Text style={styles.subtitle}>{id === 'new' ? 'Add a new person to your network' : `Update information for ${form.first_name || 'contact'}`}</Text>
+             </View>
+             <Button onClick={handleSave} variant="primary" disabled={saving} style={styles.saveButton}>
+                 <Save size={18} />
+                 <Text style={{ fontWeight: '600' }}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+             </Button>
+         </View>
       </View>
 
+      {/* Form Card */}
       <View style={styles.card}>
+         <View style={styles.sectionHeader}>
+             <User size={20} color="#3b82f6" />
+             <Text style={styles.sectionTitle}>Personal Information</Text>
+         </View>
+         
          <View style={styles.formGrid}>
              <View style={styles.row}>
-                 <View style={[styles.field, { flex: 1 }]}>
+                 <View style={{ flex: 1, gap: 8 }}>
                      <Text style={styles.label}>First Name *</Text>
                      <Input 
                         value={form.first_name} 
                         onChangeText={(t) => setForm({...form, first_name: t})} 
-                        placeholder="First Name" 
+                        placeholder="e.g. John" 
                      />
                  </View>
-                 <View style={[styles.field, { flex: 1 }]}>
+                 <View style={{ flex: 1, gap: 8 }}>
                      <Text style={styles.label}>Surname *</Text>
                      <Input 
                         value={form.surname} 
                         onChangeText={(t) => setForm({...form, surname: t})} 
-                        placeholder="Surname" 
+                        placeholder="e.g. Doe" 
                      />
                  </View>
              </View>
 
+             <View style={styles.divider} />
+             
+             <View style={styles.sectionHeader}>
+                 <Building size={20} color="#3b82f6" />
+                 <Text style={styles.sectionTitle}>Professional Details</Text>
+             </View>
+
              <View style={styles.field}>
                  <Text style={styles.label}>Company</Text>
-                 <View style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 12 }}>
+                 <View style={styles.selectWrapper}>
                      <select 
                         value={form.company || ''} 
                         onChange={(e) => setForm({...form, company: e.target.value})}
-                        style={{ width: '100%', height: 40, border: 'none', background: 'transparent', outline: 'none' }}
+                        style={styles.selectInput as any}
                      >
                          <option value="">Select Company...</option>
                          {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -134,22 +165,36 @@ export default function ContactPersonDetail() {
                  </View>
              </View>
 
-             <View style={styles.field}>
-                 <Text style={styles.label}>Department</Text>
-                 <Input 
-                    value={form.department || ''} 
-                    onChangeText={(t) => setForm({...form, department: t})} 
-                    placeholder="Department (e.g. Sales, IT)" 
-                 />
+             <View style={styles.row}>
+                 <View style={{ flex: 1, gap: 8 }}>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Briefcase size={14} color="#64748b" />
+                        <Text style={styles.label}>Department</Text>
+                     </View>
+                     <Input 
+                        value={form.department || ''} 
+                        onChangeText={(t) => setForm({...form, department: t})} 
+                        placeholder="e.g. Sales, IT" 
+                     />
+                 </View>
+                 <View style={{ flex: 1, gap: 8 }}>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Mail size={14} color="#64748b" />
+                        <Text style={styles.label}>Email Address</Text>
+                     </View>
+                     <Input 
+                        value={form.email || ''} 
+                        onChangeText={(t) => setForm({...form, email: t})} 
+                        placeholder="email@example.com" 
+                     />
+                 </View>
              </View>
 
-             <View style={styles.field}>
-                 <Text style={styles.label}>Email</Text>
-                 <Input 
-                    value={form.email || ''} 
-                    onChangeText={(t) => setForm({...form, email: t})} 
-                    placeholder="email@example.com" 
-                 />
+             <View style={styles.divider} />
+             
+             <View style={styles.sectionHeader}>
+                 <Tag size={20} color="#3b82f6" />
+                 <Text style={styles.sectionTitle}>Tags & Categorization</Text>
              </View>
 
              <View style={styles.field}>
@@ -159,13 +204,8 @@ export default function ContactPersonDetail() {
                     availableTags={availableTags}
                     onChange={(newTags: string[]) => setForm({...form, tags: newTags})}
                     onTagCreated={fetchTags}
+                    placeholder="Add tags..."
                  />
-             </View>
-
-             <View style={[styles.row, { marginTop: 20, justifyContent: 'flex-end' }]}>
-                 <Button onClick={handleSave} variant="primary" disabled={saving}>
-                     {saving ? 'Saving...' : 'Save Contact'}
-                 </Button>
              </View>
          </View>
       </View>
@@ -175,33 +215,75 @@ export default function ContactPersonDetail() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 24,
     flex: 1,
+    padding: 32,
+    gap: 24,
     maxWidth: 800,
     width: '100%',
     alignSelf: 'center'
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 16
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827'
+  backButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8
   },
+  backText: {
+      color: '#64748b',
+      fontWeight: '600'
+  },
+  headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start'
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.5
+  },
+  subtitle: {
+      fontSize: 15,
+      color: '#64748b',
+      marginTop: 4
+  },
+  saveButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
+  },
+  
+  // Card Styles
   card: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     padding: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#64748b',
     shadowOpacity: 0.05,
-    shadowRadius: 8
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 }
   },
+  
+  sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 20
+  },
+  sectionTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: '#0f172a'
+  },
+  
   formGrid: {
-    gap: 20
+    gap: 24
   },
   row: {
     flexDirection: 'row',
@@ -211,8 +293,34 @@ const styles = StyleSheet.create({
     gap: 8
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151'
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569'
+  },
+  
+  divider: {
+      height: 1,
+      backgroundColor: '#f1f5f9',
+      marginVertical: 4
+  },
+  
+  // Select
+  selectWrapper: {
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      borderRadius: 8,
+      backgroundColor: 'white',
+      height: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 8
+  },
+  selectInput: {
+      width: '100%',
+      height: '100%',
+      // border: 'none',
+      // outline: 'none',
+      backgroundColor: 'transparent',
+      fontSize: 14,
+      color: '#0f172a'
   }
 });

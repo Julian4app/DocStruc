@@ -3,20 +3,21 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from 'r
 import { supabase } from '../lib/supabase';
 import { Button } from '@docstruc/ui';
 import { useNavigate } from 'react-router-dom';
+import { Search, Plus, Filter, MoreHorizontal, User, Mail, Calendar, Hash } from 'lucide-react';
 
 const MiniKPI = ({ label, value }: { label: string, value: string }) => (
     <View style={styles.miniKpi}>
-        <Text style={styles.miniKpiLabel}>{label}</Text>
         <Text style={styles.miniKpiValue}>{value}</Text>
+        <Text style={styles.miniKpiLabel}>{label}</Text>
     </View>
 );
 
 const getStatusColor = (status: string) => {
     switch(status) {
-        case 'Active': return { bg: '#D1FAE5', text: '#065F46' }; // Green
-        case 'Inactive': return { bg: '#F3F4F6', text: '#374151' }; // Gray
-        case 'Lead': return { bg: '#DBEAFE', text: '#1E40AF' }; // Blue
-        default: return { bg: '#F3F4F6', text: '#374151' };
+        case 'Active': return { bg: '#ecfdf5', text: '#059669', dot: '#10b981' }; 
+        case 'Inactive': return { bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' };
+        case 'Lead': return { bg: '#eff6ff', text: '#2563eb', dot: '#3b82f6' };
+        default: return { bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' };
     }
 };
 
@@ -69,142 +70,303 @@ export default function Customers() {
   );
 
   return (
-    <View style={styles.container}>
-        {/* Customer Stats Header */}
-        <View style={styles.kpiRow}>
-            <MiniKPI label="Total Customers" value={customers.length.toString()} />
-            <MiniKPI label="New This Month" value="12" /> {/* Mock derived data */}
-            <MiniKPI label="Leads" value={customers.filter(c => c.status === 'Lead').length.toString()} />
+    <View style={styles.pageContainer}>
+        {/* Header Section */}
+        <View style={styles.header}>
+            <View>
+                <Text style={styles.pageTitle}>Customers</Text>
+                <Text style={styles.pageSubtitle}>Manage your client relationships and accounts.</Text>
+            </View>
+            <View style={styles.kpiRow}>
+                <MiniKPI label="Total Customers" value={customers.length.toString()} />
+                <View style={styles.kpiDivider} />
+                <MiniKPI label="New This Month" value="12" />
+                <View style={styles.kpiDivider} />
+                <MiniKPI label="Leads" value={customers.filter(c => c.status === 'Lead').length.toString()} />
+            </View>
         </View>
 
-        <View style={styles.controls}>
-            <TextInput 
-                style={styles.searchInput}
-                placeholder="Search customers..."
-                value={search}
-                onChangeText={setSearch}
-            />
-            <Button onClick={handleAddCustomer} variant="primary">Add Customer</Button>
+        {/* Toolbar */}
+        <View style={styles.toolbar}>
+            <View style={styles.searchContainer}>
+                <Search size={16} color="#94a3b8" />
+                <TextInput 
+                    style={styles.searchInput}
+                    placeholder="Search companies..."
+                    placeholderTextColor="#94a3b8"
+                    value={search}
+                    onChangeText={setSearch}
+                />
+            </View>
+            
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity style={styles.filterBtn}>
+                    <Filter size={16} color="#64748b" />
+                    <Text style={styles.filterBtnText}>Filters</Text>
+                </TouchableOpacity>
+                <Button onClick={handleAddCustomer} variant="primary" style={{ height: 40, paddingHorizontal: 16 }}>
+                    <Plus size={16} color="white" style={{marginRight: 8}} /> Add Customer
+                </Button>
+            </View>
         </View>
 
-        <View style={styles.listHeader}>
-             <Text style={[styles.col, styles.flex2]}>Company Name</Text>
-             <Text style={styles.col}>Status</Text>
-             <Text style={styles.col}>Email</Text>
-             <Text style={styles.col}>Accounts (Reg/Bought)</Text>
-             <Text style={styles.col}>Created</Text>
-        </View>
+        {/* Table/List */}
+        <View style={styles.tableCard}>
+            <View style={styles.listHeader}>
+                <View style={[styles.col, styles.flex2, { flexDirection: 'row', gap: 8 }]}>
+                    <Text style={styles.headerText}>Company</Text>
+                </View>
+                <View style={styles.col}>
+                    <Text style={styles.headerText}>Status</Text>
+                </View>
+                <View style={styles.col}>
+                    <Text style={styles.headerText}>Email</Text>
+                </View>
+                <View style={styles.col}>
+                    <Text style={styles.headerText}>Accounts</Text>
+                </View>
+                <View style={styles.col}>
+                    <Text style={styles.headerText}>Created</Text>
+                </View>
+                <View style={{ width: 40 }} />
+            </View>
 
-        {loading ? (
-            <Text style={{ padding: 20 }}>Loading...</Text>
-        ) : (
-            <FlatList
-                data={filtered}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => {
-                    const statusStyle = getStatusColor(item.status || 'Active');
-                    return (
-                        <TouchableOpacity 
-                            style={styles.row}
-                            onPress={() => navigate(`/customers/${item.id}`)}
-                        >
-                            <Text style={[styles.col, styles.flex2, styles.name]}>{item.name}</Text>
-                            <View style={styles.badge}>
-                                <Text style={[styles.badgeText, { backgroundColor: statusStyle.bg, color: statusStyle.text }]}>
-                                    {item.status || 'Active'}
-                                </Text>
-                            </View>
-                            <Text style={styles.col}>{item.email || '-'}</Text>
-                            <Text style={styles.col}>{item.employees_count || 0} / {item.bought_accounts || 0}</Text>
-                            <Text style={styles.col}>{new Date(item.created_at).toLocaleDateString()}</Text>
-                        </TouchableOpacity>
-                    );
-                }}
-            />
-        )}
+            {loading ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                    <Text style={{ color: '#94a3b8' }}>Loading customers...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={filtered}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={{ paddingBottom: 20 }}
+                    renderItem={({ item }) => {
+                        const statusStyle = getStatusColor(item.status || 'Active');
+                        return (
+                            <TouchableOpacity 
+                                style={[styles.row, { backgroundColor: statusStyle.bg }]}
+                                onPress={() => navigate(`/customers/${item.id}`)}
+                            >
+                                <View style={[styles.col, styles.flex2]}>
+                                    <View style={styles.avatar}>
+                                        <Text style={styles.avatarText}>{item.name.substring(0,2).toUpperCase()}</Text>
+                                    </View>
+                                    <Text style={styles.name}>{item.name}</Text>
+                                </View>
+                                
+                                <View style={styles.col}>
+                                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                                        <View style={[styles.statusDot, { backgroundColor: statusStyle.dot }]} />
+                                        <Text style={[styles.statusText, { color: statusStyle.text }]}>
+                                            {item.status || 'Active'}
+                                        </Text>
+                                    </View>
+                                </View>
+                                
+                                <View style={styles.col}>
+                                    <Text style={styles.cellText}>{item.email || '-'}</Text>
+                                </View>
+                                
+                                <View style={styles.col}>
+                                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                                        <User size={14} color="#94a3b8" />
+                                        <Text style={styles.cellText}>{item.employees_count || 0} / {item.bought_accounts || 0}</Text>
+                                    </View>
+                                </View>
+                                
+                                <View style={styles.col}>
+                                    <Text style={styles.mutedText}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                                </View>
+                                
+                                <View style={{ width: 40, alignItems: 'flex-end' }}>
+                                    <MoreHorizontal size={16} color="#94a3b8" />
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    }}
+                />
+            )}
+        </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    minHeight: 500
+  pageContainer: {
+    gap: 24,
+    maxWidth: 1200,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 40
+  },
+  header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
+      marginBottom: 8
+  },
+  pageTitle: {
+      fontSize: 28,
+      fontWeight: 'bold',
+      color: '#0f172a',
+      marginBottom: 4
+  },
+  pageSubtitle: {
+      fontSize: 14,
+      color: '#64748b'
   },
   kpiRow: {
       flexDirection: 'row',
+      backgroundColor: 'white',
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
       gap: 24,
-      marginBottom: 32,
-      borderBottomWidth: 1,
-      borderBottomColor: '#F3F4F6',
-      paddingBottom: 24
+      alignItems: 'center'
+  },
+  kpiDivider: {
+      width: 1,
+      height: 24,
+      backgroundColor: '#f1f5f9'
   },
   miniKpi: {
-      gap: 4
+      gap: 2
   },
   miniKpiLabel: {
-      fontSize: 12,
-      color: '#6B7280',
+      fontSize: 11,
+      color: '#64748b',
       fontWeight: '600',
       textTransform: 'uppercase'
   },
   miniKpiValue: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: '#111827'
+      fontSize: 18,
+      fontWeight: '700',
+      color: '#0f172a'
   },
-  controls: {
+  
+  toolbar: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: 24
+      alignItems: 'center'
   },
-  searchInput: {
-      height: 40,
+  searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'white',
       borderWidth: 1,
-      borderColor: '#E5E7EB',
+      borderColor: '#e2e8f0',
       borderRadius: 8,
       paddingHorizontal: 12,
-      width: 300,
-      backgroundColor: '#F9FAFB',
+      height: 40,
+      width: 320,
+      gap: 8
+  },
+  searchInput: {
+      flex: 1,
+      fontSize: 14,
+      color: '#0f172a',
       outlineStyle: 'none'
+  },
+  filterBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: 'white',
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      height: 40
+  },
+  filterBtnText: {
+      fontSize: 14,
+      fontWeight: '500', 
+      color: '#64748b'
+  },
+  
+  tableCard: {
+      backgroundColor: 'white',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      overflow: 'hidden',
+      shadowColor: '#64748b',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 12
   },
   listHeader: {
       flexDirection: 'row',
-      paddingBottom: 12,
+      paddingHorizontal: 24,
+      paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: '#E5E7EB',
-      marginBottom: 8
+      borderBottomColor: '#f1f5f9',
+      backgroundColor: '#f8fafc'
+  },
+  headerText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#64748b',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5
   },
   row: {
       flexDirection: 'row',
+      paddingHorizontal: 24,
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: '#F3F4F6',
-      alignItems: 'center'
+      borderBottomColor: '#f8fafc',
+      alignItems: 'center',
+      backgroundColor: 'white'
   },
   col: {
       flex: 1,
-      fontSize: 14,
-      color: '#6B7280'
+      justifyContent: 'center'
   },
-  flex2: { flex: 2 },
+  flex2: { flex: 2, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: '#f1f5f9',
+      alignItems: 'center',
+      justifyContent: 'center'
+  },
+  avatarText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#64748b'
+  },
   name: {
       fontWeight: '600',
-      color: '#111827'
+      color: '#0f172a',
+      fontSize: 14
   },
-  badge: {
-      flex: 1,
-      alignItems: 'flex-start'
+  cellText: {
+      fontSize: 14,
+      color: '#334155'
   },
-  badgeText: {
-      backgroundColor: '#D1FAE5',
-      color: '#065F46',
+  mutedText: {
+      fontSize: 13,
+      color: '#94a3b8'
+  },
+  statusBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
       paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 99,
+      paddingVertical: 4,
+      borderRadius: 100,
+      alignSelf: 'flex-start'
+  },
+  statusDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3
+  },
+  statusText: {
       fontSize: 12,
-      fontWeight: '500'
+      fontWeight: '600'
   }
 });
