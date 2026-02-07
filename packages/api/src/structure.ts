@@ -75,3 +75,53 @@ export const createFloor = async (client: SupabaseClient, buildingId: string, na
 export const createRoom = async (client: SupabaseClient, floorId: string, name: string, type: string = 'generic') => {
   return client.from('rooms').insert({ floor_id: floorId, name, type }).select().single();
 };
+
+export const getRoomComponents = async (client: SupabaseClient, roomId: string): Promise<any[]> => {
+  const { data, error } = await client
+    .from('room_components')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('created_at');
+
+  if (error) throw error;
+  return data || [];
+};
+
+export const createRoomComponent = async (client: SupabaseClient, roomId: string, name: string, type: string) => {
+  const { data, error } = await client
+    .from('room_components')
+    .insert([{ room_id: roomId, name, type }])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export interface TimelineEvent {
+  id: string;
+  project_id: string;
+  title: string;
+  date: string;
+  eventType: 'milestone' | 'deadline' | 'meeting' | 'delivery';
+  completed: boolean;
+}
+
+export const getProjectTimeline = async (client: SupabaseClient, projectId: string): Promise<TimelineEvent[]> => {
+  const { data, error } = await client
+    .from('project_timeline')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('date', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+};
+
+export const createTimelineEvent = async (client: SupabaseClient, event: Omit<TimelineEvent, 'id' | 'completed'>) => {
+  return await client.from('project_timeline').insert(event);
+};
+
+export const toggleTimelineEvent = async (client: SupabaseClient, id: string, completed: boolean) => {
+  return await client.from('project_timeline').update({ completed }).eq('id', id);
+};

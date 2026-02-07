@@ -6,18 +6,29 @@ import { Session } from '@supabase/supabase-js';
 import { Project } from '@docstruc/logic';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigate } from 'react-router-dom';
+import { ProjectCreateModal } from '../components/ProjectCreateModal';
 
 export function Dashboard() {
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [isSuperuser, setIsSuperuser] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchProjects();
+      if (session) {
+          fetchProjects();
+          checkSuperuser(session.user.id);
+      }
     });
   }, []);
+
+  const checkSuperuser = async (userId: string) => {
+      const { data } = await supabase.from('profiles').select('is_superuser').eq('id', userId).single();
+      setIsSuperuser(!!data?.is_superuser);
+  };
 
   const fetchProjects = async () => {
     const { data, error } = await supabase
@@ -35,40 +46,12 @@ export function Dashboard() {
     }
   };
 
-  const createProject = async () => {
-    console.log("Create Project clicked");
-    if (!session?.user) {
-        alert("No user session found!");
-        return;
-    }
-    
-    const newProject = {
-      owner_id: session.user.id,
-      name: 'Neues Projekt ' + new Date().toLocaleTimeString(),
-      status: 'planning',
-      address: 'Musterstraße 1, 1010 Wien'
-    };
-
-    console.log("Inserting project...", newProject);
-    const { data, error } = await supabase
-      .from('projects')
-      .insert(newProject)
-      .select()
-      .single();
-
-    if (error) {
-       console.error("Supabase Error:", error);
-       if (error.code === '42501') {
-           alert("Ressource Violated: This is likely due to the RLS policy issue. Please run 'FIX_DATABASE.sql' in Supabase SQL Editor.");
-       } else if (error.code === '23503') { 
-           alert("Profile Missing: Your user profile is missing in the database. Please run 'FIX_DATABASE.sql' again to fix this.");
-       } else {
-           alert('Error (' + error.code + '): ' + error.message + '\nCheck console for details.');
-       }
-    } else {
-      console.log("Project created:", data);
-      setProjects([data, ...projects]);
-    }
+  const handleCreateClick = () => {
+      if (!session?.user) {
+          alert("No user session found!");
+          return;
+      }
+      setIsCreateModalOpen(true);
   };
 
   if (!session) return null;
@@ -77,18 +60,34 @@ export function Dashboard() {
     <MainLayout 
         title="Meine Projekte"
         actions={
-            <Button onClick={createProject} size="large">
+            isSuperuser ? (
+            <Button onClick={handleCreateClick} size="large">
                 + Neues Projekt anlegen
             </Button>
+            ) : null
         }
     >
+        <ProjectCreateModal 
+            isOpen={isCreateModalOpen} 
+            onClose={() => setIsCreateModalOpen(false)} 
+            onProjectCreated={fetchProjects}
+            userId={session.user.id}
+        />
+
         {projects.length === 0 ? (
             <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>Keine Projekte gefunden</Text>
-                <Text style={styles.emptySubText}>Starten Sie Ihr erstes Projekt, indem Sie oben rechts klicken.</Text>
-                <Button onClick={createProject} variant="outline" style={{ marginTop: 20 }}>Erstes Projekt erstellen</Button>
+                {isSuperuser ? (
+                    <>
+                        <Text style={styles.emptySubText}>Starten Sie Ihr erstes Projekt, indem Sie oben rechts klicken.</Text>
+                        <Button onClick={handleCreateClick} variant="outline" style={{ marginTop: 20 }}>Erstes Projekt erstellen</Button>
+                    </>
+                ) : (
+                    <Text style={styles.emptySubText}>Sie wurden noch keinem Projekt hinzugefügt.</Text>
+                )}
             </View>
         ) : (
+
             <View style={styles.grid}>
                 {projects.map((project) => (
                 <ProjectCard 

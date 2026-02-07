@@ -7,11 +7,14 @@ import { colors } from '@docstruc/theme';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectDetail } from './pages/ProjectDetail';
+import { Accessors } from './pages/superuser/Accessors';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { ManageProjects } from './pages/superuser/ManageProjects';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { ToastProvider } from './components/ToastProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,22 +100,26 @@ function App() {
 
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={
-            !session ? (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.background }}>
-                <LoginForm onLogin={handleLogin} onRegister={handleRegister} isLoading={loading} error={authError} />
-              </div>
-            ) : <Navigate to="/" />
-          } />
-          
-          <Route path="/" element={session ? <Dashboard /> : <Navigate to="/login" />} />
-          <Route path="/admin" element={session ? <AdminDashboard /> : <Navigate to="/login" />} />
-          <Route path="/project/:id" element={session ? <ProjectDetail /> : <Navigate to="/login" />} />
-          
-        </Routes>
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={
+              !session ? (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.background }}>
+                  <LoginForm onLogin={handleLogin} onRegister={handleRegister} isLoading={loading} error={authError} />
+                </div>
+              ) : <Navigate to="/" />
+            } />
+            
+            <Route path="/" element={session ? <Dashboard /> : <Navigate to="/login" />} />
+            <Route path="/accessors" element={session ? <Accessors /> : <Navigate to="/login" />} />
+            <Route path="/manage-projects" element={session ? <ManageProjects /> : <Navigate to="/login" />} />
+            <Route path="/admin" element={session ? <AdminDashboard /> : <Navigate to="/login" />} />
+            <Route path="/project/:id" element={session ? <ProjectDetail /> : <Navigate to="/login" />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </PersistQueryClientProvider>
   );
 }

@@ -51,6 +51,15 @@ export interface Room {
   area_sqm?: number;
 }
 
+export interface RoomComponent {
+  id: string;
+  room_id: string;
+  name: string;
+  type?: 'wall' | 'electrics' | 'plumbing' | 'furniture' | 'other';
+  description?: string;
+  status: 'pending' | 'done';
+}
+
 export type TaskStatus = 'open' | 'in_progress' | 'done' | 'blocked';
 
 export interface Task {

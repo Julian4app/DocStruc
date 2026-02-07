@@ -1,14 +1,20 @@
 export const colors = {
-  primary: "#007AFF",
-  secondary: "#5856D6",
+  primary: "#0E2A47",
+  secondary: "#2E3238",
+  accent: "#F28C28",
+  
+  secondaryUI: "#F2F4F6", // Secundary for UI companent
+  
   success: "#34C759",
   warning: "#FF9500",
   danger: "#FF3B30",
-  background: "#F2F2F7",
+  
+  background: "#F2F4F6",
   surface: "#FFFFFF",
-  text: "#000000",
-  textSecondary: "#8E8E93",
-  border: "#E5E5EA",
+  
+  text: "#2E3238",
+  textSecondary: "#64748B", // Slate 500
+  border: "#E2E8F0",
   
   // Status colors from design
   status: {
