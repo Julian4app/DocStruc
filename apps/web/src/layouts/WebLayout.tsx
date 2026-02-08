@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LayoutContext } from './LayoutContext';
@@ -8,24 +8,19 @@ import {
   LayoutDashboard, 
   Folder, 
   Users, 
-  Settings, 
   LogOut, 
   Search,
   Bell,
-  CheckCircle,
-  Shield,
-  Menu,
-  ChevronRight
+  CheckCircle
 } from 'lucide-react';
-import { useParams } from 'react-router-dom';
 
 export function WebLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { id: projectId } = useParams<{ id: string }>();
   
   // Context State
   const [title, setTitle] = useState('DocStruc');
+  const [subtitle, setSubtitle] = useState('');
   const [actions, setActions] = useState<React.ReactNode>(null);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [userEmail, setUserEmail] = useState('');
@@ -74,7 +69,7 @@ export function WebLayout() {
   }
 
   return (
-    <LayoutContext.Provider value={{ title, setTitle, actions, setActions }}>
+    <LayoutContext.Provider value={{ title, setTitle, subtitle, setSubtitle, actions, setActions }}>
     <View style={styles.container}>
       {/* Sidebar - Modern White Theme */}
       <View style={styles.sidebar}>
@@ -201,7 +196,7 @@ export function WebLayout() {
              <View style={styles.pageHeaderContainer}>
                 <View>
                     <Text style={styles.pageTitle}>{title}</Text>
-                    <Text style={styles.pageSubtitle}>Manage your documents and structures.</Text>
+                    {!!subtitle && <Text style={styles.pageSubtitle}>{subtitle}</Text>}
                 </View>
                 <View style={styles.pageActions}>
                     {actions}
@@ -233,7 +228,9 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     paddingVertical: 24,
-    paddingHorizontal: 16
+    paddingHorizontal: 16,
+    borderRightWidth: 1,
+    borderRightColor: '#f1f5f9',
   },
   sidebarHeader: {
     marginBottom: 40,
@@ -429,7 +426,7 @@ const styles = StyleSheet.create({
       gap: 20
   },
   iconBtn: {
-      
+      padding: 4,
   },
   iconBtnInner: {
     width: 48,

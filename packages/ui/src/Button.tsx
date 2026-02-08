@@ -1,5 +1,5 @@
 import * as React from "react";
-import { TouchableOpacity, Text, StyleSheet, GestureResponderEvent, ViewStyle, StyleProp } from "react-native";
+import { TouchableOpacity, Text, StyleSheet, GestureResponderEvent, ViewStyle, TextStyle, StyleProp } from "react-native";
 import { colors } from "@docstruc/theme";
 
 export interface ButtonProps {

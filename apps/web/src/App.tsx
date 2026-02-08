@@ -77,7 +77,7 @@ function App() {
         options: { data: { first_name: 'Web', last_name: 'User' } }
     });
     if (error) setAuthError(error.message);
-    else alert('Check your email for the login link!');
+    else setAuthError(null); // Registration successful — auto-login or email verification
     setLoading(false);
   };
 

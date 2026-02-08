@@ -45,7 +45,7 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
                 onChange([...value, ...newUrls]);
             }
         } catch (error: any) {
-            alert('Error uploading image: ' + error.message);
+            console.error('Upload error:', error.message);
         } finally {
             setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -86,7 +86,7 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
                  if (single) onChange([newUrls[0]]);
                  else onChange([...value, ...newUrls]);
              } catch (err: any) {
-                 alert(err.message);
+                 console.error('Upload error:', err.message);
              } finally {
                  setUploading(false);
              }
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontWeight: '500',
-        color: colors.textPrimary,
+        color: colors.text,
         marginBottom: 8
     },
     dropZone: {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ProjectCard, Button } from '@docstruc/ui';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -7,10 +7,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
 import { useLayout } from '../layouts/LayoutContext';
+import { useToast } from '../components/ToastProvider';
+import { Folder, Plus } from 'lucide-react';
+import { colors } from '@docstruc/theme';
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { setTitle, setActions } = useLayout();
+  const { setTitle, setSubtitle, setActions } = useLayout();
+  const { showToast } = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -18,6 +22,7 @@ export function Dashboard() {
   
   useEffect(() => {
     setTitle('Meine Projekte');
+    setSubtitle('Ihre zugewiesenen Projekte und Dokumente.');
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
@@ -26,6 +31,14 @@ export function Dashboard() {
       }
     });
   }, [setTitle]);
+
+  const handleCreateClick = useCallback(() => {
+      if (!session?.user) {
+          showToast('Keine Benutzersitzung gefunden.', 'error');
+          return;
+      }
+      setIsCreateModalOpen(true);
+  }, [session, showToast]);
 
   useEffect(() => {
     if (isSuperuser) {
@@ -37,7 +50,8 @@ export function Dashboard() {
     } else {
         setActions(null);
     }
-  }, [isSuperuser, setActions]);
+    return () => setActions(null);
+  }, [isSuperuser, setActions, handleCreateClick]);
 
   const checkSuperuser = async (userId: string) => {
       const { data } = await supabase.from('profiles').select('is_superuser').eq('id', userId).single();
@@ -53,19 +67,11 @@ export function Dashboard() {
     if (error) {
       console.error('Error fetching projects:', error);
       if (error.code === '42P17' || error.message.includes('infinite recursion')) {
-          alert("DATABASE ERROR: Infinite recursion detected in policies.\n\nPlease run the 'FIX_DATABASE.sql' script in your Supabase SQL Editor to fix this.");
+          showToast('Datenbankfehler: Bitte FIX_DATABASE.sql im Supabase SQL Editor ausführen.', 'error');
       }
     } else {
       setProjects(data || []);
     }
-  };
-
-  const handleCreateClick = () => {
-      if (!session?.user) {
-          alert("No user session found!");
-          return;
-      }
-      setIsCreateModalOpen(true);
   };
 
   if (!session) return null;
@@ -81,18 +87,22 @@ export function Dashboard() {
 
         {projects.length === 0 ? (
             <View style={styles.emptyState}>
+                <View style={styles.emptyIconContainer}>
+                    <Folder size={32} color={colors.primary} />
+                </View>
                 <Text style={styles.emptyText}>Keine Projekte gefunden</Text>
                 {isSuperuser ? (
                     <>
                         <Text style={styles.emptySubText}>Starten Sie Ihr erstes Projekt, indem Sie oben rechts klicken.</Text>
-                        <Button onClick={handleCreateClick} variant="outline" style={{ marginTop: 20 }}>Erstes Projekt erstellen</Button>
+                        <Button onClick={handleCreateClick} style={{ marginTop: 24 }}>
+                            Erstes Projekt erstellen
+                        </Button>
                     </>
                 ) : (
                     <Text style={styles.emptySubText}>Sie wurden noch keinem Projekt hinzugefügt.</Text>
                 )}
             </View>
         ) : (
-
             <View style={styles.grid}>
                 {projects.map((project) => (
                 <ProjectCard 
@@ -117,20 +127,36 @@ const styles = StyleSheet.create({
     padding: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
     marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0f4ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   emptyText: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#374151',
+    fontWeight: '700',
+    color: '#0f172a',
     marginBottom: 8,
+    letterSpacing: -0.3,
   },
   emptySubText: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: 15,
+    color: '#94a3b8',
+    textAlign: 'center',
+    maxWidth: 320,
+    lineHeight: 22,
   }
 });

@@ -10,8 +10,12 @@ import { colors, spacing } from '@docstruc/theme';
 import { Plus, Trash2, Edit2, User, Building, Hammer } from 'lucide-react';
 
 export function Accessors() {
-  const { setTitle } = useLayout();
-  useEffect(() => setTitle('Accessors Management'), [setTitle]);
+  const { setTitle, setSubtitle } = useLayout();
+  useEffect(() => {
+    setTitle('Zugreifer');
+    setSubtitle('Mitarbeiter, Bauherren und Gewerke verwalten.');
+    return () => setSubtitle('');
+  }, [setTitle, setSubtitle]);
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'employees' | 'owners' | 'subcontractors'>('employees');
   const [data, setData] = useState<any[]>([]);

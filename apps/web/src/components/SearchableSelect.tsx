@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontWeight: '500',
-        color: colors.textPrimary,
+        color: colors.text,
         marginBottom: 8
     },
     trigger: {
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     },
     optionLabel: {
         fontSize: 14,
-        color: colors.textPrimary,
+        color: colors.text,
         fontWeight: '500'
     },
     textSelected: {

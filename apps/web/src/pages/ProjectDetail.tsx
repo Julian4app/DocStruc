@@ -1,18 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Card, StructureList, RoomDetailView, CustomModal, Input } from '@docstruc/ui';
+import { Button, Card, StructureList, RoomDetailView, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { Project, generateReportHtml } from '@docstruc/logic';
 import { getProjectStructure, BuildingWithFloors, createBuilding, createFloor, createRoom, getProjectTasks, getProjectMembers, MemberWithUser, getProjectTimeline, createTimelineEvent, toggleTimelineEvent, TimelineEvent } from '@docstruc/api';
-import { View, Text, ActivityIndicator, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import { useProjectPermissions } from '@docstruc/hooks';
 import { useLayout } from '../layouts/LayoutContext';
+import { ModernModal } from '../components/ModernModal';
+import { useToast } from '../components/ToastProvider';
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { setTitle, setActions } = useLayout();
+  const { setTitle, setSubtitle, setActions } = useLayout();
+  const { showToast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const [structure, setStructure] = useState<BuildingWithFloors[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,19 +41,21 @@ export function ProjectDetail() {
   useEffect(() => {
     if (project) {
         setTitle(project.name);
+        setSubtitle(project.address || '');
     } else {
         setTitle('Lade Projekt...');
+        setSubtitle('');
     }
-  }, [project, setTitle]);
+  }, [project, setTitle, setSubtitle]);
 
   useEffect(() => {
     setActions(
          <Button variant="outline" onClick={() => navigate('/')}>← Zurück</Button>
     );
-  }, [setActions, navigate]);
+    return () => { setActions(null); setSubtitle(''); };
+  }, [setActions, setSubtitle, navigate]);
 
   const { data: permissions } = useProjectPermissions(supabase, id || '', userId || undefined);
-  // Default to false while loading
   const canEdit = permissions?.canEditStructure ?? false;
 
   useEffect(() => {
@@ -77,13 +82,14 @@ export function ProjectDetail() {
         project_id: id,
         title: timelineTitle,
         date: timelineDate,
-        eventType: 'milestone' // Default
+        eventType: 'milestone'
       });
       setTimelineTitle('');
       setTimelineDate('');
       loadTimeline(id);
+      showToast('Meilenstein hinzugefügt', 'success');
     } catch (e) {
-      alert('Error adding event');
+      showToast('Fehler beim Hinzufügen des Meilensteins', 'error');
     }
   };
 
@@ -104,7 +110,6 @@ export function ProjectDetail() {
   const handleAddMember = async () => {
       if (!id || !inviteEmail) return;
       try {
-          // 1. Find user by email
           const { data: users } = await supabase.from('profiles').select('id').eq('email', inviteEmail).single();
           if (users) {
               await supabase.from('project_members').insert({
@@ -112,14 +117,14 @@ export function ProjectDetail() {
                   user_id: users.id,
                   role: 'viewer'
               });
-              alert('User added!');
+              showToast('Benutzer hinzugefügt!', 'success');
               setInviteEmail('');
               loadMembers(id);
           } else {
-              alert('User not found. They must sign up first.');
+              showToast('Benutzer nicht gefunden. Registrierung erforderlich.', 'error');
           }
       } catch (e) {
-          alert('Error adding member');
+          showToast('Fehler beim Hinzufügen des Mitglieds', 'error');
       }
   };
 
@@ -138,13 +143,12 @@ export function ProjectDetail() {
       }
     } catch (e) {
       console.error(e);
-      alert('Error generating report');
+      showToast('Fehler beim Erstellen des Berichts', 'error');
     }
   };
 
   const loadData = async (projectId: string) => {
     try {
-      // Parallel fetch
       const [projectRes, structureRes] = await Promise.all([
         supabase.from('projects').select('*').eq('id', projectId).single(),
         getProjectStructure(supabase, projectId)
@@ -156,7 +160,7 @@ export function ProjectDetail() {
       setStructure(structureRes);
     } catch (e) {
       console.error('Error loading project data:', e);
-      alert('Error loading project');
+      showToast('Fehler beim Laden des Projekts', 'error');
     } finally {
       setLoading(false);
     }
@@ -164,34 +168,34 @@ export function ProjectDetail() {
 
   const handleAddBuilding = async (name: string) => {
     if (!canEdit) {
-      alert('Fehlende Berechtigung: Nur Projektleiter können Gebäude erstellen.');
+      showToast('Fehlende Berechtigung: Nur Projektleiter können Gebäude erstellen.', 'error');
       return;
     }
     if (!project) return;
     const { error } = await createBuilding(supabase, project.id, name);
-    if (error) alert(error.message);
+    if (error) showToast(error.message, 'error');
     else loadData(project.id);
   };
 
   const handleAddFloor = async (buildingId: string, name: string) => {
     if (!canEdit) {
-      alert('Fehlende Berechtigung');
+      showToast('Fehlende Berechtigung', 'error');
       return;
     }
     if (!project) return;
-    const { error } = await createFloor(supabase, buildingId, name, 0); // TODO: manageable index
-    if (error) alert(error.message);
+    const { error } = await createFloor(supabase, buildingId, name, 0);
+    if (error) showToast(error.message, 'error');
     else loadData(project.id);
   };
 
   const handleAddRoom = async (floorId: string, name: string) => {
     if (!canEdit) {
-      alert('Fehlende Berechtigung');
+      showToast('Fehlende Berechtigung', 'error');
       return;
     }
     if (!project) return;
     const { error } = await createRoom(supabase, floorId, name);
-    if (error) alert(error.message);
+    if (error) showToast(error.message, 'error');
     else loadData(project.id);
   };
 
@@ -201,8 +205,8 @@ export function ProjectDetail() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <ActivityIndicator color={colors.primary} />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -211,76 +215,87 @@ export function ProjectDetail() {
 
   return (
     <>
-      <View style={{ flexDirection: 'row', gap: 24 }}> 
-      <View style={{ flex: 2 }}>
-      <Card style={{ padding: spacing.l }}>
-        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: spacing.m, color: colors.text }}>Projektübersicht</Text>
-        
-        <View style={{ marginBottom: spacing.m }}>
-          <Text style={{ color: colors.textSecondary, marginBottom: 4 }}>Adresse</Text>
-          <Text style={{ fontSize: 16, color: colors.text }}>{project.address || 'Keine Adresse hinterlegt'}</Text>
+      {/* Main Content Grid */}
+      <View style={styles.topRow}> 
+        {/* Left Column — Overview */}
+        <View style={styles.leftCol}>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Projektübersicht</Text>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Adresse</Text>
+              <Text style={styles.infoValue}>{project.address || 'Keine Adresse hinterlegt'}</Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Status</Text>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusText}>{project.status.toUpperCase()}</Text>
+              </View>
+            </View>
+
+            <View style={styles.reportBtnWrap}>
+               <Button variant="secondary" onClick={handleGenerateReport}>📄 Bericht erstellen</Button>
+            </View>
+          </Card>
         </View>
 
-        <View style={{ marginBottom: spacing.m }}>
-          <Text style={{ color: colors.textSecondary, marginBottom: 4 }}>Status</Text>
-          <Text style={{ fontSize: 16, color: colors.text, fontWeight: '500' }}>{project.status.toUpperCase()}</Text>
-        </View>
-
-        <View style={{ marginTop: spacing.m }}>
-           <Button variant="secondary" onClick={handleGenerateReport}>📄 Bericht erstellen</Button>
-        </View>
-      </Card>
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Card style={{ padding: spacing.l, marginBottom: spacing.m }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>Members</Text>
-            {members.length === 0 && <Text style={{color: colors.textSecondary}}>No members yet.</Text>}
+        {/* Right Column — Members + Timeline */}
+        <View style={styles.rightCol}>
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Mitglieder</Text>
+            {members.length === 0 && <Text style={styles.emptyText}>Noch keine Mitglieder.</Text>}
             {members.map(m => (
-                <View key={m.id} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <Text>{m.user?.email || 'Unknown'}</Text>
-                    <Text style={{ color: colors.textSecondary }}>{m.role}</Text>
+                <View key={m.id} style={styles.memberRow}>
+                    <Text style={styles.memberEmail}>{m.user?.email || 'Unbekannt'}</Text>
+                    <View style={styles.roleBadge}>
+                        <Text style={styles.roleText}>{m.role}</Text>
+                    </View>
                 </View>
             ))}
             
-            <View style={{ marginTop: 16 }}>
-                <Text style={{ fontWeight: '600', marginBottom: 4 }}>Invite User</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={styles.inviteSection}>
+                <Text style={styles.inviteLabel}>Benutzer einladen</Text>
+                <View style={styles.inviteRow}>
                    <View style={{ flex: 1 }}>
                      <Input placeholder="email@example.com" value={inviteEmail} onChangeText={setInviteEmail} />
                    </View>
-                   <Button onClick={handleAddMember}>Invite</Button>
+                   <Button onClick={handleAddMember}>Einladen</Button>
                 </View>
             </View>
-        </Card>
+          </Card>
 
-        <Card style={{ padding: spacing.l, height: '100%' }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>Timeline</Text>
-            <View style={{ marginBottom: 16 }}>
+          <Card style={[styles.sectionCard, { flex: 1 }]}>
+            <Text style={styles.sectionTitle}>Timeline</Text>
+            <View style={styles.timelineList}>
                 {timeline.map(event => (
-                    <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, opacity: event.completed ? 0.5 : 1 }}>
-                         <TouchableOpacity onPress={() => handleToggleTimeline(event.id, event.completed)} style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, marginRight: 8, backgroundColor: event.completed ? colors.primary : 'transparent' }} />
-                         <View>
-                            <Text style={{ fontWeight: '600', textDecorationLine: event.completed ? 'line-through' : 'none' }}>{event.title}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{new Date(event.date).toLocaleDateString()} • {event.eventType}</Text>
+                    <View key={event.id} style={[styles.timelineItem, event.completed && styles.timelineCompleted]}>
+                         <TouchableOpacity 
+                            onPress={() => handleToggleTimeline(event.id, event.completed)} 
+                            style={[styles.timelineCheckbox, event.completed && styles.timelineCheckboxDone]}
+                         />
+                         <View style={{ flex: 1 }}>
+                            <Text style={[styles.timelineTitle, event.completed && styles.timelineTitleDone]}>{event.title}</Text>
+                            <Text style={styles.timelineDate}>{new Date(event.date).toLocaleDateString('de-DE')} • {event.eventType}</Text>
                          </View>
                     </View>
                 ))}
-                {timeline.length === 0 && <Text style={{color: colors.textSecondary}}>No milestones set.</Text>}
+                {timeline.length === 0 && <Text style={styles.emptyText}>Keine Meilensteine gesetzt.</Text>}
             </View>
             
             {canEdit && (
-                <View style={{ gap: 8 }}>
-                    <Input placeholder="New Milestone Title" value={timelineTitle} onChangeText={setTimelineTitle} />
+                <View style={styles.addTimelineForm}>
+                    <Input placeholder="Neuer Meilenstein" value={timelineTitle} onChangeText={setTimelineTitle} />
                     <Input placeholder="YYYY-MM-DD" value={timelineDate} onChangeText={setTimelineDate} />
-                    <Button onClick={handleAddTimelineEvent}>Add Milestone</Button> 
+                    <Button onClick={handleAddTimelineEvent}>Hinzufügen</Button> 
                 </View>
             )}
-        </Card>
-      </View>
+          </Card>
+        </View>
       </View>
 
-      <Card style={{ padding: spacing.l, marginTop: 20 }}>
+      {/* Structure Section */}
+      <Card style={[styles.sectionCard, { marginTop: 20 }]}>
         <StructureList 
           structure={structure} 
           onAddBuilding={handleAddBuilding}
@@ -291,13 +306,15 @@ export function ProjectDetail() {
         />
       </Card>
 
-      <CustomModal
+      {/* Room Detail Modal */}
+      <ModernModal
         visible={!!selectedRoom}
         onClose={() => setSelectedRoom(null)}
-        title=""
+        title={selectedRoom?.name || 'Raum Details'}
+        maxWidth={800}
       >
         {selectedRoom && project && (
-          <View style={{ minHeight: 400, width: '100%' }}>
+          <View style={styles.roomDetailContainer}>
             <RoomDetailView 
               room={selectedRoom} 
               projectId={project.id}
@@ -307,8 +324,159 @@ export function ProjectDetail() {
             />
           </View>
         )}
-      </CustomModal>
-
+      </ModernModal>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%' as any,
+  },
+  topRow: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  leftCol: {
+    flex: 2,
+  },
+  rightCol: {
+    flex: 1,
+    gap: 20,
+  },
+  sectionCard: {
+    padding: spacing.l,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 16,
+    letterSpacing: -0.3,
+  },
+  infoRow: {
+    marginBottom: spacing.m,
+  },
+  infoLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 4,
+    textTransform: 'uppercase' as any,
+    letterSpacing: 0.5,
+  },
+  infoValue: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: '#f0f4ff',
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  reportBtnWrap: {
+    marginTop: spacing.m,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f8fafc',
+  },
+  memberEmail: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  roleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+  },
+  roleText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  inviteSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  inviteLabel: {
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 8,
+    color: colors.text,
+  },
+  inviteRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timelineList: {
+    marginBottom: 16,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 12,
+  },
+  timelineCompleted: {
+    opacity: 0.5,
+  },
+  timelineCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: 'transparent',
+  },
+  timelineCheckboxDone: {
+    backgroundColor: colors.primary,
+  },
+  timelineTitle: {
+    fontWeight: '600',
+    fontSize: 14,
+    color: colors.text,
+  },
+  timelineTitleDone: {
+    textDecorationLine: 'line-through',
+  },
+  timelineDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  addTimelineForm: {
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  roomDetailContainer: {
+    minHeight: 400,
+    width: '100%',
+  },
+});
