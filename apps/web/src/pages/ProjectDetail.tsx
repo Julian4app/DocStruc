@@ -7,11 +7,12 @@ import { Project, generateReportHtml } from '@docstruc/logic';
 import { getProjectStructure, BuildingWithFloors, createBuilding, createFloor, createRoom, getProjectTasks, getProjectMembers, MemberWithUser, getProjectTimeline, createTimelineEvent, toggleTimelineEvent, TimelineEvent } from '@docstruc/api';
 import { View, Text, ActivityIndicator, ScrollView, TouchableOpacity } from 'react-native';
 import { useProjectPermissions } from '@docstruc/hooks';
-import { MainLayout } from '../components/MainLayout';
+import { useLayout } from '../layouts/LayoutContext';
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { setTitle, setActions } = useLayout();
   const [project, setProject] = useState<Project | null>(null);
   const [structure, setStructure] = useState<BuildingWithFloors[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +34,20 @@ export function ProjectDetail() {
       setUserId(data.user?.id || null);
     });
   }, []);
+
+  useEffect(() => {
+    if (project) {
+        setTitle(project.name);
+    } else {
+        setTitle('Lade Projekt...');
+    }
+  }, [project, setTitle]);
+
+  useEffect(() => {
+    setActions(
+         <Button variant="outline" onClick={() => navigate('/')}>← Zurück</Button>
+    );
+  }, [setActions, navigate]);
 
   const { data: permissions } = useProjectPermissions(supabase, id || '', userId || undefined);
   // Default to false while loading
@@ -195,12 +210,7 @@ export function ProjectDetail() {
   if (!project) return null;
 
   return (
-    <MainLayout
-      title={project.name}
-      actions={
-         <Button variant="outline" onClick={() => navigate('/')}>← Zurück</Button>
-      }
-    >
+    <>
       <View style={{ flexDirection: 'row', gap: 24 }}> 
       <View style={{ flex: 2 }}>
       <Card style={{ padding: spacing.l }}>
@@ -299,6 +309,6 @@ export function ProjectDetail() {
         )}
       </CustomModal>
 
-    </MainLayout>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import { MainLayout } from '../../components/MainLayout';
+import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input, Card } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
 import { ImageUploader } from '../../components/ImageUploader';
@@ -10,6 +10,8 @@ import { colors, spacing } from '@docstruc/theme';
 import { Plus, Trash2, Edit2, User, Building, Hammer } from 'lucide-react';
 
 export function Accessors() {
+  const { setTitle } = useLayout();
+  useEffect(() => setTitle('Accessors Management'), [setTitle]);
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'employees' | 'owners' | 'subcontractors'>('employees');
   const [data, setData] = useState<any[]>([]);
@@ -266,7 +268,7 @@ export function Accessors() {
   };
 
   return (
-    <MainLayout title="Accessors Management">
+    <>
         <View style={styles.tabs}>
             {(['employees', 'owners', 'subcontractors'] as const).map(tab => (
                 <TouchableOpacity 
@@ -441,7 +443,7 @@ export function Accessors() {
                 </ScrollView>
             </ModernModal>
         )}
-    </MainLayout>
+    </>
   );
 }
 

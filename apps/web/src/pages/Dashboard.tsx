@@ -1,21 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { ProjectCard, Button } from '@docstruc/ui';
-import { MainLayout } from '../components/MainLayout';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { Project } from '@docstruc/logic';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
+import { useLayout } from '../layouts/LayoutContext';
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { setTitle, setActions } = useLayout();
   const [session, setSession] = useState<Session | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
   useEffect(() => {
+    setTitle('Meine Projekte');
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
@@ -23,7 +25,19 @@ export function Dashboard() {
           checkSuperuser(session.user.id);
       }
     });
-  }, []);
+  }, [setTitle]);
+
+  useEffect(() => {
+    if (isSuperuser) {
+        setActions(
+          <Button onClick={handleCreateClick} size="large">
+              + Neues Projekt anlegen
+          </Button>
+        );
+    } else {
+        setActions(null);
+    }
+  }, [isSuperuser, setActions]);
 
   const checkSuperuser = async (userId: string) => {
       const { data } = await supabase.from('profiles').select('is_superuser').eq('id', userId).single();
@@ -57,16 +71,7 @@ export function Dashboard() {
   if (!session) return null;
 
   return (
-    <MainLayout 
-        title="Meine Projekte"
-        actions={
-            isSuperuser ? (
-            <Button onClick={handleCreateClick} size="large">
-                + Neues Projekt anlegen
-            </Button>
-            ) : null
-        }
-    >
+    <>
         <ProjectCreateModal 
             isOpen={isCreateModalOpen} 
             onClose={() => setIsCreateModalOpen(false)} 
@@ -98,7 +103,7 @@ export function Dashboard() {
                 ))}
             </View>
         )}
-    </MainLayout>
+    </>
   );
 }
 

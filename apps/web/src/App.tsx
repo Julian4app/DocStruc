@@ -8,13 +8,13 @@ import { View, ActivityIndicator, Text } from 'react-native';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { Accessors } from './pages/superuser/Accessors';
-import { AdminDashboard } from './pages/AdminDashboard';
 import { ManageProjects } from './pages/superuser/ManageProjects';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ToastProvider } from './components/ToastProvider';
+import { WebLayout } from './layouts/WebLayout';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,15 +60,6 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%', backgroundColor: 'white' }}>
-        <Text>Loading App...</Text>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   const handleLogin = async (email: string, pass: string) => {
     setLoading(true);
     setAuthError(null);
@@ -111,11 +102,13 @@ function App() {
               ) : <Navigate to="/" />
             } />
             
-            <Route path="/" element={session ? <Dashboard /> : <Navigate to="/login" />} />
-            <Route path="/accessors" element={session ? <Accessors /> : <Navigate to="/login" />} />
-            <Route path="/manage-projects" element={session ? <ManageProjects /> : <Navigate to="/login" />} />
-            <Route path="/admin" element={session ? <AdminDashboard /> : <Navigate to="/login" />} />
-            <Route path="/project/:id" element={session ? <ProjectDetail /> : <Navigate to="/login" />} />
+            <Route element={session ? <WebLayout /> : <Navigate to="/login" />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/accessors" element={<Accessors />} />
+              <Route path="/manage-projects" element={<ManageProjects />} />
+              <Route path="/project/:id" element={<ProjectDetail />} />
+            </Route>
+
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </BrowserRouter>

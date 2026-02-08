@@ -1,13 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import { MainLayout } from '../../components/MainLayout';
+import { useLayout } from '../../layouts/LayoutContext';
 import { ProjectCard, Button, CustomModal as Modal, Input } from '@docstruc/ui';
 import { supabase } from '../../lib/supabase';
 import { Project } from '@docstruc/logic';
 import { ProjectCreateModal } from '../../components/ProjectCreateModal';
 
 export function ManageProjects() {
+    const { setTitle } = useLayout();
     const [projects, setProjects] = useState<Project[]>([]);
+    
+    useEffect(() => {
+        setTitle('Manage Projects');
+    }, [setTitle]);
+
     const [loading, setLoading] = useState(false);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
@@ -60,7 +66,7 @@ export function ManageProjects() {
     };
 
     return (
-        <MainLayout title="Manage Projects">
+        <>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
                 <Button onClick={() => setIsCreateOpen(true)}>+ New Project</Button>
             </View>
@@ -95,7 +101,7 @@ export function ManageProjects() {
                     </View>
                 ))}
             </View>
-        </MainLayout>
+        </>
     );
 }
 
