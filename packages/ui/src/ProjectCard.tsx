@@ -11,18 +11,54 @@ export interface ProjectCardProps {
 
 export function ProjectCard({ project, onPress }: ProjectCardProps) {
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return colors.status?.inWork || '#3B82F6';
-      case 'completed': return colors.status?.agreed || '#10B981';
-      case 'planning': return colors.primary;
-      default: return colors.textSecondary;
-    }
+    // Match colors from StatusSelect
+    const statusMap: Record<string, { color: string; bgColor: string }> = {
+      'Angefragt': { color: '#0ea5e9', bgColor: '#e0f2fe' },
+      'In Planung': { color: '#8b5cf6', bgColor: '#f3e8ff' },
+      'Genehmigt': { color: '#10b981', bgColor: '#d1fae5' },
+      'In Ausf\u00fchrung': { color: '#f59e0b', bgColor: '#fef3c7' },
+      'Abgeschlossen': { color: '#059669', bgColor: '#d1fae5' },
+      'Pausiert': { color: '#64748b', bgColor: '#f1f5f9' },
+      'Abgebrochen': { color: '#ef4444', bgColor: '#fee2e2' },
+      'Nachbesserung': { color: '#f97316', bgColor: '#ffedd5' },
+    };
+    return statusMap[status] || { color: '#64748b', bgColor: '#f1f5f9' };
   };
 
-  const statusColor = getStatusColor(project.status);
+  const statusInfo = getStatusColor(project.status || 'Angefragt');
+  
+  // Get first image from project
+  const projectImage = project.images && project.images.length > 0 ? project.images[0] : project.picture_url;
+  
+  // Generate Google Maps static image URL if address exists
+  const getMapUrl = (address: string) => {
+    if (!address) return null;
+    const encodedAddress = encodeURIComponent(address);
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodedAddress}&zoom=15&size=400x200&maptype=roadmap&markers=color:red%7C${encodedAddress}&key=YOUR_API_KEY`;
+  };
+  
+  const mapUrl = project.address ? getMapUrl(project.address) : null;
 
   return (
     <Card onPress={onPress} style={styles.cardOverride}>
+      {/* Image/Map Header */}
+      {(projectImage || mapUrl) && (
+        <View style={styles.mediaContainer}>
+          {projectImage ? (
+            <View style={styles.imageWrapper}>
+              <View style={[styles.imageBox, { backgroundImage: `url(${projectImage})` } as any]} />
+            </View>
+          ) : mapUrl ? (
+            <View style={styles.imageWrapper}>
+              <View style={[styles.imageBox, { backgroundImage: `url(${mapUrl})` } as any]} />
+              <View style={styles.mapOverlay}>
+                <Text style={styles.mapLabel}>🗺️ Map View</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      )}
+      
       <View style={styles.contentWrapper}>
         <View style={styles.header}>
             <View style={styles.titleContainer}>
@@ -31,9 +67,9 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
                 Last update: {new Date(project.updated_at).toLocaleDateString()}
                 </Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: statusColor + '15' }]}>
-            <Text style={[styles.badgeText, { color: statusColor }]}>
-                {project.status ? project.status.toUpperCase() : 'PLANNING'}
+            <View style={[styles.badge, { backgroundColor: statusInfo.bgColor }]}>
+            <Text style={[styles.badgeText, { color: statusInfo.color }]}>
+                {project.status || 'Angefragt'}
             </Text>
             </View>
         </View>
@@ -68,24 +104,64 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
 
 const styles = StyleSheet.create({
   cardOverride: {
-    minHeight: 180,
+    minHeight: 240,
     padding: 0, 
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
     shadowColor: "#0E2A47",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 2,
+    borderRadius: 18,
+    overflow: 'hidden',
     ...Platform.select({
         web: {
             cursor: 'pointer',
-            transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+            transition: 'all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1)',
             ':hover': {
-                transform: 'translateY(-4px)',
-                boxShadow: '0 20px 25px -5px rgba(14, 42, 71, 0.1), 0 10px 10px -5px rgba(14, 42, 71, 0.04)'
+                transform: 'translateY(-3px)',
+                boxShadow: '0 12px 24px -6px rgba(14, 42, 71, 0.08), 0 6px 12px -4px rgba(14, 42, 71, 0.03)'
             }
         } as any
     })
+  },
+  mediaContainer: {
+    width: '100%',
+    height: 160,
+    backgroundColor: '#F8FAFC',
+    overflow: 'hidden',
+  },
+  imageWrapper: {
+    width: '100%',
+    height: '100%',
+    position: 'relative' as any,
+  },
+  imageBox: {
+    width: '100%',
+    height: '100%',
+    // @ts-ignore
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  },
+  mapOverlay: {
+    position: 'absolute' as any,
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  mapLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   contentWrapper: {
       padding: 24,
@@ -150,8 +226,8 @@ const styles = StyleSheet.create({
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 24,
-      paddingVertical: 16,
-      backgroundColor: '#F8FAFC',
+      paddingVertical: 14,
+      backgroundColor: '#FAFBFC',
       borderTopWidth: 1,
       borderTopColor: '#F1F5F9',
   },

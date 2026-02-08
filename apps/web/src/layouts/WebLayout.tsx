@@ -11,56 +11,64 @@ import {
   LogOut, 
   Search,
   Bell,
-  CheckCircle
+  Settings,
+  HelpCircle,
+  Smartphone
 } from 'lucide-react';
 
 export function WebLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Context State
   const [title, setTitle] = useState('DocStruc');
   const [subtitle, setSubtitle] = useState('');
   const [actions, setActions] = useState<React.ReactNode>(null);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userAvatar, setUserAvatar] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
-  useEffect(() => {
-    checkUser();
-  }, []);
+  useEffect(() => { checkUser(); }, []);
 
   const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserEmail(user.email || '');
-      
       const { data } = await supabase
         .from('profiles')
-        .select('is_superuser')
+        .select('is_superuser, first_name, last_name, avatar_url')
         .eq('id', user.id)
         .single();
-      
       if (data?.is_superuser) setIsSuperuser(true);
+      if (data?.first_name) setUserName(`${data.first_name} ${data.last_name || ''}`.trim());
+      if (data?.avatar_url) setUserAvatar(data.avatar_url);
+      
+      // Fetch notifications (example - adjust based on your schema)
+      const { data: notifs } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (notifs) setNotifications(notifs);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
+  const handleLogout = async () => { await supabase.auth.signOut(); };
 
-  // Define Menu Structure
   const menuGroups = [
     {
       title: 'MENU',
       items: [
-        { label: 'Projekte', path: '/', icon: LayoutDashboard },
-        // Add placeholders if needed to match density, but functionality first
+        { label: 'Dashboard', path: '/', icon: LayoutDashboard },
       ]
     }
   ];
 
   if (isSuperuser) {
       menuGroups.push({
-          title: 'ADMINSTRATION',
+          title: 'ADMINISTRATION',
           items: [
               { label: 'Projekte Manager', path: '/manage-projects', icon: Folder },
               { label: 'Zugreifer', path: '/accessors', icon: Users },
@@ -68,446 +76,264 @@ export function WebLayout() {
       });
   }
 
+  const displayName = userName || (isSuperuser ? 'Super Admin' : 'User');
+
   return (
     <LayoutContext.Provider value={{ title, setTitle, subtitle, setSubtitle, actions, setActions }}>
-    <View style={styles.container}>
-      {/* Sidebar - Modern White Theme */}
+    <View style={styles.shell}>
+
+      {/* ─── Sidebar ─── */}
       <View style={styles.sidebar}>
-        <View style={styles.sidebarHeader}>
-          {/* Logo */}
-          <View style={styles.logoRow}>
-              <View style={styles.logoIcon}>
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: colors.primary }}>D</Text>
-              </View>
-              <Text style={styles.logoText}>DocStruc</Text>
+        <View style={styles.logoContainer}>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoMarkText}>D</Text>
           </View>
+          <Text style={styles.logoText}>DocStruc</Text>
         </View>
 
         <ScrollView style={styles.navScroll} showsVerticalScrollIndicator={false}>
-          {menuGroups.map((group, groupIndex) => (
-            <View key={groupIndex} style={styles.menuGroup}>
-              {group.title && <Text style={styles.menuGroupTitle}>{group.title}</Text>}
+          {menuGroups.map((group, gi) => (
+            <View key={gi} style={styles.navGroup}>
+              <Text style={styles.navGroupLabel}>{group.title}</Text>
               {group.items.map((item) => {
-                const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+                const isActive = location.pathname === item.path || 
+                  (item.path !== '/' && location.pathname.startsWith(item.path));
                 const Icon = item.icon;
-                
                 return (
                   <TouchableOpacity
-                    key={item.label}
-                    style={[
-                        styles.navItem, 
-                        isActive && styles.navItemActive
-                    ]}
+                    key={item.path}
+                    style={[styles.navItem, isActive && styles.navItemActive]}
                     onPress={() => navigate(item.path)}
                     activeOpacity={0.7}
                   >
-                    <Icon 
-                        size={20} 
-                        color={isActive ? colors.primary : '#94a3b8'} 
-                        strokeWidth={2} 
-                    />
-                    <Text style={[
-                        styles.navText, 
-                        isActive && styles.navTextActive
-                    ]}>
-                      {item.label}
-                    </Text>
-                    {isActive && (
-                         <View style={styles.activePill} />
-                    )}
+                    {isActive && <View style={styles.activeIndicator} />}
+                    <Icon size={20} color={isActive ? colors.primary : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
+                    <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{item.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
           ))}
           
-           {/* Static Bottom Group for Settings/Logout */}
-           <View style={styles.menuGroup}>
-              <Text style={styles.menuGroupTitle}>GENERAL</Text>
-              {/* <TouchableOpacity style={styles.navItem} onPress={() => {}}>
-                  <Settings size={20} color="#94a3b8" />
-                  <Text style={styles.navText}>Settings</Text>
-              </TouchableOpacity> */}
-              <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
-                  <LogOut size={20} color="#94a3b8" />
-                  <Text style={styles.navText}>Logout</Text>
-              </TouchableOpacity>
-           </View>
-
-          {/* Download Mobile App Card (Visual Match) */}
-          <View style={styles.promoCardContainer}>
-            <View style={styles.promoCard}>
-                <View style={[styles.promoIcon, { marginBottom: 12 }]}>
-                    <CheckCircle size={20} color="white" />
-                </View>
-                <Text style={styles.promoTitle}>Download <Text style={{fontWeight: '400'}}>our</Text></Text>
-                <Text style={styles.promoTitle}>Mobile App</Text>
-                <Text style={styles.promoText}>Get easy in another way</Text>
-                
-                <TouchableOpacity style={styles.downloadBtn}>
-                    <Text style={styles.downloadBtnText}>Download</Text>
-                </TouchableOpacity>
-
-                <View style={styles.promoBgCurve1} />
-                <View style={styles.promoBgCurve2} />
-            </View>
+          <View style={styles.navGroup}>
+            <Text style={styles.navGroupLabel}>GENERAL</Text>
+            <TouchableOpacity style={styles.navItem} onPress={() => {}}>
+              <Settings size={20} color="#94a3b8" strokeWidth={2} />
+              <Text style={styles.navLabel}>Settings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.navItem} onPress={() => {}}>
+              <HelpCircle size={20} color="#94a3b8" strokeWidth={2} />
+              <Text style={styles.navLabel}>Help</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
+              <LogOut size={20} color="#94a3b8" strokeWidth={2} />
+              <Text style={styles.navLabel}>Logout</Text>
+            </TouchableOpacity>
           </View>
-
         </ScrollView>
+
+        {/* Promo Card */}
+        <View style={styles.promoCard}>
+          <View style={styles.promoBg1} />
+          <View style={styles.promoBg2} />
+          <View style={styles.promoIconCircle}>
+            <Smartphone size={18} color="#fff" />
+          </View>
+          <Text style={styles.promoHeading}>{'Download our\nMobile App'}</Text>
+          <Text style={styles.promoSub}>Get easy in another way</Text>
+          <TouchableOpacity style={styles.promoBtn} activeOpacity={0.8}>
+            <Text style={styles.promoBtnText}>Download</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Main Content */}
+      {/* ─── Main ─── */}
       <View style={styles.main}>
-        {/* Modern Header Bar */}
+        {/* Header */}
         <View style={styles.header}>
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-                <Search size={18} color="#94a3b8" />
-                <Text style={styles.searchPlaceholder}>Search projects...</Text>
-                <View style={styles.shortcutBadge}>
-                    <Text style={styles.shortcutText}>⌘ K</Text>
-                </View>
+          <View style={styles.searchBar}>
+            <Search size={18} color="#94a3b8" />
+            <Text style={styles.searchText}>Search...</Text>
+            <View style={styles.searchShortcut}>
+              <Text style={styles.searchShortcutText}>⌘ F</Text>
             </View>
-            
-            <View style={styles.headerRight}>
-                <TouchableOpacity style={styles.iconBtn}>
-                    <View style={styles.iconBtnInner}>
-                        <Bell size={20} color="#64748b" />
-                        <View style={styles.notificationDot} />
-                    </View>
-                </TouchableOpacity>
-                
-                <View style={styles.userProfileBtn}>
-                    <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>
-                            {userEmail[0]?.toUpperCase() || 'U'}
-                        </Text>
-                    </View>
-                    <View style={{ gap: 2 }}>
-                        <Text style={styles.headerUserName}>{isSuperuser ? 'Super Admin' : 'User'}</Text>
-                        <Text style={styles.headerUserEmail}>{userEmail}</Text>
-                    </View>
+          </View>
+          
+          <View style={styles.headerRight}>
+            <View style={{ position: 'relative' as any }}>
+              <TouchableOpacity 
+                style={styles.headerIconBtn}
+                onPress={() => setShowNotifications(!showNotifications)}
+              >
+                <Bell size={20} color="#475569" />
+                {notifications.length > 0 && <View style={styles.notifDot} />}
+              </TouchableOpacity>
+              
+              {showNotifications && (
+                <View style={styles.notificationDropdown}>
+                  <Text style={styles.notifHeader}>Notifications</Text>
+                  {notifications.length === 0 ? (
+                    <Text style={styles.noNotifs}>No new notifications</Text>
+                  ) : (
+                    notifications.map((notif, i) => (
+                      <TouchableOpacity key={i} style={styles.notifItem}>
+                        <Text style={styles.notifTitle}>{notif.title || 'Notification'}</Text>
+                        <Text style={styles.notifText}>{notif.message || notif.description}</Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
                 </View>
+              )}
             </View>
+            <View style={styles.headerDivider} />
+            <TouchableOpacity style={styles.userArea} activeOpacity={0.7}>
+              {userAvatar ? (
+                <img 
+                  src={userAvatar} 
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    objectFit: 'cover' as any,
+                  }} 
+                  alt="Profile"
+                />
+              ) : (
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>{(userName || userEmail)[0]?.toUpperCase() || 'U'}</Text>
+                </View>
+              )}
+              <View>
+                <Text style={styles.userDisplayName}>{displayName}</Text>
+                <Text style={styles.userEmailText}>{userEmail}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Content Area */}
-        <View style={{ flex: 1, position: 'relative' }}>
-             <View style={styles.pageHeaderContainer}>
-                <View>
-                    <Text style={styles.pageTitle}>{title}</Text>
-                    {!!subtitle && <Text style={styles.pageSubtitle}>{subtitle}</Text>}
-                </View>
-                <View style={styles.pageActions}>
-                    {actions}
-                </View>
-             </View>
-
-            <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-                 <Outlet />
-            </ScrollView>
+        {/* Page Header */}
+        <View style={styles.pageHeader}>
+          <View>
+            <Text style={styles.pageTitle}>{title}</Text>
+            {!!subtitle && <Text style={styles.pageSubtitle}>{subtitle}</Text>}
+          </View>
+          <View style={styles.pageActions}>{actions}</View>
         </View>
+
+        {/* Content */}
+        <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
+          <Outlet />
+        </ScrollView>
       </View>
     </View>
     </LayoutContext.Provider>
   );
 }
 
+const SIDEBAR_W = 260;
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#F9FAFB', // Modern light gray
-    height: '100%',
-    overflow: 'hidden'
-  },
-  // Sidebar
-  sidebar: {
-    width: 250,
-    backgroundColor: '#FFFFFF',
-    display: 'flex',
-    flexDirection: 'column',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    borderRightWidth: 1,
-    borderRightColor: '#f1f5f9',
-  },
-  sidebarHeader: {
-    marginBottom: 40,
-    paddingHorizontal: 12
-  },
-  logoRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12
-  },
-  logoIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      borderWidth: 2,
-      borderColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center'
-  },
-  logoText: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: '#0f172a',
-      letterSpacing: -0.5
-  },
-  
-  navScroll: {
-    flex: 1,
-  },
-  menuGroup: {
-      marginBottom: 32
-  },
-  menuGroupTitle: {
-      color: '#94a3b8',
-      fontSize: 12,
-      fontWeight: '600',
-      paddingHorizontal: 12,
-      marginBottom: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5
-  },
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 14,
-    marginBottom: 4,
-    position: 'relative'
-  },
-  navItemActive: {
-     backgroundColor: 'transparent'
-  },
-  activePill: {
-      position: 'absolute',
-      left: -16, 
-      top: 6,
-      bottom: 6,
-      width: 4,
-      backgroundColor: colors.primary, // Using primary blue instead of green
-      borderTopRightRadius: 4,
-      borderBottomRightRadius: 4
-  },
-  navText: {
-    fontSize: 15, 
-    color: '#94a3b8',
-    fontWeight: '500'
-  },
-  navTextActive: {
-    color: colors.primary,
-    fontWeight: '700'
-  },
+  shell: { flex: 1, flexDirection: 'row', backgroundColor: '#F8FAFC', height: '100%' as any, overflow: 'hidden' as any },
 
-  // Promo Card
-  promoCardContainer: {
-      marginTop: 'auto',
-      paddingTop: 32,
-      paddingHorizontal: 0
-  },
-  promoCard: {
-      backgroundColor: colors.primary, // Using primary layout
-      borderRadius: 24,
-      padding: 20,
-      position: 'relative',
-      overflow: 'hidden',
-      height: 220,
-      justifyContent: 'flex-end',
-      paddingBottom: 24
-  },
-  promoIcon: {
-      width: 32, 
-      height: 32, 
-      borderRadius: 16, 
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'absolute',
-      top: 20,
-      left: 20
-  },
-  promoTitle: {
-      color: 'white',
-      fontSize: 18,
-      fontWeight: '700',
-      lineHeight: 24
-  },
-  promoText: {
-      color: 'rgba(255,255,255,0.7)',
-      fontSize: 12,
-      marginTop: 4,
-      marginBottom: 16
-  },
-  downloadBtn: {
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      borderRadius: 12,
-      paddingVertical: 10,
-      alignItems: 'center'
-  },
-  downloadBtnText: {
-      color: 'white',
-      fontWeight: '600',
-      fontSize: 13
-  },
-  promoBgCurve1: {
-      position: 'absolute',
-      top: -20,
-      right: -20,
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)'
-  },
-  promoBgCurve2: {
-      position: 'absolute',
-      top: 40,
-      right: -40,
-      width: 120,
-      height: 120,
-      borderRadius: 60,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)'
-  },
+  /* Sidebar */
+  sidebar: { width: SIDEBAR_W, backgroundColor: '#FFFFFF', borderRightWidth: 1, borderRightColor: '#F1F5F9', paddingTop: 28, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'column' as any },
+  logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 36, paddingHorizontal: 8 },
+  logoMark: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  logoMarkText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  logoText: { fontSize: 22, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
 
-  // Main Content
-  main: {
-    flex: 1,
-    flexDirection: 'column',
-    position: 'relative',
-  },
-  header: {
-    height: 90,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 40,
-    zIndex: 10
-  },
-  searchContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#FFFFFF',
-      paddingHorizontal: 16,
-      height: 48,
-      borderRadius: 24,
-      width: 300,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.02,
-      shadowRadius: 8,
-      elevation: 1 
-  },
-  searchPlaceholder: {
-      flex: 1,
-      marginLeft: 12,
-      color: '#94a3b8',
-      fontSize: 14
-  },
-  shortcutBadge: {
-      backgroundColor: '#f1f5f9',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6
-  },
-  shortcutText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: '#64748b'
-  },
-  headerRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 20
-  },
-  iconBtn: {
-      padding: 4,
-  },
-  iconBtnInner: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  navScroll: { flex: 1 },
+  navGroup: { marginBottom: 28 },
+  navGroupLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' as any, paddingHorizontal: 12, marginBottom: 8 },
+  navItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, marginBottom: 2, position: 'relative' as any },
+  navItemActive: { backgroundColor: '#F0F7FF' },
+  activeIndicator: { position: 'absolute' as any, left: -20, top: 8, bottom: 8, width: 4, borderTopRightRadius: 4, borderBottomRightRadius: 4, backgroundColor: colors.primary },
+  navLabel: { fontSize: 15, fontWeight: '500', color: '#94a3b8' },
+  navLabelActive: { color: colors.primary, fontWeight: '700' },
+
+  /* Promo */
+  promoCard: { backgroundColor: colors.primary, borderRadius: 20, padding: 20, paddingBottom: 18, marginTop: 12, position: 'relative' as any, overflow: 'hidden' as any },
+  promoBg1: { position: 'absolute' as any, top: -30, right: -30, width: 100, height: 100, borderRadius: 50, borderWidth: 20, borderColor: 'rgba(255,255,255,0.06)' },
+  promoBg2: { position: 'absolute' as any, top: 30, right: -50, width: 120, height: 120, borderRadius: 60, borderWidth: 20, borderColor: 'rgba(255,255,255,0.04)' },
+  promoIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  promoHeading: { color: '#fff', fontSize: 17, fontWeight: '700', lineHeight: 22, marginBottom: 4 },
+  promoSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 16 },
+  promoBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  promoBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+
+  /* Main */
+  main: { flex: 1, flexDirection: 'column' as any },
+
+  /* Header */
+  header: { height: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 16, height: 42, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', width: 280, gap: 10 },
+  searchText: { flex: 1, color: '#94a3b8', fontSize: 14 },
+  searchShortcut: { backgroundColor: '#fff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' },
+  searchShortcutText: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  headerIconBtn: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', position: 'relative' as any },
+  notifDot: { position: 'absolute' as any, top: 10, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#F8FAFC' },
+  notificationDropdown: {
+    position: 'absolute' as any,
+    top: '100%',
+    right: 0,
+    marginTop: 8,
+    width: 320,
     backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    zIndex: 1000,
+    maxHeight: 400,
   },
-  notificationDot: {
-      position: 'absolute',
-      top: 14,
-      right: 14,
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: '#fb7185',
-      borderWidth: 1,
-      borderColor: 'white'
+  notifHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  userProfileBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      marginLeft: 12
+  noNotifs: {
+    padding: 32,
+    textAlign: 'center' as any,
+    color: '#94a3b8',
+    fontSize: 14,
   },
-  avatar: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative'
+  notifItem: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
   },
-  avatarText: {
-      color: 'white',
-      fontWeight: '600',
-      fontSize: 18
+  notifTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
   },
-  headerUserName: {
-      fontSize: 14, 
-      fontWeight: '700',
-      color: '#0f172a'
+  notifText: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
   },
-  headerUserEmail: {
-      fontSize: 12,
-      color: '#94a3b8'
-  },
-  pageHeaderContainer: {
-      paddingHorizontal: 40,
-      marginBottom: 24,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-end'
-  },
-  pageTitle: {
-      fontSize: 32,
-      fontWeight: '800',
-      color: '#0f172a',
-      marginBottom: 8,
-      letterSpacing: -1
-  },
-  pageSubtitle: {
-      fontSize: 15,
-      color: '#94a3b8',
-      fontWeight: '400'
-  },
-  pageActions: {
-      flexDirection: 'row',
-      gap: 12
-  },
-  contentScroll: {
-      flex: 1,
-  },
-  contentContainer: {
-      paddingHorizontal: 40,
-      paddingBottom: 60
-  }
+  headerDivider: { width: 1, height: 32, backgroundColor: '#E2E8F0' },
+  userArea: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  userAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  userAvatarText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  userDisplayName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  userEmailText: { fontSize: 12, color: '#94a3b8' },
+
+  /* Page Header */
+  pageHeader: { paddingHorizontal: 32, paddingTop: 28, paddingBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', letterSpacing: -0.8, marginBottom: 4 },
+  pageSubtitle: { fontSize: 15, color: '#94a3b8', fontWeight: '400' },
+  pageActions: { flexDirection: 'row', gap: 12 },
+
+  /* Content */
+  contentScroll: { flex: 1 },
+  contentInner: { paddingHorizontal: 32, paddingBottom: 60 },
 });

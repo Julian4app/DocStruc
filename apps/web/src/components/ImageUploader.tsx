@@ -25,9 +25,9 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
             
             for (let i = 0; i < event.target.files.length; i++) {
                 const file = event.target.files[i];
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-                const filePath = `${fileName}`;
+                // Keep original filename
+                const fileName = file.name;
+                const filePath = `${Date.now()}-${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from(bucketName)
@@ -76,9 +76,10 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
                  const newUrls: string[] = [];
                  for (let i = 0; i < files.length; i++) {
                      const file = files[i];
-                     const fileExt = file.name.split('.').pop();
-                     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-                     const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
+                     // Keep original filename
+                     const fileName = file.name;
+                     const filePath = `${Date.now()}-${fileName}`;
+                     const { error } = await supabase.storage.from(bucketName).upload(filePath, file);
                      if (error) throw error;
                      const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
                      newUrls.push(data.publicUrl);

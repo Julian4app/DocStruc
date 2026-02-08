@@ -57,7 +57,7 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
     const selectedOptions = options.filter(o => values.includes(o.value));
 
     return (
-        <div ref={containerRef} style={{ marginBottom: 16 }}> 
+        <div ref={containerRef} style={{ marginBottom: 16, position: 'relative', zIndex: 999999 }}> 
             {/* Using div for ref containment in web, View inside for styling */}
             <View>
                 {label && <Text style={styles.label}>{label}</Text>}
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 12,
         elevation: 5,
-        zIndex: 1000,
+        zIndex: 999999,
         overflow: 'hidden'
     },
     searchInput: {

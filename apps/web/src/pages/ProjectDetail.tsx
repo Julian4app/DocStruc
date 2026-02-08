@@ -348,7 +348,10 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   sectionCard: {
-    padding: spacing.l,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   sectionTitle: {
     fontSize: 18,
@@ -375,14 +378,14 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderRadius: 20,
-    backgroundColor: '#f0f4ff',
+    backgroundColor: '#EFF6FF',
   },
   statusText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.primary,
     letterSpacing: 0.5,
   },
@@ -397,9 +400,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
+    borderBottomColor: '#F1F5F9',
   },
   memberEmail: {
     fontSize: 14,
@@ -421,7 +424,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: '#F1F5F9',
   },
   inviteLabel: {
     fontWeight: '600',
@@ -473,7 +476,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: '#F1F5F9',
   },
   roomDetailContainer: {
     minHeight: 400,

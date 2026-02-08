@@ -25,7 +25,8 @@ export function Button({ children, onClick, variant = 'primary', style, textStyl
 
   const getTextColor = () => {
     if (disabled) return '#94a3b8';
-    if (variant === 'outline' || variant === 'ghost') return colors.primary;
+    if (variant === 'outline') return '#475569';
+    if (variant === 'ghost') return colors.primary;
     return '#FFFFFF';
   };
 
@@ -50,43 +51,31 @@ export function Button({ children, onClick, variant = 'primary', style, textStyl
 
 const styles = StyleSheet.create({
   button: {
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingHorizontal: 20,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: 'row',
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 3.84,
-    elevation: 2,
   },
   buttonLarge: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
   },
   buttonSmall: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     borderRadius: 8,
-    shadowOpacity: 0,
-    elevation: 0,
   },
   buttonOutline: {
     borderWidth: 1.5,
-    borderColor: colors.primary,
-    shadowOpacity: 0,
-    elevation: 0,
+    borderColor: '#E2E8F0',
   },
   text: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0,
   }
 });

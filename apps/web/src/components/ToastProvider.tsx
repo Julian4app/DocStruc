@@ -83,8 +83,8 @@ const styles = StyleSheet.create({
         bottom: 24,
         right: 24,
         zIndex: 9999,
-        gap: 12,
-        maxWidth: 400,
+        gap: 10,
+        maxWidth: 380,
         width: '100%'
     },
     toast: {
@@ -92,11 +92,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 16,
-        borderRadius: 8,
+        paddingHorizontal: 20,
+        borderRadius: 14,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
         elevation: 6,
         minWidth: 300,
     },
@@ -109,6 +110,6 @@ const styles = StyleSheet.create({
     text: {
         color: '#fff',
         fontSize: 14,
-        fontWeight: '500'
+        fontWeight: '600'
     }
 });

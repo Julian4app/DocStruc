@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input, Card } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
 import { ImageUploader } from '../../components/ImageUploader';
+import { CountrySelect } from '../../components/CountrySelect';
+import { PhoneInput } from '../../components/PhoneInput';
 import { useToast } from '../../components/ToastProvider';
 import { supabase } from '../../lib/supabase';
 import { colors, spacing } from '@docstruc/theme';
-import { Plus, Trash2, Edit2, User, Building, Hammer } from 'lucide-react';
+import { Plus, Trash2, Edit2, User, Building, Hammer, Mail } from 'lucide-react';
 
 export function Accessors() {
   const { setTitle, setSubtitle } = useLayout();
@@ -36,12 +38,16 @@ export function Accessors() {
       last_name: '',
       email: '',
       phone: '',
+      phone_country: 'DE',
       // Employee
       personal_number: '',
       department: '',
       // Owner
       company_name: '',
-      address: '',
+      street: '',
+      zip: '',
+      city: '',
+      country: 'DE',
       notes: '',
       avatar_url: '' as string
   });
@@ -52,8 +58,10 @@ export function Accessors() {
       street: '',
       zip: '',
       city: '',
+      country: 'DE',
+      website: '',
       logo_url: '' as string,
-      contacts: [] as any[] // { first_name, last_name, email, phone, department, notes }
+      contacts: [] as any[] // { first_name, last_name, email, phone, phone_country, department, role }
   });
 
   useEffect(() => {
@@ -103,27 +111,31 @@ export function Accessors() {
 
   const handleOpenDetail = (item: any) => {
       setSelectedItem(item);
-      setPersonForm({
-          first_name: item.first_name || '',
-          last_name: item.last_name || '',
-          email: item.email || '',
-          phone: item.phone || '',
-          personal_number: item.personal_number || '',
-          department: item.department || '',
-          company_name: item.company_name || '',
-          address: item.detailed_address || '', // Map detailed_address -> address for form
-          notes: item.notes || '',
-          avatar_url: item.avatar_url || ''
-      });
-      
-      if (activeTab === 'subcontractors') {
+          setPersonForm({
+              first_name: item.first_name || '',
+              last_name: item.last_name || '',
+              email: item.email || '',
+              phone: item.phone || '',
+              phone_country: item.phone_country || 'DE',
+              personal_number: item.personal_number || '',
+              department: item.department || '',
+              company_name: item.company_name || '',
+              street: item.street || '',
+              zip: item.zip || '',
+              city: item.city || '',
+              country: item.country || 'DE',
+              notes: item.notes || '',
+              avatar_url: item.avatar_url || ''
+          });      if (activeTab === 'subcontractors') {
           setSubForm({
-              name: item.name || (item.company_name) || '',
+              name: item.name || item.company_name || '',
               trade: item.trade || '',
               street: item.street || '',
               zip: item.zip || '',
               city: item.city || '',
-              logo_url: item.logo_url || (item.profile_picture_url) || '',
+              country: item.country || 'DE',
+              website: item.website || '',
+              logo_url: item.logo_url || item.profile_picture_url || '',
               contacts: item.contacts || []
           });
       }
@@ -132,11 +144,9 @@ export function Accessors() {
   };
 
   const resetForms = () => {
-    setPersonForm({ first_name: '', last_name: '', email: '', phone: '', personal_number: '', department: '', company_name: '', address: '', notes: '', avatar_url: '' });
-    setSubForm({ name: '', trade: '', street: '', zip: '', city: '', logo_url: '', contacts: [] });
-  };
-
-  const handleDelete = async (id: string) => {
+      setPersonForm({ first_name: '', last_name: '', email: '', phone: '', phone_country: 'DE', personal_number: '', department: '', company_name: '', street: '', zip: '', city: '', country: 'DE', notes: '', avatar_url: '' });
+      setSubForm({ name: '', trade: '', street: '', zip: '', city: '', country: 'DE', website: '', logo_url: '', contacts: [] });
+  };  const handleDelete = async (id: string) => {
       if (!confirm('Are you sure you want to delete this entry?')) return;
       
       const table = activeTab === 'subcontractors' ? 'subcontractors' : 'crm_contacts';
@@ -166,6 +176,7 @@ export function Accessors() {
                  street: subForm.street,
                  zip: subForm.zip,
                  city: subForm.city,
+                 country: subForm.country,
                  logo_url: subForm.logo_url,
                  profile_picture_url: subForm.logo_url // backup
              };
@@ -195,23 +206,31 @@ export function Accessors() {
              }
 
         } else {
-             // Person
+             // Person (Employee or Owner)
              if (!personForm.first_name || !personForm.last_name) { showToast('Name is required', 'error'); return; }
 
-             const payload = {
+             let payload: any = {
                  type: activeTab === 'employees' ? 'employee' : 'owner',
                  first_name: personForm.first_name,
                  last_name: personForm.last_name,
                  email: personForm.email,
                  phone: personForm.phone,
-                 avatar_url: personForm.avatar_url,
-                 // Specifics
-                 personal_number: activeTab === 'employees' ? personForm.personal_number : null,
-                 department: activeTab === 'employees' ? personForm.department : null,
-                 company_name: activeTab === 'owners' ? personForm.company_name : null,
-                 detailed_address: activeTab === 'owners' ? personForm.address : null,
-                 notes: activeTab === 'owners' ? personForm.notes : null
+                 phone_country: personForm.phone_country,
+                 avatar_url: personForm.avatar_url
              };
+
+             // Add type-specific fields
+             if (activeTab === 'employees') {
+                 payload.personal_number = personForm.personal_number;
+                 payload.department = personForm.department;
+             } else if (activeTab === 'owners') {
+                 payload.company_name = personForm.company_name;
+                 payload.street = personForm.street;
+                 payload.zip = personForm.zip;
+                 payload.city = personForm.city;
+                 payload.country = personForm.country;
+                 payload.notes = personForm.notes;
+             }
 
              if (isEditing && selectedItem) {
                  const { error } = await supabase.from('crm_contacts').update(payload).eq('id', selectedItem.id);
@@ -307,7 +326,11 @@ export function Accessors() {
         <ModernModal 
             visible={isModalOpen} 
             onClose={() => setIsModalOpen(false)} 
-            title={isEditing ? "Edit Entry" : "Create New Entry"}
+            title={
+                isEditing 
+                    ? `Edit ${activeTab === 'employees' ? 'Employee' : activeTab === 'owners' ? 'Owner' : 'Subcontractor'}`
+                    : `Add New ${activeTab === 'employees' ? 'Employee' : activeTab === 'owners' ? 'Owner' : 'Subcontractor'}`
+            }
         >
             <ScrollView style={{ maxHeight: 600 }}>
                 <View style={styles.form}>
@@ -325,7 +348,14 @@ export function Accessors() {
                                 <View style={{flex:1}}><Input label="Last Name" value={personForm.last_name} onChangeText={t => setPersonForm({...personForm, last_name: t})} /></View>
                             </View>
                             <Input label="Email" value={personForm.email} onChangeText={t => setPersonForm({...personForm, email: t})} />
-                            <Input label="Phone" value={personForm.phone} onChangeText={t => setPersonForm({...personForm, phone: t})} />
+                            <PhoneInput 
+                                label="Phone"
+                                placeholder="Phone number"
+                                value={personForm.phone}
+                                countryCode={personForm.phone_country}
+                                onChangeText={(phone) => setPersonForm({...personForm, phone})}
+                                onCountryChange={(code) => setPersonForm({...personForm, phone_country: code})}
+                            />
                             
                             {activeTab === 'employees' && (
                                 <>
@@ -336,7 +366,16 @@ export function Accessors() {
                             {activeTab === 'owners' && (
                                 <>
                                     <Input label="Company Name (Optional)" value={personForm.company_name} onChangeText={t => setPersonForm({...personForm, company_name: t})} />
-                                    <Input label="Detailed Address" value={personForm.address} onChangeText={t => setPersonForm({...personForm, address: t})} multiline />
+                                    <Input label="Street Address" value={personForm.street} onChangeText={t => setPersonForm({...personForm, street: t})} />
+                                    <View style={styles.row}>
+                                        <View style={{flex:1}}><Input label="ZIP Code" value={personForm.zip} onChangeText={t => setPersonForm({...personForm, zip: t})} /></View>
+                                        <View style={{flex:2}}><Input label="City" value={personForm.city} onChangeText={t => setPersonForm({...personForm, city: t})} /></View>
+                                    </View>
+                                    <CountrySelect 
+                                        label="Country" 
+                                        value={personForm.country} 
+                                        onChange={(code) => setPersonForm({...personForm, country: code})} 
+                                    />
                                     <Input label="Notes" value={personForm.notes} onChangeText={t => setPersonForm({...personForm, notes: t})} multiline />
                                 </>
                             )}
@@ -357,24 +396,63 @@ export function Accessors() {
                                 <View style={{flex:1}}><Input label="ZIP" value={subForm.zip} onChangeText={t => setSubForm({...subForm, zip: t})} /></View>
                                 <View style={{flex:2}}><Input label="City" value={subForm.city} onChangeText={t => setSubForm({...subForm, city: t})} /></View>
                             </View>
+                            <CountrySelect 
+                                label="Country" 
+                                value={subForm.country} 
+                                onChange={(code) => setSubForm({...subForm, country: code})} 
+                            />
+                            <Input label="Website" value={subForm.website} onChangeText={t => setSubForm({...subForm, website: t})} placeholder="https://example.com" />
 
                             <Text style={styles.sectionHeader}>Contacts</Text>
                             {/* Simple Contact Add for Subcontractors */}
                             <Button variant="outline" size="small" onClick={() => {
-                                setSubForm({...subForm, contacts: [...subForm.contacts, { first_name: '', last_name: '', email: '' }]});
+                                setSubForm({...subForm, contacts: [...subForm.contacts, { first_name: '', last_name: '', email: '', phone: '', phone_country: subForm.country, department: '', role: '' }]});
                             }}>+ Add Contact</Button>
                             
                             {subForm.contacts.map((c, i) => (
-                                <View key={i} style={styles.contactRow}>
-                                    <Input placeholder="First Name" value={c.first_name} onChangeText={t => {
-                                        const newC = [...subForm.contacts]; newC[i].first_name = t; setSubForm({...subForm, contacts: newC});
-                                    }} style={{flex:1}} />
-                                    <Input placeholder="Last Name" value={c.last_name} onChangeText={t => {
-                                        const newC = [...subForm.contacts]; newC[i].last_name = t; setSubForm({...subForm, contacts: newC});
-                                    }} style={{flex:1}} />
-                                     <Input placeholder="Email" value={c.email} onChangeText={t => {
+                                <View key={i} style={styles.contactBlock}>
+                                    <View style={styles.contactHeader}>
+                                        <Text style={styles.contactNumber}>Contact {i + 1}</Text>
+                                        <TouchableOpacity 
+                                            onPress={() => {
+                                                const newC = subForm.contacts.filter((_, idx) => idx !== i);
+                                                setSubForm({...subForm, contacts: newC});
+                                            }}
+                                            style={styles.deleteContactBtn}
+                                        >
+                                            <Trash2 size={16} color="#ef4444" />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <View style={styles.contactRow}>
+                                        <Input placeholder="First Name" value={c.first_name} onChangeText={t => {
+                                            const newC = [...subForm.contacts]; newC[i].first_name = t; setSubForm({...subForm, contacts: newC});
+                                        }} style={{flex:1}} />
+                                        <Input placeholder="Last Name" value={c.last_name} onChangeText={t => {
+                                            const newC = [...subForm.contacts]; newC[i].last_name = t; setSubForm({...subForm, contacts: newC});
+                                        }} style={{flex:1}} />
+                                    </View>
+                                    <Input placeholder="Email" value={c.email} onChangeText={t => {
                                         const newC = [...subForm.contacts]; newC[i].email = t; setSubForm({...subForm, contacts: newC});
-                                    }} style={{flex:1}} />
+                                    }} />
+                                    <PhoneInput 
+                                        placeholder="Phone number"
+                                        value={c.phone || ''}
+                                        countryCode={c.phone_country || subForm.country}
+                                        onChangeText={(phone) => {
+                                            const newC = [...subForm.contacts]; newC[i].phone = phone; setSubForm({...subForm, contacts: newC});
+                                        }}
+                                        onCountryChange={(code) => {
+                                            const newC = [...subForm.contacts];
+                                            newC[i].phone_country = code;
+                                            setSubForm({...subForm, contacts: newC, country: code});
+                                        }}
+                                    />
+                                    <Input placeholder="Department" value={c.department || ''} onChangeText={t => {
+                                        const newC = [...subForm.contacts]; newC[i].department = t; setSubForm({...subForm, contacts: newC});
+                                    }} />
+                                    <Input placeholder="Role" value={c.role || ''} onChangeText={t => {
+                                        const newC = [...subForm.contacts]; newC[i].role = t; setSubForm({...subForm, contacts: newC});
+                                    }} />
                                 </View>
                             ))}
                         </>
@@ -414,14 +492,15 @@ export function Accessors() {
 
                          <View style={styles.detailGrid}>
                              {Object.entries(activeTab === 'subcontractors' ? {
-                                 "Address": selectedItem.street ? `${selectedItem.street}, ${selectedItem.zip} ${selectedItem.city}` : selectedItem.detailed_address,
-                                 "Trade": selectedItem.trade
+                                 "Address": selectedItem.street ? `${selectedItem.street}, ${selectedItem.zip} ${selectedItem.city}${selectedItem.country ? ', ' + selectedItem.country : ''}` : '',
+                                 "Trade": selectedItem.trade,
+                                 "Website": selectedItem.website
                              } : {
                                  "Phone": selectedItem.phone,
                                  "Personal #": selectedItem.personal_number,
                                  "Department": selectedItem.department,
                                  "Company": selectedItem.company_name,
-                                 "Address": selectedItem.detailed_address,
+                                 "Address": selectedItem.street ? `${selectedItem.street}, ${selectedItem.zip} ${selectedItem.city}${selectedItem.country ? ', ' + selectedItem.country : ''}` : '',
                                  "Notes": selectedItem.notes
                              }).map(([key, val]) => val ? (
                                  <View key={key} style={styles.detailItem}>
@@ -437,8 +516,23 @@ export function Accessors() {
                                  <Text style={styles.sectionHeader}>Contacts</Text>
                                  {selectedItem.contacts.map((c: any) => (
                                      <View key={c.id} style={styles.subContact}>
-                                         <Text style={{fontWeight:'600'}}>{c.first_name} {c.last_name}</Text>
-                                         <Text style={{fontSize:12, color: colors.textSecondary}}>{c.email} • {c.phone}</Text>
+                                         <View style={styles.contactInfoRow}>
+                                             <View style={{ flex: 1 }}>
+                                                 <Text style={{fontWeight:'700', fontSize: 15, marginBottom: 4}}>{c.first_name} {c.last_name}</Text>
+                                                 {c.role && <Text style={{fontSize: 12, color: colors.textSecondary, marginBottom: 2}}>{c.role}</Text>}
+                                                 {c.department && <Text style={{fontSize: 12, color: colors.textSecondary, marginBottom: 4}}>Department: {c.department}</Text>}
+                                                 {c.phone && <Text style={{fontSize: 13, color: '#0f172a', marginBottom: 2}}>📞 {c.phone}</Text>}
+                                             </View>
+                                             {c.email && (
+                                                 <TouchableOpacity 
+                                                     style={styles.emailBtn}
+                                                     onPress={() => Linking.openURL(`mailto:${c.email}`)}
+                                                 >
+                                                     <Mail size={18} color="#ffffff" />
+                                                 </TouchableOpacity>
+                                             )}
+                                         </View>
+                                         {c.email && <Text style={{fontSize: 13, color: '#0f172a', marginTop: 4}}>✉️ {c.email}</Text>}
                                      </View>
                                  ))}
                              </View>
@@ -452,38 +546,118 @@ export function Accessors() {
 }
 
 const styles = StyleSheet.create({
-    tabs: { flexDirection: 'row', gap: 12, marginBottom: 24, paddingHorizontal: 4 },
-    tab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#f0f0f0' },
-    activeTab: { backgroundColor: colors.primary },
-    tabText: { fontWeight: '500', color: colors.textSecondary },
+    tabs: { 
+        flexDirection: 'row', 
+        gap: 8, 
+        marginBottom: 24, 
+        backgroundColor: '#FFFFFF', 
+        borderRadius: 14, 
+        padding: 6, 
+        borderWidth: 1, 
+        borderColor: '#F1F5F9',
+        alignSelf: 'flex-start' as any,
+    },
+    tab: { 
+        paddingVertical: 9, 
+        paddingHorizontal: 20, 
+        borderRadius: 10, 
+    },
+    activeTab: { 
+        backgroundColor: colors.primary, 
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+    },
+    tabText: { fontWeight: '600', color: '#94a3b8', fontSize: 14 },
     activeTabText: { color: '#fff' },
-    toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    count: { color: colors.textSecondary },
-    grid: { gap: 12, paddingBottom: 40 },
-    empty: { textAlign: 'center', marginTop: 40, color: colors.textSecondary },
-    card: { padding: 12 },
-    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' },
-    avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-    cardTitle: { fontWeight: '600', fontSize: 16 },
-    cardSub: { fontSize: 14, color: colors.textSecondary },
-    form: { gap: 12 },
+    toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    count: { color: '#94a3b8', fontWeight: '500', fontSize: 14 },
+    grid: { gap: 8, paddingBottom: 40 },
+    empty: { textAlign: 'center', marginTop: 40, color: '#94a3b8', fontWeight: '500' },
+    card: { 
+        padding: 14, 
+        borderRadius: 14, 
+        borderWidth: 1, 
+        borderColor: '#F1F5F9',
+        marginBottom: 2,
+    },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    avatar: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#F8FAFC' },
+    avatarPlaceholder: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
+    cardTitle: { fontWeight: '700', fontSize: 15, color: '#0f172a', letterSpacing: -0.2 },
+    cardSub: { fontSize: 13, color: '#94a3b8', fontWeight: '500', marginTop: 2 },
+    form: { gap: 14 },
     row: { flexDirection: 'row', gap: 12 },
-    modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+    modalActions: { 
+        flexDirection: 'row', 
+        gap: 12, 
+        marginTop: 24,
+        position: 'relative' as any,
+        zIndex: 1,
+    },
     
     // Detail View
-    detailHeader: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginBottom: 0 },
-    iconBtn: { padding: 8, backgroundColor: '#f5f5f5', borderRadius: 8 },
+    detailHeader: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginBottom: 0 },
+    iconBtn: { 
+        padding: 10, 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 10, 
+        borderWidth: 1, 
+        borderColor: '#F1F5F9' 
+    },
     detailContent: { gap: 24, paddingBottom: 20 },
-    detailHero: { flexDirection: 'row', alignItems: 'center', gap: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-    detailImage: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#eee' },
-    detailTitle: { fontSize: 24, fontWeight: 'bold' },
-    detailSub: { fontSize: 16, color: colors.textSecondary },
+    detailHero: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        gap: 20, 
+        paddingBottom: 20, 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#F1F5F9' 
+    },
+    detailImage: { width: 80, height: 80, borderRadius: 20, backgroundColor: '#F8FAFC' },
+    detailTitle: { fontSize: 22, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
+    detailSub: { fontSize: 15, color: '#94a3b8', fontWeight: '500', marginTop: 2 },
     detailGrid: { gap: 16 },
-    detailItem: { borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 8 },
-    detailLabel: { fontSize: 12, color: colors.textSecondary, textTransform: 'uppercase' },
-    detailValue: { fontSize: 16, marginTop: 4 },
-    sectionHeader: { fontSize: 16, fontWeight: '600', marginTop: 12, marginBottom: 8 },
-    contactRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-    subContact: { padding: 12, backgroundColor: '#f9f9f9', borderRadius: 8, marginBottom: 8 }
+    detailItem: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 10 },
+    detailLabel: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase' as any, fontWeight: '700', letterSpacing: 0.5 },
+    detailValue: { fontSize: 16, marginTop: 4, color: '#0f172a', fontWeight: '500' },
+    sectionHeader: { fontSize: 16, fontWeight: '700', marginTop: 12, marginBottom: 8, color: '#0f172a' },
+    contactBlock: { marginBottom: 16, padding: 14, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+    contactHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    contactNumber: { fontSize: 14, fontWeight: '700', color: '#64748b' },
+  contactRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    deleteContactBtn: { 
+        padding: 10, 
+        backgroundColor: '#FEE2E2', 
+        borderRadius: 10, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#FECACA'
+    },
+    subContact: { 
+        padding: 16, 
+        backgroundColor: '#F8FAFC', 
+        borderRadius: 12, 
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0'
+    },
+    contactInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+    },
+    emailBtn: {
+        backgroundColor: colors.primary,
+        padding: 10,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
 });

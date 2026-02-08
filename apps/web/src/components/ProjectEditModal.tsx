@@ -10,14 +10,14 @@ import { useToast } from './ToastProvider';
 import { supabase } from '../lib/supabase';
 import { colors, spacing } from '@docstruc/theme';
 
-interface ProjectCreateModalProps {
+interface ProjectEditModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onProjectCreated: () => void;
-    userId: string;
+    onProjectUpdated: () => void;
+    project: any;
 }
 
-export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }: ProjectCreateModalProps) {
+export function ProjectEditModal({ isOpen, onClose, onProjectUpdated, project }: ProjectEditModalProps) {
     const { showToast } = useToast();
     const [loading, setLoading] = useState(false);
     
@@ -43,35 +43,71 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
     const [selectedSubcontractors, setSelectedSubcontractors] = useState<string[]>([]);
 
     useEffect(() => {
-        if (isOpen) {
-            fetchResources();
+        if (isOpen && project) {
+            // Load project data into form
+            setTitle(project.name || '');
+            setSubtitle(project.subtitle || '');
+            setDescription(project.description || '');
+            setStreet(project.street || '');
+            setZip(project.zip || '');
+            setCity(project.city || '');
+            setCountry(project.country || 'DE');
+            setStatus(project.status || 'Angefragt');
+            setImages(project.images || []);
+            
+            // Load resources and existing relationships
+            fetchResourcesAndLinks();
         }
-    }, [isOpen]);
+    }, [isOpen, project]);
 
-    const fetchResources = async () => {
+    const fetchResourcesAndLinks = async () => {
+        // Fetch all available employees, owners, subcontractors
         const [empRes, ownRes, subRes] = await Promise.all([
             supabase.from('crm_contacts').select('*').eq('type', 'employee'),
             supabase.from('crm_contacts').select('*').eq('type', 'owner'),
             supabase.from('subcontractors').select('*')
         ]);
+        
         if (empRes.data) setEmployees(empRes.data);
         if (ownRes.data) setOwners(ownRes.data);
         if (subRes.data) setSubcontractors(subRes.data);
+
+        // Fetch existing relationships
+        if (project?.id) {
+            const [linksRes, subLinksRes] = await Promise.all([
+                supabase.from('project_crm_links').select('contact_id, role').eq('project_id', project.id),
+                supabase.from('project_subcontractors').select('subcontractor_id').eq('project_id', project.id)
+            ]);
+
+            if (linksRes.data) {
+                const empIds = linksRes.data.filter(l => l.role === 'employee').map(l => l.contact_id);
+                const ownIds = linksRes.data.filter(l => l.role === 'owner').map(l => l.contact_id);
+                setSelectedEmployees(empIds);
+                setSelectedOwners(ownIds);
+            }
+
+            if (subLinksRes.data) {
+                const subIds = subLinksRes.data.map(l => l.subcontractor_id);
+                setSelectedSubcontractors(subIds);
+            }
+        }
     };
 
-    const handleCreate = async () => {
+    const handleUpdate = async () => {
         if (!title || !street || !city) {
             showToast('Please fill in required fields (Title, Street, City)', 'error');
             return;
         }
+
+        if (!project?.id) return;
 
         // Build complete address for Google Maps / Navigation
         const fullAddress = `${street}, ${zip} ${city}, ${country}`;
 
         setLoading(true);
         try {
-            // 1. Create Project
-            const { data: project, error } = await supabase.from('projects').insert({
+            // 1. Update Project
+            const { error } = await supabase.from('projects').update({
                 name: title,
                 subtitle: subtitle,
                 description: description,
@@ -83,50 +119,51 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
                 status: status,
                 images: images,
                 picture_url: images[0] || '',
-                owner_id: userId
-            }).select().single();
+            }).eq('id', project.id);
 
             if (error) throw error;
-            const projectId = project.id;
 
-            // 2. Add Employees & Owners (Links)
+            // 2. Update Employee & Owner Links
+            // Delete existing links
+            await supabase.from('project_crm_links').delete().eq('project_id', project.id);
+            
+            // Add new links
             const contactLinks = [
-                ...selectedEmployees.map(id => ({ project_id: projectId, contact_id: id, role: 'employee' })),
-                ...selectedOwners.map(id => ({ project_id: projectId, contact_id: id, role: 'owner' }))
+                ...selectedEmployees.map(id => ({ project_id: project.id, contact_id: id, role: 'employee' })),
+                ...selectedOwners.map(id => ({ project_id: project.id, contact_id: id, role: 'owner' }))
             ];
             
             if (contactLinks.length > 0) {
-                 await supabase.from('project_crm_links').insert(contactLinks);
+                await supabase.from('project_crm_links').insert(contactLinks);
             }
 
-            // 3. Add Subcontractors (Existing table project_subcontractors)
+            // 3. Update Subcontractor Links
+            // Delete existing
+            await supabase.from('project_subcontractors').delete().eq('project_id', project.id);
+            
+            // Add new
             if (selectedSubcontractors.length > 0) {
                 const subInserts = selectedSubcontractors.map(sid => ({
-                    project_id: projectId,
+                    project_id: project.id,
                     subcontractor_id: sid
                 }));
                 await supabase.from('project_subcontractors').insert(subInserts);
             }
 
-            showToast('Project created successfully', 'success');
-            onProjectCreated();
+            showToast('Project updated successfully', 'success');
+            onProjectUpdated();
             onClose();
-            // Reset form
-            setTitle(''); setSubtitle(''); setDescription(''); 
-            setStreet(''); setZip(''); setCity(''); setCountry('DE');
-            setImages([]);
-            setSelectedEmployees([]); setSelectedOwners([]); setSelectedSubcontractors([]);
             
         } catch (error: any) {
             console.error(error);
-            showToast('Error creating project: ' + error.message, 'error');
+            showToast('Error updating project: ' + error.message, 'error');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <ModernModal visible={isOpen} onClose={onClose} title="Neues Projekt anlegen">
+        <ModernModal visible={isOpen} onClose={onClose} title="Projekt bearbeiten">
             <ScrollView style={{ maxHeight: 600 }} showsVerticalScrollIndicator={false}>
                 <View style={styles.form}>
                     <Input label="Projektname *" value={title} onChangeText={setTitle} />
@@ -165,7 +202,7 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
                     <Text style={styles.sectionHeader}>Zugeordnete Personen & Gewerke</Text>
 
                     <SearchableSelect 
-                        label="Mitarbeiter hinzufügen"
+                        label="Mitarbeiter"
                         placeholder="Mitarbeiter auswählen..."
                         multi
                         options={employees.map(e => ({ 
@@ -178,7 +215,7 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
                     />
 
                     <SearchableSelect 
-                        label="Bauherren hinzufügen"
+                        label="Bauherren"
                         placeholder="Bauherren auswählen..."
                         multi
                         options={owners.map(o => ({ 
@@ -191,7 +228,7 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
                     />
 
                     <SearchableSelect 
-                        label="Gewerke hinzufügen"
+                        label="Gewerke"
                         placeholder="Gewerke auswählen..."
                         multi
                         options={subcontractors.map(s => ({ 
@@ -205,8 +242,8 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
 
                     <View style={styles.actions}>
                         <Button variant="outline" onClick={onClose} style={{ flex: 1 }}>Abbrechen</Button>
-                        <Button onClick={handleCreate} disabled={loading} style={{ flex: 1 }}>
-                            {loading ? 'Wird erstellt...' : 'Erstellen'}
+                        <Button onClick={handleUpdate} disabled={loading} style={{ flex: 1 }}>
+                            {loading ? 'Wird gespeichert...' : 'Speichern'}
                         </Button>
                     </View>
                 </View>

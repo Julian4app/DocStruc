@@ -77,48 +77,51 @@ export function LoginForm({ onLogin, onRegister, isLoading, error }: AuthProps) 
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    maxWidth: 400,
-    padding: spacing.l,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    // Shadow for web/ios
+    maxWidth: 420,
+    padding: 36,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3, // for android
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 3,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: spacing.l,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 32,
     textAlign: 'center',
-    color: colors.text,
+    color: '#0f172a',
+    letterSpacing: -0.5,
   },
   spacer: {
     height: spacing.m,
   },
   footer: {
-    marginTop: spacing.l,
+    marginTop: 24,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 10
   },
   footerText: {
-    color: colors.textSecondary,
+    color: '#94a3b8',
+    fontSize: 14,
   },
   errorContainer: {
     marginBottom: spacing.m,
-    padding: spacing.s,
-    backgroundColor: '#FFE5E5',
-    borderRadius: 8,
+    padding: 14,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   errorText: {
-    color: colors.danger,
+    color: '#DC2626',
     fontSize: 14,
+    fontWeight: '500',
   }
 });
