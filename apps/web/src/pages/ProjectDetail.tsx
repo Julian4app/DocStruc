@@ -57,6 +57,7 @@ export function ProjectDetail() {
 
   const { data: permissions } = useProjectPermissions(supabase, id || '', userId || undefined);
   const canEdit = permissions?.canEditStructure ?? false;
+  const canManageMembers = permissions?.canManageMembers ?? false;
 
   useEffect(() => {
     if (id) {
@@ -81,7 +82,7 @@ export function ProjectDetail() {
       await createTimelineEvent(supabase, {
         project_id: id,
         title: timelineTitle,
-        date: timelineDate,
+        event_date: timelineDate,
         eventType: 'milestone'
       });
       setTimelineTitle('');
@@ -109,6 +110,13 @@ export function ProjectDetail() {
 
   const handleAddMember = async () => {
       if (!id || !inviteEmail) return;
+      
+      // Check if user has permission to add members
+      if (!canManageMembers) {
+          showToast('Keine Berechtigung zum Hinzufügen von Mitgliedern', 'error');
+          return;
+      }
+      
       try {
           const { data: users } = await supabase.from('profiles').select('id').eq('email', inviteEmail).single();
           if (users) {
@@ -254,15 +262,17 @@ export function ProjectDetail() {
                 </View>
             ))}
             
-            <View style={styles.inviteSection}>
-                <Text style={styles.inviteLabel}>Benutzer einladen</Text>
-                <View style={styles.inviteRow}>
-                   <View style={{ flex: 1 }}>
-                     <Input placeholder="email@example.com" value={inviteEmail} onChangeText={setInviteEmail} />
-                   </View>
-                   <Button onClick={handleAddMember}>Einladen</Button>
-                </View>
-            </View>
+            {canManageMembers && (
+              <View style={styles.inviteSection}>
+                  <Text style={styles.inviteLabel}>Benutzer einladen</Text>
+                  <View style={styles.inviteRow}>
+                     <View style={{ flex: 1 }}>
+                       <Input placeholder="email@example.com" value={inviteEmail} onChangeText={setInviteEmail} />
+                     </View>
+                     <Button onClick={handleAddMember}>Einladen</Button>
+                  </View>
+              </View>
+            )}
           </Card>
 
           <Card style={[styles.sectionCard, { flex: 1 }]}>
@@ -276,7 +286,7 @@ export function ProjectDetail() {
                          />
                          <View style={{ flex: 1 }}>
                             <Text style={[styles.timelineTitle, event.completed && styles.timelineTitleDone]}>{event.title}</Text>
-                            <Text style={styles.timelineDate}>{new Date(event.date).toLocaleDateString('de-DE')} • {event.eventType}</Text>
+                            <Text style={styles.timelineDate}>{new Date(event.event_date).toLocaleDateString('de-DE')} • {event.eventType}</Text>
                          </View>
                     </View>
                 ))}

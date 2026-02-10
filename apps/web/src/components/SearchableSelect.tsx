@@ -21,18 +21,19 @@ interface SearchableSelectProps {
 export function SearchableSelect({ options, values, onChange, placeholder = "Select...", label, multi = false }: SearchableSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
-    const containerRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<any>(null);
 
-    // Close on click outside (Web behavior)
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        const handleClickOutside = (event: any) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setIsOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
+        if (isOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    }, [isOpen]);
 
     const filteredOptions = options.filter(opt => {
         if (!opt || !opt.label) return false;
@@ -57,11 +58,9 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
     const selectedOptions = options.filter(o => values.includes(o.value));
 
     return (
-        <div ref={containerRef} style={{ marginBottom: 16, position: 'relative', zIndex: 999999 }}> 
-            {/* Using div for ref containment in web, View inside for styling */}
-            <View>
-                {label && <Text style={styles.label}>{label}</Text>}
-                
+        <View style={styles.container}>
+            {label && <Text style={styles.label}>{label}</Text>}
+            <View ref={dropdownRef as any} style={styles.dropdownContainer}>
                 <TouchableOpacity 
                     activeOpacity={0.8}
                     style={[styles.trigger, isOpen && styles.triggerActive]} 
@@ -120,11 +119,18 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
                     </View>
                 )}
             </View>
-        </div>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
+    container: {
+        marginBottom: 16,
+    },
+    dropdownContainer: {
+        position: 'relative' as any,
+        zIndex: 10001,
+    },
     label: {
         fontSize: 14,
         fontWeight: '500',
@@ -173,13 +179,13 @@ const styles = StyleSheet.create({
         fontWeight: '500'
     },
     dropdown: {
+        // @ts-ignore
         position: 'absolute',
         top: '100%',
         left: 0,
-        right: 0,
+        marginTop: 4,
         backgroundColor: '#fff',
         borderRadius: 8,
-        marginTop: 4,
         borderWidth: 1,
         borderColor: colors.border,
         shadowColor: '#000',
@@ -187,8 +193,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 12,
         elevation: 5,
-        zIndex: 999999,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        zIndex: 10001,
+        maxHeight: 300,
+        minWidth: 300,
     },
     searchInput: {
         padding: 12,

@@ -304,9 +304,10 @@ const styles = StyleSheet.create({
 
   /* Grid */
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 20,
+    display: 'grid' as any,
+    gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))' as any,
+    gap: 24,
+    marginBottom: 40,
   },
 
   /* Empty */

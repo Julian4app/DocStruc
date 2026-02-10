@@ -126,6 +126,7 @@ const styles = StyleSheet.create({
         flexDirection: 'column' as any,
         // @ts-ignore
         boxShadow: '0 20px 40px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.05)',
+        overflow: 'visible' as any,
     },
     header: {
         flexDirection: 'row',
@@ -162,6 +163,7 @@ const styles = StyleSheet.create({
         flex: 1,
         // @ts-ignore
         overflowY: 'auto',
+        overflowX: 'visible',
         position: 'relative' as any,
         borderBottomLeftRadius: 20,
         borderBottomRightRadius: 20,

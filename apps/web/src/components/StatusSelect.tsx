@@ -51,9 +51,9 @@ export function StatusSelect({ label, value, onChange }: StatusSelectProps) {
     };
 
     return (
-        <View style={[styles.container, { zIndex: 999999, position: 'relative' as any }]}>
+        <View style={styles.container}>
             {label && <Text style={styles.label}>{label}</Text>}
-            <View ref={dropdownRef as any} style={{ position: 'relative' as any, zIndex: 999999 }}>
+            <View ref={dropdownRef as any} style={styles.dropdownContainer}>
                 <TouchableOpacity 
                     style={styles.trigger} 
                     onPress={() => setIsOpen(!isOpen)}
@@ -98,6 +98,10 @@ export function StatusSelect({ label, value, onChange }: StatusSelectProps) {
 const styles = StyleSheet.create({
     container: {
         marginBottom: 16,
+    },
+    dropdownContainer: {
+        position: 'relative' as any,
+        zIndex: 10001,
     },
     label: {
         fontSize: 13,
@@ -146,7 +150,7 @@ const styles = StyleSheet.create({
         shadowRadius: 16,
         // @ts-ignore
         boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
-        zIndex: 999999,
+        zIndex: 10001,
         maxHeight: 320,
         overflow: 'hidden',
         opacity: 1,

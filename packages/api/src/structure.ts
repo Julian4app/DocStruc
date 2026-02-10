@@ -102,7 +102,7 @@ export interface TimelineEvent {
   id: string;
   project_id: string;
   title: string;
-  date: string;
+  event_date: string;
   eventType: 'milestone' | 'deadline' | 'meeting' | 'delivery';
   completed: boolean;
 }
@@ -112,7 +112,7 @@ export const getProjectTimeline = async (client: SupabaseClient, projectId: stri
     .from('project_timeline')
     .select('*')
     .eq('project_id', projectId)
-    .order('date', { ascending: true });
+    .order('event_date', { ascending: true });
 
   if (error) throw error;
   return data || [];

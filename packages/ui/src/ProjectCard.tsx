@@ -30,11 +30,39 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
   // Get first image from project
   const projectImage = project.images && project.images.length > 0 ? project.images[0] : project.picture_url;
   
-  // Generate Google Maps static image URL if address exists
+  // Generate OpenStreetMap static tile URL if address exists
+  // Using OpenStreetMap static tiles via StaticMap API
   const getMapUrl = (address: string) => {
     if (!address) return null;
-    const encodedAddress = encodeURIComponent(address);
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodedAddress}&zoom=15&size=400x200&maptype=roadmap&markers=color:red%7C${encodedAddress}&key=YOUR_API_KEY`;
+    
+    // For Vienna addresses, use approximate coordinates
+    // In production, you should geocode addresses or store lat/lon in database
+    const addressLower = address.toLowerCase();
+    
+    // Default Vienna coordinates
+    let lat = 48.2082;
+    let lon = 16.3738;
+    let zoom = 14;
+    
+    // Basic district detection for Vienna (very simplified)
+    if (addressLower.includes('1010') || addressLower.includes('innere stadt')) {
+      lat = 48.2082; lon = 16.3738;
+    } else if (addressLower.includes('1020') || addressLower.includes('leopoldstadt')) {
+      lat = 48.2189; lon = 16.3989;
+    } else if (addressLower.includes('1030') || addressLower.includes('landstraße')) {
+      lat = 48.1986; lon = 16.3947;
+    } else if (addressLower.includes('1130') || addressLower.includes('hietzing')) {
+      lat = 48.1851; lon = 16.2988;
+    }
+    
+    // Use OpenStreetMap tiles via tile.openstreetmap.org
+    // Note: For production use, consider using a proper tile service provider
+    // This generates a map using OSM Carto tiles
+    const width = 400;
+    const height = 200;
+    
+    // Use StaticMap.me service which provides OpenStreetMap static images
+    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=${width}x${height}&markers=${lat},${lon},red-pushpin`;
   };
   
   const mapUrl = project.address ? getMapUrl(project.address) : null;
@@ -104,33 +132,36 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
 
 const styles = StyleSheet.create({
   cardOverride: {
-    minHeight: 240,
+    minHeight: 280,
     padding: 0, 
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    backgroundColor: '#ffffff',
     shadowColor: "#0E2A47",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-    elevation: 2,
-    borderRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 3,
+    borderRadius: 20,
     overflow: 'hidden',
     ...Platform.select({
         web: {
             cursor: 'pointer',
-            transition: 'all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1)',
+            transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
             ':hover': {
-                transform: 'translateY(-3px)',
-                boxShadow: '0 12px 24px -6px rgba(14, 42, 71, 0.08), 0 6px 12px -4px rgba(14, 42, 71, 0.03)'
+                transform: 'translateY(-8px) scale(1.02)',
+                borderColor: colors.primary[200],
+                boxShadow: '0 20px 40px -8px rgba(14, 42, 71, 0.12), 0 8px 16px -4px rgba(14, 42, 71, 0.06)',
             }
         } as any
     })
   },
   mediaContainer: {
     width: '100%',
-    height: 160,
+    height: 180,
     backgroundColor: '#F8FAFC',
     overflow: 'hidden',
+    position: 'relative' as any,
   },
   imageWrapper: {
     width: '100%',
@@ -147,57 +178,67 @@ const styles = StyleSheet.create({
   },
   mapOverlay: {
     position: 'absolute' as any,
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.8)',
   },
   mapLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0f172a',
+    letterSpacing: 0.3,
   },
   contentWrapper: {
       padding: 24,
       flex: 1,
+      gap: 4,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 16,
+    gap: 12,
   },
   titleContainer: {
     flex: 1,
-    paddingRight: 12,
   },
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
-    color: colors.primary, 
-    marginBottom: 4,
-    letterSpacing: -0.3,
+    color: '#0f172a', 
+    marginBottom: 6,
+    letterSpacing: -0.5,
+    lineHeight: 28,
   },
   date: {
-      fontSize: 12,
+      fontSize: 13,
       color: '#94a3b8',
-      fontWeight: '500',
+      fontWeight: '600',
   },
   badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   badgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as any,
   },
   body: {
     flex: 1,
@@ -226,34 +267,35 @@ const styles = StyleSheet.create({
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 24,
-      paddingVertical: 14,
-      backgroundColor: '#FAFBFC',
+      paddingVertical: 16,
+      backgroundColor: '#FAFBFF',
       borderTopWidth: 1,
-      borderTopColor: '#F1F5F9',
+      borderTopColor: '#E2E8F0',
   },
   footerInfo: {
       flexDirection: 'row',
   },
   footerText: {
-      fontSize: 13,
-      fontWeight: '600',
+      fontSize: 14,
+      fontWeight: '700',
       color: colors.primary,
+      letterSpacing: 0.2,
   },
   arrowBtn: {
-      width: 28, 
-      height: 28, 
-      borderRadius: 14, 
-      backgroundColor: 'white', 
+      width: 32, 
+      height: 32, 
+      borderRadius: 16, 
+      backgroundColor: colors.primary, 
       alignItems: 'center', 
       justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOpacity: 0.05,
-      shadowRadius: 2,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
   },
   arrow: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: 'bold',
-    marginBottom: 2,
+    fontSize: 18,
+    color: '#ffffff',
+    fontWeight: '700',
   },
 });

@@ -69,9 +69,9 @@ export function CountrySelect({ label, value, onChange }: CountrySelectProps) {
     };
 
     return (
-        <View style={[styles.container, { zIndex: 999999, position: 'relative' as any }]}>
+        <View style={styles.container}>
             {label && <Text style={styles.label}>{label}</Text>}
-            <View ref={dropdownRef as any} style={{ position: 'relative' as any, zIndex: 999999 }}>
+            <View ref={dropdownRef as any} style={styles.dropdownContainer}>
                 <TouchableOpacity 
                     style={styles.trigger} 
                     onPress={() => setIsOpen(!isOpen)}
@@ -131,6 +131,10 @@ const styles = StyleSheet.create({
     container: {
         marginBottom: 16,
     },
+    dropdownContainer: {
+        position: 'relative' as any,
+        zIndex: 10001,
+    },
     label: {
         fontSize: 13,
         color: '#475569',
@@ -187,7 +191,6 @@ const styles = StyleSheet.create({
         boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
         zIndex: 999999,
         maxHeight: 300,
-        // Force solid background
         opacity: 1,
     },
     searchContainer: {

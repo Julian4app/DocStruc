@@ -73,11 +73,11 @@ export function PhoneInput({ label, value, countryCode, onChangeText, onCountryC
     };
 
     return (
-        <View style={[styles.container, { zIndex: 999999, position: 'relative' as any }]}>
+        <View style={styles.container}>
             {label && <Text style={styles.label}>{label}</Text>}
             <View style={styles.inputRow}>
                 {/* Country Code Selector */}
-                <View ref={dropdownRef as any} style={{ position: 'relative' as any, zIndex: 999999 }}>
+                <View ref={dropdownRef as any} style={styles.dropdownContainer}>
                     <TouchableOpacity 
                         style={styles.countryTrigger} 
                         onPress={() => setIsOpen(!isOpen)}
@@ -89,7 +89,7 @@ export function PhoneInput({ label, value, countryCode, onChangeText, onCountryC
                     </TouchableOpacity>
 
                     {isOpen && (
-                        <View style={[styles.dropdown, { zIndex: 999999 }]}>
+                        <View style={styles.dropdown}>
                             <View style={styles.searchContainer}>
                                 <TextInput
                                     style={styles.searchInput}
@@ -135,6 +135,10 @@ export function PhoneInput({ label, value, countryCode, onChangeText, onCountryC
 const styles = StyleSheet.create({
     container: {
         marginBottom: 16,
+    },
+    dropdownContainer: {
+        position: 'relative' as any,
+        zIndex: 10001,
     },
     label: {
         fontSize: 13,
@@ -198,7 +202,7 @@ const styles = StyleSheet.create({
         shadowRadius: 16,
         // @ts-ignore
         boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
-        zIndex: 999999,
+        zIndex: 10001,
         maxHeight: 300,
         minWidth: 250,
         opacity: 1,
