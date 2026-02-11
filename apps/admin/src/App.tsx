@@ -18,6 +18,10 @@ import PlaceholderPage from './pages/Placeholder'; // Import placeholder
 import Subscriptions from './pages/Subscriptions';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
+import Datenschutz from './pages/Datenschutz';
+import Impressum from './pages/Impressum';
+import Feedback from './pages/Feedback';
+import Help from './pages/Help';
 import { AdminLayout } from './layouts/AdminLayout';
 import { Button } from '@docstruc/ui';
 import { ToastProvider } from './components/ToastContext';
@@ -176,6 +180,38 @@ export default function App() {
           <ProtectedRoute>
              <LayoutWrapper title="Settings">
                 <Settings />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/datenschutz" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Datenschutzerklärung">
+                <Datenschutz />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/impressum" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Impressum">
+                <Impressum />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/feedback" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Feedback">
+                <Feedback />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/help" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Hilfe Center">
+                <Help />
              </LayoutWrapper>
           </ProtectedRoute>
         } />

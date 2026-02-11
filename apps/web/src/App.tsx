@@ -7,8 +7,27 @@ import { colors } from '@docstruc/theme';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectDetail } from './pages/ProjectDetail';
-import { Accessors } from './pages/superuser/Accessors';
+import { Accessors } from './pages/Accessors';
 import { ManageProjects } from './pages/superuser/ManageProjects';
+import { Profile } from './pages/Profile';
+import { Settings } from './pages/Settings';
+import { Datenschutz } from './pages/Datenschutz';
+import { Impressum } from './pages/Impressum';
+import { Feedback } from './pages/Feedback';
+import { Help } from './pages/Help';
+import { ProjectDashboard } from './pages/project/ProjectDashboard';
+import { ProjectTasks } from './pages/project/ProjectTasks';
+import { ProjectDefects } from './pages/project/ProjectDefects';
+import { ProjectSchedule } from './pages/project/ProjectSchedule';
+import { ProjectTimeTracking } from './pages/project/ProjectTimeTracking';
+import { ProjectDocumentation } from './pages/project/ProjectDocumentation';
+import { ProjectFiles } from './pages/project/ProjectFiles';
+import { ProjectDiary } from './pages/project/ProjectDiary';
+import { ProjectCommunication } from './pages/project/ProjectCommunication';
+import { ProjectParticipants } from './pages/project/ProjectParticipants';
+import { ProjectReports } from './pages/project/ProjectReports';
+import { ProjectActivity } from './pages/project/ProjectActivity';
+import { ProjectSettings } from './pages/project/ProjectSettings';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
@@ -106,7 +125,27 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/accessors" element={<Accessors />} />
               <Route path="/manage-projects" element={<ManageProjects />} />
-              <Route path="/project/:id" element={<ProjectDetail />} />
+              <Route path="/project/:id" element={<ProjectDetail />}>
+                <Route index element={<ProjectDashboard />} />
+                <Route path="tasks" element={<ProjectTasks />} />
+                <Route path="defects" element={<ProjectDefects />} />
+                <Route path="schedule" element={<ProjectSchedule />} />
+                <Route path="time-tracking" element={<ProjectTimeTracking />} />
+                <Route path="documentation" element={<ProjectDocumentation />} />
+                <Route path="files" element={<ProjectFiles />} />
+                <Route path="diary" element={<ProjectDiary />} />
+                <Route path="communication" element={<ProjectCommunication />} />
+                <Route path="participants" element={<ProjectParticipants />} />
+                <Route path="reports" element={<ProjectReports />} />
+                <Route path="activity" element={<ProjectActivity />} />
+                <Route path="settings" element={<ProjectSettings />} />
+              </Route>
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/datenschutz" element={<Datenschutz />} />
+              <Route path="/impressum" element={<Impressum />} />
+              <Route path="/feedback" element={<Feedback />} />
+              <Route path="/help" element={<Help />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />

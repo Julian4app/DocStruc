@@ -3,16 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LayoutContext } from './LayoutContext';
+import { ProfileDropdown } from '../components/ProfileDropdown';
 import { colors } from '@docstruc/theme';
 import { 
   LayoutDashboard, 
   Folder, 
   Users, 
-  LogOut, 
   Search,
   Bell,
-  Settings,
-  HelpCircle,
   Smartphone
 } from 'lucide-react';
 
@@ -23,6 +21,7 @@ export function WebLayout() {
   const [title, setTitle] = useState('DocStruc');
   const [subtitle, setSubtitle] = useState('');
   const [actions, setActions] = useState<React.ReactNode>(null);
+  const [sidebarMenu, setSidebarMenu] = useState<{ label: string; path: string; icon?: any }[] | null>(null);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
@@ -79,7 +78,7 @@ export function WebLayout() {
   const displayName = userName || (isSuperuser ? 'Super Admin' : 'User');
 
   return (
-    <LayoutContext.Provider value={{ title, setTitle, subtitle, setSubtitle, actions, setActions }}>
+    <LayoutContext.Provider value={{ title, setTitle, subtitle, setSubtitle, actions, setActions, sidebarMenu, setSidebarMenu }}>
     <View style={styles.shell}>
 
       {/* ─── Sidebar ─── */}
@@ -92,44 +91,66 @@ export function WebLayout() {
         </View>
 
         <ScrollView style={styles.navScroll} showsVerticalScrollIndicator={false}>
-          {menuGroups.map((group, gi) => (
-            <View key={gi} style={styles.navGroup}>
-              <Text style={styles.navGroupLabel}>{group.title}</Text>
-              {group.items.map((item) => {
-                const isActive = location.pathname === item.path || 
-                  (item.path !== '/' && location.pathname.startsWith(item.path));
-                const Icon = item.icon;
-                return (
-                  <TouchableOpacity
-                    key={item.path}
-                    style={[styles.navItem, isActive && styles.navItemActive]}
-                    onPress={() => navigate(item.path)}
-                    activeOpacity={0.7}
-                  >
-                    {isActive && <View style={styles.activeIndicator} />}
-                    <Icon size={20} color={isActive ? colors.primary : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
-                    <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{item.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-          
-          <View style={styles.navGroup}>
-            <Text style={styles.navGroupLabel}>GENERAL</Text>
-            <TouchableOpacity style={styles.navItem} onPress={() => {}}>
-              <Settings size={20} color="#94a3b8" strokeWidth={2} />
-              <Text style={styles.navLabel}>Settings</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.navItem} onPress={() => {}}>
-              <HelpCircle size={20} color="#94a3b8" strokeWidth={2} />
-              <Text style={styles.navLabel}>Help</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.navItem} onPress={handleLogout}>
-              <LogOut size={20} color="#94a3b8" strokeWidth={2} />
-              <Text style={styles.navLabel}>Logout</Text>
-            </TouchableOpacity>
-          </View>
+          {sidebarMenu ? (
+            // Project Detail Sidebar Menu
+            <>
+              <TouchableOpacity
+                style={styles.backButtonSidebar}
+                onPress={() => {
+                  setSidebarMenu(null);
+                  navigate('/');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.backButtonText}>← Zurück zur Übersicht</Text>
+              </TouchableOpacity>
+              <View style={styles.navGroup}>
+                <Text style={styles.navGroupLabel}>PROJEKT NAVIGATION</Text>
+                {sidebarMenu.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  const Icon = item.icon;
+                  return (
+                    <TouchableOpacity
+                      key={item.path}
+                      style={[styles.navItem, isActive && styles.navItemActive]}
+                      onPress={() => navigate(item.path)}
+                      activeOpacity={0.7}
+                    >
+                      {isActive && <View style={styles.activeIndicator} />}
+                      {Icon && <Icon size={20} color={isActive ? colors.primary : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />}
+                      <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{item.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            // Default Menu
+            <>
+              {menuGroups.map((group, gi) => (
+                <View key={gi} style={styles.navGroup}>
+                  <Text style={styles.navGroupLabel}>{group.title}</Text>
+                  {group.items.map((item) => {
+                    const isActive = location.pathname === item.path || 
+                      (item.path !== '/' && location.pathname.startsWith(item.path));
+                    const Icon = item.icon;
+                    return (
+                      <TouchableOpacity
+                        key={item.path}
+                        style={[styles.navItem, isActive && styles.navItemActive]}
+                        onPress={() => navigate(item.path)}
+                        activeOpacity={0.7}
+                      >
+                        {isActive && <View style={styles.activeIndicator} />}
+                        <Icon size={20} color={isActive ? colors.primary : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
+                        <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{item.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </>
+          )}
         </ScrollView>
 
         {/* Promo Card */}
@@ -186,28 +207,11 @@ export function WebLayout() {
               )}
             </View>
             <View style={styles.headerDivider} />
-            <TouchableOpacity style={styles.userArea} activeOpacity={0.7}>
-              {userAvatar ? (
-                <img 
-                  src={userAvatar} 
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    objectFit: 'cover' as any,
-                  }} 
-                  alt="Profile"
-                />
-              ) : (
-                <View style={styles.userAvatar}>
-                  <Text style={styles.userAvatarText}>{(userName || userEmail)[0]?.toUpperCase() || 'U'}</Text>
-                </View>
-              )}
-              <View>
-                <Text style={styles.userDisplayName}>{displayName}</Text>
-                <Text style={styles.userEmailText}>{userEmail}</Text>
-              </View>
-            </TouchableOpacity>
+            <ProfileDropdown 
+              userName={displayName}
+              userEmail={userEmail}
+              userAvatar={userAvatar}
+            />
           </View>
         </View>
 
@@ -245,6 +249,21 @@ const styles = StyleSheet.create({
   navScroll: { flex: 1 },
   navGroup: { marginBottom: 28 },
   navGroupLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' as any, paddingHorizontal: 12, marginBottom: 8 },
+  backButtonSidebar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    backgroundColor: '#F0F7FF',
+    borderRadius: 12,
+    marginHorizontal: 0,
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
   navItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 11, paddingHorizontal: 12, borderRadius: 10, marginBottom: 2, position: 'relative' as any },
   navItemActive: { backgroundColor: '#F0F7FF' },
   activeIndicator: { position: 'absolute' as any, left: -20, top: 8, bottom: 8, width: 4, borderTopRightRadius: 4, borderBottomRightRadius: 4, backgroundColor: colors.primary },
@@ -265,12 +284,12 @@ const styles = StyleSheet.create({
   main: { flex: 1, flexDirection: 'column' as any },
 
   /* Header */
-  header: { height: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  header: { height: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', position: 'relative' as any, zIndex: 100 },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 16, height: 42, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', width: 280, gap: 10 },
   searchText: { flex: 1, color: '#94a3b8', fontSize: 14 },
   searchShortcut: { backgroundColor: '#fff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' },
   searchShortcutText: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16, position: 'relative' as any, zIndex: 200 },
   headerIconBtn: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', position: 'relative' as any },
   notifDot: { position: 'absolute' as any, top: 10, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#F8FAFC' },
   notificationDropdown: {
@@ -287,8 +306,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 16,
-    zIndex: 1000,
+    zIndex: 9999,
     maxHeight: 400,
+    elevation: 9999,
   },
   notifHeader: {
     fontSize: 16,

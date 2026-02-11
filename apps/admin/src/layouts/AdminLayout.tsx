@@ -2,15 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { ProfileDropdown } from '../components/ProfileDropdown';
 import { 
   LayoutDashboard, 
   Users, 
   Contact, 
   CreditCard, 
-  Tags, 
-  Settings, 
-  UserCircle, 
-  LogOut, 
+  Tags,
   Menu,
   Bell,
   Search,
@@ -27,7 +25,9 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [profile, setProfile] = useState<{ first_name?: string, last_name?: string } | null>(null);
+  const [profile, setProfile] = useState<{ first_name?: string, last_name?: string, email?: string } | null>(null);
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
 
   useEffect(() => {
       fetchProfile();
@@ -45,18 +45,16 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         .subscribe();
         
       return () => { supabase.removeChannel(channel); };
-  }, []);
-
   const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+          setUserEmail(user.email || '');
           const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
-          if (data) setProfile(data);
+          if (data) {
+            setProfile(data);
+            setUserName(`${data.first_name || ''} ${data.last_name || ''}`.trim());
+          }
       }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
   };
 
   const menuGroups = [
@@ -70,6 +68,9 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         { label: 'Tags', path: '/tags', icon: Tags },
       ]
     }
+  ];
+
+  const displayName = userName || 'User';}
   ];
 
   const bottomMenu = [
@@ -108,30 +109,8 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
                     </Text>
                     {isActive && <View style={styles.activeIndicator} />}
                   </TouchableOpacity>
-                );
-              })}
-            </View>
           ))}
         </ScrollView>
-        
-        <View style={styles.bottomNav}>
-            {bottomMenu.map((item) => {
-                const Icon = item.icon;
-                return (
-                <TouchableOpacity
-                    key={item.label}
-                    style={styles.navItem}
-                    onPress={() => navigate(item.path)}
-                >
-                    <Icon size={20} color="#94a3b8" />
-                    <Text style={styles.navText}>{item.label}</Text>
-                </TouchableOpacity>
-            )})}
-            <TouchableOpacity style={[styles.navItem, { marginTop: 8 }]} onPress={handleLogout}>
-                <LogOut size={20} color="#ef4444" />
-                <Text style={[styles.navText, { color: '#ef4444' }]}>Logout</Text>
-            </TouchableOpacity>
-        </View>
         
         {/* User Mini Profile */}
         <View style={styles.userProfile}>
@@ -145,6 +124,9 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
                     {profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User' : 'Loading...'}
                 </Text>
                 <Text style={styles.userRole}>Super Admin</Text>
+            </View>
+        </View>
+      </View>   <Text style={styles.userRole}>Super Admin</Text>
             </View>
         </View>
       </View>
@@ -186,14 +168,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9', // Slate 100
-    height: '100%',
-    overflow: 'hidden'
-  },
-  // Sidebar
-  sidebar: {
-    width: 260,
-    backgroundColor: '#0f172a', // Slate 900
+                <TouchableOpacity style={styles.iconBtn}>
+                    <Bell size={20} color="#64748b" />
+                    <View style={styles.notificationDot} />
+                </TouchableOpacity>
+                {actions && <View style={styles.actionDelimiter} />}
+                {actions}
+                <View style={styles.actionDelimiter} />
+                <ProfileDropdown 
+                  userName={displayName}
+                  userEmail={userEmail}
+                  userAvatar=""
+                />
+            </View>
+        </View>olor: '#0f172a', // Slate 900
     borderRightWidth: 1,
     borderRightColor: '#1e293b',
     display: 'flex',
@@ -271,17 +259,14 @@ const styles = StyleSheet.create({
       borderTopLeftRadius: 4,
       borderBottomLeftRadius: 4
   },
-  bottomNav: {
-      borderTopWidth: 1,
-      borderTopColor: '#1e293b',
-      paddingVertical: 16
-  },
   userProfile: {
       padding: 16,
       backgroundColor: '#020617',
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12
+      gap: 12,
+      borderTopWidth: 1,
+      borderTopColor: '#1e293b',
   },
   avatar: {
       width: 36,
@@ -314,10 +299,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 32,
+    position: 'relative' as any,
     // borderBottomWidth: 1,
     // borderBottomColor: '#e2e8f0',
     // backdropFilter: 'blur(10px)', // Glassmorphism
-    zIndex: 10
+    zIndex: 100
   },
   headerLeft: {
       gap: 4
@@ -335,7 +321,9 @@ const styles = StyleSheet.create({
   headerRight: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16
+      gap: 16,
+      position: 'relative' as any,
+      zIndex: 200
   },
   searchBar: {
       flexDirection: 'row',

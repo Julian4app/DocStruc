@@ -9,7 +9,7 @@ import { PhoneInput } from '../../components/PhoneInput';
 import { useToast } from '../../components/ToastProvider';
 import { supabase } from '../../lib/supabase';
 import { colors, spacing } from '@docstruc/theme';
-import { Plus, Trash2, Edit2, User, Building, Hammer, Mail } from 'lucide-react';
+import { Plus, Trash2, Edit2, User, Building, Hammer, Mail, Check } from 'lucide-react';
 
 export function Accessors() {
   const { setTitle, setSubtitle } = useLayout();
@@ -31,6 +31,8 @@ export function Accessors() {
   // Selected Item for Detail View / Editing
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [assignedProjects, setAssignedProjects] = useState<any[]>([]);
 
   // Generic Item State (for Create/Edit)
   const [personForm, setPersonForm] = useState({
@@ -65,6 +67,12 @@ export function Accessors() {
   });
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id || null);
+    });
+  }, []);
+
+  useEffect(() => {
     fetchData();
   }, [activeTab]);
 
@@ -90,8 +98,21 @@ export function Accessors() {
         console.error(error);
         showToast('Error loading data', 'error');
     } else {
+        // Check registration status for each item
+        const withRegistration = await Promise.all((res || []).map(async (item: any) => {
+            if (!item.email) return { ...item, is_registered: false };
+            
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('email', item.email)
+                .maybeSingle();
+            
+            return { ...item, is_registered: !!profile, user_id: profile?.id };
+        }));
+
         // Sort alphabetically
-        const sorted = (res || []).sort((a: any, b: any) => {
+        const sorted = withRegistration.sort((a: any, b: any) => {
              const nameA = a.company_name || a.first_name || a.name || '';
              const nameB = b.company_name || b.first_name || b.name || '';
              return nameA.localeCompare(nameB);
@@ -109,7 +130,7 @@ export function Accessors() {
       setIsModalOpen(true);
   };
 
-  const handleOpenDetail = (item: any) => {
+  const handleOpenDetail = async (item: any) => {
       setSelectedItem(item);
           setPersonForm({
               first_name: item.first_name || '',
@@ -140,7 +161,59 @@ export function Accessors() {
           });
       }
 
+      // Load assigned projects for this user (only projects current user is also assigned to)
+      await loadAssignedProjects(item);
       setIsDetailOpen(true);
+  };
+
+  const loadAssignedProjects = async (item: any) => {
+      if (!userId) return;
+      setAssignedProjects([]);
+
+      try {
+          // Find the profile ID for this accessor based on email
+          if (!item.email) return;
+
+          const { data: profileData } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', item.email)
+              .maybeSingle();
+
+          if (!profileData) return;
+
+          const accessorUserId = profileData.id;
+
+          // Get projects where both the current user AND the accessor are members
+          const { data: projects } = await supabase
+              .from('project_members')
+              .select('project_id, projects(id, name, address, status)')
+              .eq('user_id', accessorUserId);
+
+          if (!projects) return;
+
+          // Filter to only projects where current user is also a member
+          const projectIds = projects.map(p => p.project_id);
+          if (projectIds.length === 0) return;
+
+          const { data: currentUserProjects } = await supabase
+              .from('project_members')
+              .select('project_id')
+              .eq('user_id', userId)
+              .in('project_id', projectIds);
+
+          if (!currentUserProjects) return;
+
+          const sharedProjectIds = new Set(currentUserProjects.map(p => p.project_id));
+          const sharedProjects = projects
+              .filter(p => sharedProjectIds.has(p.project_id))
+              .map(p => p.projects)
+              .filter(Boolean);
+
+          setAssignedProjects(sharedProjects);
+      } catch (e) {
+          console.error('Error loading assigned projects:', e);
+      }
   };
 
   const resetForms = () => {
@@ -263,7 +336,9 @@ export function Accessors() {
       const title = activeTab === 'subcontractors' ? (item.name || item.company_name) : `${item.first_name} ${item.last_name}`;
       const subtitle = activeTab === 'subcontractors' ? item.trade : (activeTab === 'employees' ? item.department : item.company_name);
       // Fallback image
-      const image = activeTab === 'subcontractors' ? (item.logo_url || item.profile_picture_url) : item.avatar_url; 
+      const image = activeTab === 'subcontractors' ? (item.logo_url || item.profile_picture_url) : item.avatar_url;
+      // Check if registered (has user_id or can be looked up by email)
+      const isRegistered = item.user_id || item.is_registered;
       
       return (
           <TouchableOpacity key={item.id} onPress={() => handleOpenDetail(item)}>
@@ -279,10 +354,16 @@ export function Accessors() {
                         </View>
                     )}
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.cardTitle}>{title}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={styles.cardTitle}>{title}</Text>
+                            {isRegistered && (
+                                <View style={styles.registeredTag}>
+                                    <Check size={12} color="#22c55e" />
+                                    <Text style={styles.registeredText}>Registriert</Text>
+                                </View>
+                            )}
+                        </View>
                         {!!subtitle && <Text style={styles.cardSub}>{subtitle}</Text>}
-                        {/* {activeTab === 'employees' && <Text style={styles.cardMeta}>#{item.personal_number}</Text>}
-                        <Text style={styles.cardMeta}>{item.email}</Text> */}
                     </View>
                 </View>
             </Card>
@@ -510,6 +591,24 @@ export function Accessors() {
                              ) : null)}
                          </View>
                          
+                         {/* Assigned Projects */}
+                         {assignedProjects.length > 0 && (
+                             <View style={{ marginTop: 20 }}>
+                                 <Text style={styles.sectionHeader}>Zugeordnete Projekte</Text>
+                                 {assignedProjects.map((project: any) => (
+                                     <View key={project.id} style={styles.projectItem}>
+                                         <Text style={styles.projectName}>{project.name}</Text>
+                                         {project.address && <Text style={styles.projectAddress}>{project.address}</Text>}
+                                         {project.status && (
+                                             <View style={styles.projectStatusBadge}>
+                                                 <Text style={styles.projectStatusText}>{project.status}</Text>
+                                             </View>
+                                         )}
+                                     </View>
+                                 ))}
+                             </View>
+                         )}
+
                          {/* Contacts for Subcontractors */}
                          {activeTab === 'subcontractors' && selectedItem.contacts && selectedItem.contacts.length > 0 && (
                              <View style={{ marginTop: 20 }}>
@@ -659,5 +758,52 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
+    },
+    registeredTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        backgroundColor: '#dcfce7',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#86efac',
+    },
+    registeredText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#16a34a',
+    },
+    projectItem: {
+        padding: 14,
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    projectName: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#0f172a',
+        marginBottom: 4,
+    },
+    projectAddress: {
+        fontSize: 13,
+        color: '#64748b',
+        marginBottom: 6,
+    },
+    projectStatusBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+        backgroundColor: '#EFF6FF',
+        borderRadius: 12,
+    },
+    projectStatusText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: colors.primary,
     },
 });
