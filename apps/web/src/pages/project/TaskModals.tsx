@@ -15,6 +15,8 @@ import {
   Image,
   Video,
   Upload,
+  User,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { colors } from '@docstruc/theme';
@@ -65,7 +67,7 @@ interface ProjectMember {
   role: string;
 }
 
-// Helper Component: Create/Edit Task Modal
+// TaskModal Component - For CREATING tasks (now has full documentation support)
 export const TaskModal: React.FC<{
   visible: boolean;
   mode: 'create' | 'edit';
@@ -84,7 +86,6 @@ export const TaskModal: React.FC<{
   onChangeFormData: (field: string, value: string) => void;
   onSubmit: () => void;
   onClose: () => void;
-  // Image upload props for create mode
   createImages?: File[];
   onAddCreateImage?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveCreateImage?: (index: number) => void;
@@ -222,84 +223,80 @@ export const TaskModal: React.FC<{
               />
             </View>
 
-            {/* Image Upload Section - Only in Create Mode */}
-            {mode === 'create' && (
-              <View style={styles.modalSection}>
-                <Text style={styles.modalLabel}>Bilder hinzufügen</Text>
-                
-                {/* Drag and Drop Zone */}
-                <div
-                  onDragOver={onDragOver}
-                  onDragLeave={onDragLeave}
-                  onDrop={onDrop}
-                  style={{
-                    border: `2px dashed ${isDragging ? colors.primary : '#cbd5e1'}`,
-                    borderRadius: 8,
-                    padding: 24,
-                    textAlign: 'center',
-                    backgroundColor: isDragging ? '#f1f5f9' : '#f8fafc',
-                    cursor: 'pointer',
-                    marginBottom: 12,
-                  }}
-                  onClick={() => document.getElementById('create-image-input')?.click()}
-                >
-                  <Image size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                  <Text style={{ color: '#64748b', fontSize: 14 }}>
-                    Bilder per Drag & Drop ablegen oder klicken zum Auswählen
-                  </Text>
-                  <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
-                    PNG, JPG, GIF bis 10MB
-                  </Text>
-                </div>
+            {/* Image Upload Section */}
+            <View style={styles.modalSection}>
+              <Text style={styles.modalLabel}>Bilder hinzufügen (optional)</Text>
+              
+              <div
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+                style={{
+                  border: `2px dashed ${isDragging ? colors.primary : '#cbd5e1'}`,
+                  borderRadius: 8,
+                  padding: 24,
+                  textAlign: 'center',
+                  backgroundColor: isDragging ? '#f1f5f9' : '#f8fafc',
+                  cursor: 'pointer',
+                  marginBottom: 12,
+                }}
+                onClick={() => document.getElementById('create-image-input')?.click()}
+              >
+                <Image size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                <Text style={{ color: '#64748b', fontSize: 14 }}>
+                  Bilder per Drag & Drop ablegen oder klicken zum Auswählen
+                </Text>
+                <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
+                  PNG, JPG, GIF bis 10MB
+                </Text>
+              </div>
 
-                <input
-                  id="create-image-input"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={onAddCreateImage}
-                  style={{ display: 'none' }}
-                />
+              <input
+                id="create-image-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={onAddCreateImage}
+                style={{ display: 'none' }}
+              />
 
-                {/* Image Previews */}
-                {createImages.length > 0 && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                    {createImages.map((file, index) => (
-                      <View
-                        key={index}
+              {createImages.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {createImages.map((file, index) => (
+                    <View
+                      key={index}
+                      style={{
+                        position: 'relative',
+                        width: 80,
+                        height: 80,
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        backgroundColor: '#f1f5f9',
+                      }}
+                    >
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => onRemoveCreateImage?.(index)}
                         style={{
-                          position: 'relative',
-                          width: 80,
-                          height: 80,
-                          borderRadius: 8,
-                          overflow: 'hidden',
-                          backgroundColor: '#f1f5f9',
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          borderRadius: 12,
+                          padding: 4,
                         }}
                       >
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={file.name}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                        <TouchableOpacity
-                          onPress={() => onRemoveCreateImage?.(index)}
-                          style={{
-                            position: 'absolute',
-                            top: 4,
-                            right: 4,
-                            backgroundColor: 'rgba(0,0,0,0.6)',
-                            borderRadius: 12,
-                            padding: 4,
-                          }}
-                        >
-                          <X size={12} color="#ffffff" />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
+                        <X size={12} color="#ffffff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -318,7 +315,7 @@ export const TaskModal: React.FC<{
   );
 };
 
-// Helper Component: Task Detail Modal
+// Task Detail Modal - NEW VERSION WITH TABS
 export const TaskDetailModal: React.FC<{
   visible: boolean;
   task: Task | null;
@@ -364,8 +361,8 @@ export const TaskDetailModal: React.FC<{
   onClose,
   getUserName,
 }) => {
+  const [activeTab, setActiveTab] = React.useState<'info' | 'docs'>('info');
   const [isDragging, setIsDragging] = React.useState(false);
-  const [uploadingAudio, setUploadingAudio] = React.useState(false);
   const audioFileInputRef = React.useRef<HTMLInputElement>(null);
   const videoFileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -391,7 +388,6 @@ export const TaskDetailModal: React.FC<{
     );
 
     if (files.length > 0) {
-      // Create a synthetic event for compatibility
       const syntheticEvent = {
         target: { files }
       };
@@ -501,548 +497,624 @@ export const TaskDetailModal: React.FC<{
             </View>
           </View>
 
+          {/* Tabs */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'info' && styles.tabActive]}
+              onPress={() => setActiveTab('info')}
+            >
+              <FileText size={18} color={activeTab === 'info' ? colors.primary : '#64748b'} />
+              <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>
+                Allgemeine Informationen
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'docs' && styles.tabActive]}
+              onPress={() => setActiveTab('docs')}
+            >
+              <FileText size={18} color={activeTab === 'docs' ? colors.primary : '#64748b'} />
+              <Text style={[styles.tabText, activeTab === 'docs' && styles.tabTextActive]}>
+                Dokumentation ({taskDocumentation.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView style={styles.detailBody}>
-            {/* Description */}
-            <View style={styles.detailSection}>
-              <Text style={styles.detailSectionTitle}>Beschreibung</Text>
-              {isEditMode ? (
-                <TextInput
-                  style={styles.modalTextarea}
-                  value={editFormData.description}
-                  onChangeText={(value) => onChangeEditFormData('description', value)}
-                  multiline
-                  numberOfLines={4}
-                />
-              ) : (
-                <Text style={styles.detailDescription}>{task.description || 'Keine Beschreibung'}</Text>
-              )}
-            </View>
-
-            {/* Info Grid */}
-            {!isEditMode && (
-              <View style={styles.detailSection}>
-                <View style={styles.detailInfoGrid}>
-                  <View style={styles.detailInfoItem}>
-                    <Text style={styles.detailInfoLabel}>Zugewiesen an</Text>
-                    <Text style={styles.detailInfoValue}>
-                      {task.assigned_to ? getUserName(task.assigned_to) : 'Nicht zugewiesen'}
-                    </Text>
-                  </View>
-                  <View style={styles.detailInfoItem}>
-                    <Text style={styles.detailInfoLabel}>Fällig am</Text>
-                    <Text style={styles.detailInfoValue}>
-                      {task.due_date ? formatDate(task.due_date) : 'Kein Datum'}
-                    </Text>
-                  </View>
-                  <View style={styles.detailInfoItem}>
-                    <Text style={styles.detailInfoLabel}>Story Points</Text>
-                    <Text style={styles.detailInfoValue}>{task.story_points || '-'}</Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Edit Mode Fields */}
-            {isEditMode && (
+            {/* TAB 1: GENERAL INFO */}
+            {activeTab === 'info' && (
               <>
+                {/* Description */}
                 <View style={styles.detailSection}>
-                  <Text style={styles.modalLabel}>Priorität</Text>
-                  <View style={styles.priorityGrid}>
-                    {priorities.map((priority) => (
-                      <TouchableOpacity
-                        key={priority.value}
-                        style={[
-                          styles.priorityButton,
-                          { borderColor: priority.color },
-                          editFormData.priority === priority.value && {
-                            backgroundColor: priority.color,
-                            ...styles.priorityButtonActive,
-                          },
-                        ]}
-                        onPress={() => onChangeEditFormData('priority', priority.value)}
-                      >
-                        <Text
-                          style={[
-                            styles.priorityButtonText,
-                            { color: editFormData.priority === priority.value ? '#ffffff' : priority.color },
-                          ]}
-                        >
-                          {priority.label}
+                  <Text style={styles.detailSectionTitle}>Beschreibung</Text>
+                  {isEditMode ? (
+                    <TextInput
+                      style={styles.modalTextarea}
+                      value={editFormData.description}
+                      onChangeText={(value) => onChangeEditFormData('description', value)}
+                      multiline
+                      numberOfLines={4}
+                    />
+                  ) : (
+                    <Text style={styles.detailDescription}>{task.description || 'Keine Beschreibung'}</Text>
+                  )}
+                </View>
+
+                {/* Info Grid */}
+                {!isEditMode && (
+                  <View style={styles.detailSection}>
+                    <View style={styles.detailInfoGrid}>
+                      <View style={styles.detailInfoItem}>
+                        <Text style={styles.detailInfoLabel}>Zugewiesen an</Text>
+                        <Text style={styles.detailInfoValue}>
+                          {task.assigned_to ? getUserName(task.assigned_to) : 'Nicht zugewiesen'}
                         </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                <Select
-                  label="Zuweisen an"
-                  value={editFormData.assigned_to}
-                  options={[
-                    { label: 'Nicht zugewiesen', value: '' },
-                    ...projectMembers.map((member) => ({
-                      label: member.email,
-                      value: member.user_id
-                    }))
-                  ]}
-                  onChange={(value) => onChangeEditFormData('assigned_to', String(value))}
-                  placeholder="Mitglied auswählen"
-                />
-
-                <DatePicker
-                  label="Fälligkeitsdatum"
-                  value={editFormData.due_date}
-                  onChange={(value) => onChangeEditFormData('due_date', value)}
-                  placeholder="TT.MM.JJJJ"
-                />
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.modalLabel}>Story Points</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={editFormData.story_points}
-                    onChangeText={(value) => onChangeEditFormData('story_points', value)}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </>
-            )}
-
-            {/* Status Change */}
-            {!isEditMode && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailSectionTitle}>Status ändern</Text>
-                <View style={styles.statusChangeGrid}>
-                  {statuses.map((status) => {
-                    const IconComponent = status.icon;
-                    return (
-                      <TouchableOpacity
-                        key={status.value}
-                        style={[
-                          styles.statusChangeButton,
-                          {
-                            borderColor: status.color,
-                            backgroundColor: task.status === status.value ? status.color : 'transparent',
-                          },
-                        ]}
-                        onPress={() => onStatusChange(status.value)}
-                      >
-                        <IconComponent
-                          size={20}
-                          color={task.status === status.value ? '#ffffff' : status.color}
-                        />
-                        <Text
-                          style={[
-                            styles.statusChangeButtonText,
-                            { color: task.status === status.value ? '#ffffff' : status.color },
-                          ]}
-                        >
-                          {status.label}
+                      </View>
+                      <View style={styles.detailInfoItem}>
+                        <Text style={styles.detailInfoLabel}>Fällig am</Text>
+                        <Text style={styles.detailInfoValue}>
+                          {task.due_date ? formatDate(task.due_date) : 'Kein Datum'}
                         </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Images */}
-            <View style={styles.detailSection}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Text style={[styles.detailSectionTitle, { fontSize: 18 }]}>🖼️ Bilder</Text>
-                <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>{taskImages.length}</Text>
-                </View>
-              </View>
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                style={{
-                  border: `2px dashed ${isDragging ? colors.primary : '#E2E8F0'}`,
-                  borderRadius: 12,
-                  padding: 20,
-                  backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
-                  transition: 'all 0.3s ease',
-                  minHeight: 180,
-                }}
-              >
-                {isDragging ? (
-                  <View style={{ 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    padding: 32,
-                  }}>
-                    <Image size={48} color={colors.primary} style={{ marginBottom: 12 }} />
-                    <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
-                      Bilder hier ablegen zum Hochladen
-                    </Text>
-                    <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
-                      Mehrere Bilder werden unterstützt
-                    </Text>
-                  </View>
-                ) : taskImages.length === 0 ? (
-                  <View style={{ alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-                    <Image size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
-                    <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 8 }}>
-                      Noch keine Bilder vorhanden
-                    </Text>
-                    <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', marginBottom: 16 }}>
-                      Ziehen Sie Bilder hierher oder klicken Sie unten
-                    </Text>
-                    <label htmlFor="image-upload" style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 20px',
-                      backgroundColor: colors.primary,
-                      color: '#ffffff',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: '600',
-                      transition: 'all 0.2s',
-                    }}>
-                      <Plus size={16} />
-                      Bilder auswählen
-                      <input
-                        id="image-upload"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        style={{ display: 'none' }}
-                        onChange={onImageUpload}
-                      />
-                    </label>
-                  </View>
-                ) : (
-                  <View>
-                    <View style={styles.imageGrid}>
-                      {taskImages.map((image) => (
-                        <View key={image.id} style={styles.imageItem}>
-                          <img
-                            src={`${supabase.storage.from('task-attachments').getPublicUrl(image.storage_path).data.publicUrl}`}
-                            alt={image.file_name || ''}
-                            style={styles.imageItemImage}
-                          />
-                        </View>
-                      ))}
+                      </View>
+                      <View style={styles.detailInfoItem}>
+                        <Text style={styles.detailInfoLabel}>Story Points</Text>
+                        <Text style={styles.detailInfoValue}>{task.story_points || '-'}</Text>
+                      </View>
                     </View>
-                    <label htmlFor="image-upload-additional" style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 20px',
-                      backgroundColor: '#ffffff',
-                      color: colors.primary,
-                      border: `2px solid ${colors.primary}`,
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: '600',
-                      marginTop: 16,
-                      transition: 'all 0.2s',
-                    }}>
-                      <Plus size={16} />
-                      Weitere Bilder hinzufügen
-                      <input
-                        id="image-upload-additional"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        style={{ display: 'none' }}
-                        onChange={onImageUpload}
-                      />
-                    </label>
                   </View>
                 )}
-              </div>
-            </View>
 
-            {/* Documentation */}
-            <View style={styles.detailSection}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Text style={[styles.detailSectionTitle, { fontSize: 18 }]}>📝 Dokumentation</Text>
-                <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>{taskDocumentation.length}</Text>
-                </View>
-              </View>
-
-              {/* Documentation List */}
-              {taskDocumentation.length > 0 ? (
-                <View style={{ gap: 12, marginBottom: 16 }}>
-                  {taskDocumentation.map((doc) => {
-                  const docIcons = {
-                    text: FileText,
-                    voice: Mic,
-                    image: Image,
-                    video: Video,
-                  };
-                  const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
-
-                  return (
-                    <View key={doc.id} style={[
-                      styles.docItem,
-                      {
-                        backgroundColor: doc.documentation_type === 'text' ? '#F8FAFC' : '#EFF6FF',
-                        borderLeftWidth: 4,
-                        borderLeftColor: doc.documentation_type === 'text' ? colors.primary : '#F59E0B',
-                        padding: 16,
-                        borderRadius: 12,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.05,
-                        shadowRadius: 3,
-                        elevation: 1,
-                      }
-                    ]}>
-                      <View style={[styles.docItemIcon, { width: 44, height: 44, borderRadius: 22 }]}>
-                        <DocIcon size={20} color="#ffffff" />
-                      </View>
-                      <View style={styles.docItemContent}>
-                        <View style={styles.docItemHeader}>
-                          <Text style={styles.docItemUser}>{getUserName(doc.user_id)}</Text>
-                          <Text style={styles.docItemTime}>{formatDateTime(doc.created_at)}</Text>
-                        </View>
-                        {doc.documentation_type === 'text' ? (
-                          <div 
-                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content || '') }} 
-                            style={{ fontSize: 14, lineHeight: '22px', color: '#334155' }} 
-                          />
-                        ) : (
-                          <View style={styles.docItemFile}>
-                            <Text style={[styles.docItemFileName, { fontSize: 14 }]}>{doc.file_name}</Text>
-                            {doc.duration_seconds && (
-                              <Text style={[styles.docItemTime, { fontSize: 12 }]}>
-                                {Math.floor(doc.duration_seconds / 60)}:{String(doc.duration_seconds % 60).padStart(2, '0')}
-                              </Text>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-                </View>
-              ) : (
-                <View style={{ padding: 24, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: '#E2E8F0', alignItems: 'center', marginBottom: 16 }}>
-                  <FileText size={32} color="#cbd5e1" style={{ marginBottom: 8 }} />
-                  <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>Noch keine Dokumentation vorhanden</Text>
-                  <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', marginTop: 4 }}>Fügen Sie unten Notizen, Sprachaufnahmen oder Videos hinzu</Text>
-                </View>
-              )}
-
-              {/* Add Documentation */}
-              <View style={[styles.docAddSection, { backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', padding: 16, marginTop: 0 }]}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
-                <View style={styles.docAddButtons}>
-                  <TouchableOpacity
-                    style={[
-                      styles.docAddButton,
-                      docFormData.type === 'text' && styles.docAddButtonActive,
-                    ]}
-                    onPress={() => onChangeDocFormData('type', 'text')}
-                  >
-                    <FileText size={16} color={docFormData.type === 'text' ? '#ffffff' : '#64748b'} />
-                    <Text
-                      style={[
-                        styles.docAddButtonText,
-                        docFormData.type === 'text' && styles.docAddButtonTextActive,
-                      ]}
-                    >
-                      Text
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.docAddButton,
-                      docFormData.type === 'voice' && styles.docAddButtonActive,
-                    ]}
-                    onPress={() => onChangeDocFormData('type', 'voice')}
-                  >
-                    <Mic size={16} color={docFormData.type === 'voice' ? '#ffffff' : '#64748b'} />
-                    <Text
-                      style={[
-                        styles.docAddButtonText,
-                        docFormData.type === 'voice' && styles.docAddButtonTextActive,
-                      ]}
-                    >
-                      Sprache
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.docAddButton,
-                      docFormData.type === 'video' && styles.docAddButtonActive,
-                    ]}
-                    onPress={() => onChangeDocFormData('type', 'video')}
-                  >
-                    <Video size={16} color={docFormData.type === 'video' ? '#ffffff' : '#64748b'} />
-                    <Text
-                      style={[
-                        styles.docAddButtonText,
-                        docFormData.type === 'video' && styles.docAddButtonTextActive,
-                      ]}
-                    >
-                      Video
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {docFormData.type === 'text' && (
+                {/* Edit Mode Fields */}
+                {isEditMode && (
                   <>
-                    <View style={{ marginTop: 16, marginBottom: 12 }}>
-                      <RichTextEditor
-                        value={docFormData.content || ''}
-                        onChange={(value) => onChangeDocFormData('content', value)}
-                        placeholder="Dokumentation eingeben... (Rich Text wird unterstützt)"
-                      />
+                    <View style={styles.detailSection}>
+                      <Text style={styles.modalLabel}>Priorität</Text>
+                      <View style={styles.priorityGrid}>
+                        {priorities.map((priority) => (
+                          <TouchableOpacity
+                            key={priority.value}
+                            style={[
+                              styles.priorityButton,
+                              { borderColor: priority.color },
+                              editFormData.priority === priority.value && {
+                                backgroundColor: priority.color,
+                                ...styles.priorityButtonActive,
+                              },
+                            ]}
+                            onPress={() => onChangeEditFormData('priority', priority.value)}
+                          >
+                            <Text
+                              style={[
+                                styles.priorityButtonText,
+                                { color: editFormData.priority === priority.value ? '#ffffff' : priority.color },
+                              ]}
+                            >
+                              {priority.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                    <View style={styles.docAddActions}>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                        onPress={onCancelDocumentation}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
-                          Abbrechen
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
-                        onPress={onSaveDocumentation}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
-                          Speichern
-                        </Text>
-                      </TouchableOpacity>
+
+                    <Select
+                      label="Zuweisen an"
+                      value={editFormData.assigned_to}
+                      options={[
+                        { label: 'Nicht zugewiesen', value: '' },
+                        ...projectMembers.map((member) => ({
+                          label: member.email,
+                          value: member.user_id
+                        }))
+                      ]}
+                      onChange={(value) => onChangeEditFormData('assigned_to', String(value))}
+                      placeholder="Mitglied auswählen"
+                    />
+
+                    <DatePicker
+                      label="Fälligkeitsdatum"
+                      value={editFormData.due_date}
+                      onChange={(value) => onChangeEditFormData('due_date', value)}
+                      placeholder="TT.MM.JJJJ"
+                    />
+
+                    <View style={styles.detailSection}>
+                      <Text style={styles.modalLabel}>Story Points</Text>
+                      <TextInput
+                        style={styles.modalInput}
+                        value={editFormData.story_points}
+                        onChangeText={(value) => onChangeEditFormData('story_points', value)}
+                        keyboardType="numeric"
+                      />
                     </View>
                   </>
                 )}
 
-                {docFormData.type === 'voice' && (
-                  <View style={{ marginTop: 16 }}>
-                    <View style={{ backgroundColor: '#F8FAFC', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0' }}>
-                      <VoiceRecorder
-                        isRecording={isRecording}
-                        onStart={() => {
-                          if (onStartRecording) onStartRecording();
-                        }}
-                        onStop={() => {
-                          // Recording stopped - parent component handles the save
-                        }}
-                        disabled={uploadingAudio}
-                      />
-                      <View style={{ marginTop: 16, alignItems: 'center' }}>
-                        <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>oder</Text>
-                        <input
-                          ref={audioFileInputRef}
-                          type="file"
-                          accept="audio/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              // Handle file upload - parent component will process
-                              console.log('Audio file selected:', file.name);
-                            }
-                          }}
-                          style={{ display: 'none' }}
-                        />
-                        <TouchableOpacity
-                          onPress={() => audioFileInputRef.current?.click()}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 8,
-                            paddingVertical: 10,
-                            paddingHorizontal: 20,
-                            backgroundColor: '#ffffff',
-                            borderRadius: 8,
-                            borderWidth: 2,
-                            borderColor: colors.primary,
-                          }}
-                        >
-                          <Upload size={16} color={colors.primary} />
-                          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
-                            {uploadingAudio ? 'Lädt...' : 'Audiodatei hochladen'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    <View style={styles.docAddActions}>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                        onPress={onCancelDocumentation}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
-                          Abbrechen
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
-                        onPress={onSaveDocumentation}
-                        disabled={uploadingAudio}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
-                          Speichern
-                        </Text>
-                      </TouchableOpacity>
+                {/* Status Change */}
+                {!isEditMode && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Status ändern</Text>
+                    <View style={styles.statusChangeGrid}>
+                      {statuses.map((status) => {
+                        const IconComponent = status.icon;
+                        return (
+                          <TouchableOpacity
+                            key={status.value}
+                            style={[
+                              styles.statusChangeButton,
+                              {
+                                borderColor: status.color,
+                                backgroundColor: task.status === status.value ? status.color : 'transparent',
+                              },
+                            ]}
+                            onPress={() => onStatusChange(status.value)}
+                          >
+                            <IconComponent
+                              size={20}
+                              color={task.status === status.value ? '#ffffff' : status.color}
+                            />
+                            <Text
+                              style={[
+                                styles.statusChangeButtonText,
+                                { color: task.status === status.value ? '#ffffff' : status.color },
+                              ]}
+                            >
+                              {status.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   </View>
                 )}
 
-                {docFormData.type === 'video' && (
-                  <View style={{ marginTop: 16 }}>
-                    <View style={{ backgroundColor: '#F8FAFC', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0' }}>
-                      <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                        <Video size={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
-                        <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
-                          Videodatei hochladen
-                        </Text>
-                      </View>
-                      <input
-                        ref={videoFileInputRef}
-                        type="file"
-                        accept="video/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            // Handle file upload - parent component will process
-                            console.log('Video file selected:', file.name);
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: 12,
-                          borderRadius: 8,
-                          border: '2px solid #E2E8F0',
-                          backgroundColor: '#ffffff',
-                          cursor: 'pointer',
-                        }}
-                      />
-                    </View>
-                    <View style={styles.docAddActions}>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                        onPress={onCancelDocumentation}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
-                          Abbrechen
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
-                        onPress={onSaveDocumentation}
-                      >
-                        <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
-                          Speichern
-                        </Text>
-                      </TouchableOpacity>
+                {/* Images */}
+                <View style={styles.detailSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <Text style={[styles.detailSectionTitle, { fontSize: 18 }]}>🖼️ Bilder</Text>
+                    <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>{taskImages.length}</Text>
                     </View>
                   </View>
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    style={{
+                      border: `2px dashed ${isDragging ? colors.primary : '#E2E8F0'}`,
+                      borderRadius: 12,
+                      padding: 20,
+                      backgroundColor: isDragging ? '#EFF6FF' : '#F8FAFC',
+                      transition: 'all 0.3s ease',
+                      minHeight: 180,
+                    }}
+                  >
+                    {isDragging ? (
+                      <View style={{ 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        padding: 32,
+                      }}>
+                        <Image size={48} color={colors.primary} style={{ marginBottom: 12 }} />
+                        <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
+                          Bilder hier ablegen zum Hochladen
+                        </Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
+                          Mehrere Bilder werden unterstützt
+                        </Text>
+                      </View>
+                    ) : taskImages.length === 0 ? (
+                      <View style={{ alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+                        <Image size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                        <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 8 }}>
+                          Noch keine Bilder vorhanden
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', marginBottom: 16 }}>
+                          Ziehen Sie Bilder hierher oder klicken Sie unten
+                        </Text>
+                        <label htmlFor="image-upload" style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '10px 20px',
+                          backgroundColor: colors.primary,
+                          color: '#ffffff',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          fontSize: 14,
+                          fontWeight: '600',
+                          transition: 'all 0.2s',
+                        }}>
+                          <Plus size={16} />
+                          Bilder auswählen
+                          <input
+                            id="image-upload"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={onImageUpload}
+                          />
+                        </label>
+                      </View>
+                    ) : (
+                      <View>
+                        <View style={styles.imageGrid}>
+                          {taskImages.map((image) => (
+                            <View key={image.id} style={styles.imageItem}>
+                              <img
+                                src={`${supabase.storage.from('task-attachments').getPublicUrl(image.storage_path).data.publicUrl}`}
+                                alt={image.file_name || ''}
+                                style={styles.imageItemImage}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                        <label htmlFor="image-upload-additional" style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '10px 20px',
+                          backgroundColor: '#ffffff',
+                          color: colors.primary,
+                          border: `2px solid ${colors.primary}`,
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                          fontSize: 14,
+                          fontWeight: '600',
+                          marginTop: 16,
+                          transition: 'all 0.2s',
+                        }}>
+                          <Plus size={16} />
+                          Weitere Bilder hinzufügen
+                          <input
+                            id="image-upload-additional"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={onImageUpload}
+                          />
+                        </label>
+                      </View>
+                    )}
+                  </div>
+                </View>
+              </>
+            )}
+
+            {/* TAB 2: DOCUMENTATION */}
+            {activeTab === 'docs' && (
+              <View style={styles.detailSection}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={[styles.detailSectionTitle, { fontSize: 18 }]}>📝 Dokumentation</Text>
+                  <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>{taskDocumentation.length}</Text>
+                  </View>
+                </View>
+
+                {/* Documentation History */}
+                {taskDocumentation.length > 0 ? (
+                  <View style={{ gap: 16, marginBottom: 24 }}>
+                    {taskDocumentation.map((doc) => {
+                      const docIcons = {
+                        text: FileText,
+                        voice: Mic,
+                        image: Image,
+                        video: Video,
+                      };
+                      const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
+
+                      return (
+                        <View key={doc.id} style={{
+                          backgroundColor: '#ffffff',
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          overflow: 'hidden',
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.05,
+                          shadowRadius: 4,
+                          elevation: 2,
+                        }}>
+                          {/* Doc Header with User Info */}
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 12,
+                            backgroundColor: '#F8FAFC',
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#E2E8F0',
+                          }}>
+                            <View style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 18,
+                              backgroundColor: colors.primary,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginRight: 12,
+                            }}>
+                              <User size={18} color="#ffffff" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 2 }}>
+                                {getUserName(doc.user_id)}
+                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <CalendarIcon size={12} color="#94a3b8" />
+                                  <Text style={{ fontSize: 12, color: '#64748b' }}>{formatDateTime(doc.created_at)}</Text>
+                                </View>
+                                <View style={{
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 2,
+                                  borderRadius: 6,
+                                  backgroundColor: doc.documentation_type === 'text' ? '#DBEAFE' : '#FEF3C7',
+                                }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#334155' }}>
+                                    {doc.documentation_type === 'text' ? 'Text' : doc.documentation_type === 'voice' ? 'Sprache' : doc.documentation_type === 'video' ? 'Video' : 'Datei'}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                            <View style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: doc.documentation_type === 'text' ? '#DBEAFE' : '#FEF3C7',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}>
+                              <DocIcon size={16} color={doc.documentation_type === 'text' ? colors.primary : '#F59E0B'} />
+                            </View>
+                          </View>
+                          
+                          {/* Doc Content */}
+                          <View style={{ padding: 16 }}>
+                            {doc.documentation_type === 'text' ? (
+                              <div 
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content || '') }} 
+                                style={{ 
+                                  fontSize: 14, 
+                                  lineHeight: '22px', 
+                                  color: '#334155',
+                                }} 
+                              />
+                            ) : (
+                              <View>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 4 }}>
+                                  {doc.file_name}
+                                </Text>
+                                {doc.duration_seconds && (
+                                  <Text style={{ fontSize: 12, color: '#64748b' }}>
+                                    Dauer: {Math.floor(doc.duration_seconds / 60)}:{String(doc.duration_seconds % 60).padStart(2, '0')} min
+                                  </Text>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={{ padding: 32, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: '#E2E8F0', alignItems: 'center', marginBottom: 24 }}>
+                    <FileText size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                    <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 4 }}>Noch keine Dokumentation vorhanden</Text>
+                    <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center' }}>Fügen Sie unten Notizen, Sprachaufnahmen oder Videos hinzu</Text>
+                  </View>
                 )}
+
+                {/* Add New Documentation */}
+                <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 16 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
+                  
+                  {/* Type Selector */}
+                  <View style={styles.docAddButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.docAddButton,
+                        docFormData.type === 'text' && styles.docAddButtonActive,
+                      ]}
+                      onPress={() => onChangeDocFormData('type', 'text')}
+                    >
+                      <FileText size={18} color={docFormData.type === 'text' ? '#ffffff' : '#64748b'} />
+                      <Text
+                        style={[
+                          styles.docAddButtonText,
+                          docFormData.type === 'text' && styles.docAddButtonTextActive,
+                        ]}
+                      >
+                        Text
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.docAddButton,
+                        docFormData.type === 'voice' && styles.docAddButtonActive,
+                      ]}
+                      onPress={() => onChangeDocFormData('type', 'voice')}
+                    >
+                      <Mic size={18} color={docFormData.type === 'voice' ? '#ffffff' : '#64748b'} />
+                      <Text
+                        style={[
+                          styles.docAddButtonText,
+                          docFormData.type === 'voice' && styles.docAddButtonTextActive,
+                        ]}
+                      >
+                        Sprache
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.docAddButton,
+                        docFormData.type === 'video' && styles.docAddButtonActive,
+                      ]}
+                      onPress={() => onChangeDocFormData('type', 'video')}
+                    >
+                      <Video size={18} color={docFormData.type === 'video' ? '#ffffff' : '#64748b'} />
+                      <Text
+                        style={[
+                          styles.docAddButtonText,
+                          docFormData.type === 'video' && styles.docAddButtonTextActive,
+                        ]}
+                      >
+                        Video
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Content based on type */}
+                  {docFormData.type === 'text' && (
+                    <>
+                      <View style={{ marginTop: 16, marginBottom: 12 }}>
+                        <RichTextEditor
+                          value={docFormData.content || ''}
+                          onChange={(value) => onChangeDocFormData('content', value)}
+                        />
+                      </View>
+                      <View style={styles.docAddActions}>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
+                          onPress={onCancelDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
+                            Abbrechen
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
+                          onPress={onSaveDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
+                            Speichern
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+
+                  {docFormData.type === 'voice' && (
+                    <View style={{ marginTop: 16 }}>
+                      <View style={{ backgroundColor: '#F8FAFC', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0' }}>
+                        <VoiceRecorder
+                          isRecording={isRecording}
+                          onStart={() => {
+                            if (onStartRecording) onStartRecording();
+                          }}
+                          onStop={() => {}}
+                          disabled={false}
+                        />
+                        <View style={{ marginTop: 16, alignItems: 'center' }}>
+                          <Text style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>oder</Text>
+                          <input
+                            ref={audioFileInputRef}
+                            type="file"
+                            accept="audio/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                console.log('Audio file selected:', file.name);
+                              }
+                            }}
+                            style={{ display: 'none' }}
+                          />
+                          <TouchableOpacity
+                            onPress={() => audioFileInputRef.current?.click()}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              paddingVertical: 10,
+                              paddingHorizontal: 20,
+                              backgroundColor: '#ffffff',
+                              borderRadius: 8,
+                              borderWidth: 2,
+                              borderColor: colors.primary,
+                            }}
+                          >
+                            <Upload size={16} color={colors.primary} />
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+                              Audiodatei hochladen
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      <View style={styles.docAddActions}>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
+                          onPress={onCancelDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
+                            Abbrechen
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
+                          onPress={onSaveDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
+                            Speichern
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {docFormData.type === 'video' && (
+                    <View style={{ marginTop: 16 }}>
+                      <View style={{ backgroundColor: '#F8FAFC', padding: 20, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0' }}>
+                        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                          <Video size={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                          <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
+                            Videodatei hochladen
+                          </Text>
+                        </View>
+                        <input
+                          ref={videoFileInputRef}
+                          type="file"
+                          accept="video/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              console.log('Video file selected:', file.name);
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: 12,
+                            borderRadius: 8,
+                            border: '2px solid #E2E8F0',
+                            backgroundColor: '#ffffff',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      </View>
+                      <View style={styles.docAddActions}>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
+                          onPress={onCancelDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
+                            Abbrechen
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.docAddActionButton, styles.docAddActionButtonSave]}
+                          onPress={onSaveDocumentation}
+                        >
+                          <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextSave]}>
+                            Speichern
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
           </ScrollView>
           
           {/* Footer with Save Button for Edit Mode */}
@@ -1092,19 +1164,24 @@ const styles = StyleSheet.create({
   modalButtonPrimaryText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
   
   // Detail Modal Styles
-  detailModalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 800, maxHeight: '90%' },
+  detailModalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 900, maxHeight: '90%' },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   detailHeaderLeft: { flex: 1 },
   detailTitle: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
   detailBadges: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   detailHeaderRight: { flexDirection: 'row', gap: 8 },
   detailIconButton: { padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  
+  // Tabs
+  tabBar: { flexDirection: 'row', gap: 8, marginBottom: 20, borderBottomWidth: 2, borderBottomColor: '#E2E8F0' },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 3, borderBottomColor: 'transparent', marginBottom: -2 },
+  tabActive: { borderBottomColor: colors.primary },
+  tabText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  tabTextActive: { color: colors.primary },
+  
   detailBody: { maxHeight: 600 },
   detailSection: { marginBottom: 24 },
-  detailSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   detailSectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
-  detailSectionButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: colors.primary },
-  detailSectionButtonText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   detailDescription: { fontSize: 14, color: '#64748b', lineHeight: 20 },
   detailInfoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   detailInfoItem: { flex: 1, minWidth: 150, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
@@ -1116,34 +1193,18 @@ const styles = StyleSheet.create({
   imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   imageItem: { width: 100, height: 100, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
   imageItemImage: { width: '100%', height: '100%' },
-  imageUploadButton: { width: 100, height: 100, borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
-  docList: { gap: 12 },
-  docItem: { flexDirection: 'row', gap: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
-  docItemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  docItemContent: { flex: 1 },
-  docItemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  docItemUser: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
-  docItemTime: { fontSize: 11, color: '#64748b' },
-  docItemText: { fontSize: 13, color: '#334155', lineHeight: 18 },
-  docItemFile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  docItemFileName: { fontSize: 13, color: colors.primary, fontWeight: '600' },
-  docAddSection: { marginTop: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
   docAddButtons: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  docAddButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#ffffff' },
+  docAddButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#ffffff' },
   docAddButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  docAddButtonText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
+  docAddButtonText: { fontSize: 14, fontWeight: '700', color: '#64748b' },
   docAddButtonTextActive: { color: '#ffffff' },
-  docAddInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 14, color: '#0f172a', minHeight: 80, textAlignVertical: 'top', marginBottom: 8 },
-  docAddActions: { flexDirection: 'row', gap: 8 },
-  docAddActionButton: { flex: 1, paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+  docAddActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  docAddActionButton: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
   docAddActionButtonCancel: { borderWidth: 1, borderColor: '#E2E8F0' },
   docAddActionButtonSave: { backgroundColor: colors.primary },
-  docAddActionButtonText: { fontSize: 13, fontWeight: '700' },
+  docAddActionButtonText: { fontSize: 14, fontWeight: '700' },
   docAddActionButtonTextCancel: { color: '#64748b' },
   docAddActionButtonTextSave: { color: '#ffffff' },
-  recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#FEE2E2', borderRadius: 8, marginVertical: 12 },
-  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#DC2626' },
-  recordingText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
   priorityBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   priorityBadgeText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
   statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },

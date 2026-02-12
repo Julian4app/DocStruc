@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from 'react-native';
-import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Heading1, Heading2, Heading3, Strikethrough, Link } from 'lucide-react';
+import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Heading1, Heading2, Heading3, Strikethrough, Link, ChevronDown } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 
 interface RichTextEditorProps {
@@ -10,12 +10,14 @@ interface RichTextEditorProps {
   disabled?: boolean;
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, placeholder = '', disabled }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [selectedFont, setSelectedFont] = React.useState('Poppins');
   const [selectedSize, setSelectedSize] = React.useState('14px');
   const [selectedColor, setSelectedColor] = React.useState('#2563eb');
   const [showColorPicker, setShowColorPicker] = React.useState(false);
+  const [showFontMenu, setShowFontMenu] = React.useState(false);
+  const [showSizeMenu, setShowSizeMenu] = React.useState(false);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -59,19 +61,29 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
 
   const changeFontFamily = (font: string) => {
     setSelectedFont(font);
+    setShowFontMenu(false);
     execCommand('fontName', font);
   };
 
   const changeFontSize = (size: string) => {
     setSelectedSize(size);
+    setShowSizeMenu(false);
     // Convert px to font size number (1-7)
     const sizeMap: {[key: string]: string} = {
+      '8px': '1',
+      '10px': '1',
       '12px': '2',
       '14px': '3',
       '16px': '4',
       '18px': '5',
       '20px': '6',
-      '24px': '7'
+      '22px': '6',
+      '24px': '7',
+      '26px': '7',
+      '28px': '7',
+      '36px': '7',
+      '48px': '7',
+      '72px': '7'
     };
     execCommand('fontSize', sizeMap[size] || '3');
   };
@@ -81,6 +93,40 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
     execCommand('foreColor', color);
     setShowColorPicker(false);
   };
+
+  const fonts = [
+    'Poppins',
+    'Arial',
+    'Helvetica',
+    'Times New Roman',
+    'Courier New',
+    'Georgia',
+    'Verdana',
+    'Trebuchet MS',
+    'Comic Sans MS',
+    'Impact',
+    'Palatino',
+    'Garamond',
+    'Bookman',
+    'Avant Garde'
+  ];
+
+  const sizes = [
+    '8px',
+    '10px',
+    '12px',
+    '14px',
+    '16px',
+    '18px',
+    '20px',
+    '22px',
+    '24px',
+    '26px',
+    '28px',
+    '36px',
+    '48px',
+    '72px'
+  ];
 
   const buttons = [
     { icon: Bold, command: 'bold', label: 'Fett' },
@@ -101,55 +147,152 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
   return (
     <View style={styles.container}>
       <View style={styles.toolbar}>
-        <select 
-          value={selectedFont}
-          onChange={(e) => changeFontFamily(e.target.value)}
-          disabled={disabled}
-          style={{
-            border: '1px solid #E2E8F0',
-            borderRadius: 6,
-            padding: '4px 8px',
-            fontSize: 13,
-            fontWeight: '500',
-            color: '#475569',
-            backgroundColor: '#fff',
-            cursor: 'pointer',
-            outline: 'none',
-          }}
-        >
-          <option value="Poppins">Poppins</option>
-          <option value="Arial">Arial</option>
-          <option value="Helvetica">Helvetica</option>
-          <option value="Times New Roman">Times</option>
-          <option value="Courier New">Courier</option>
-          <option value="Georgia">Georgia</option>
-        </select>
-        <View style={styles.separator} />
-        <select
-          value={selectedSize}
-          onChange={(e) => changeFontSize(e.target.value)}
-          disabled={disabled}
-          style={{
-            border: '1px solid #E2E8F0',
-            borderRadius: 6,
-            padding: '4px 8px',
-            fontSize: 13,
-            fontWeight: '500',
-            color: '#475569',
-            backgroundColor: '#fff',
-            cursor: 'pointer',
-            outline: 'none',
-          }}
-        >
-          <option value="12px">12px</option>
-          <option value="14px">14px</option>
-          <option value="16px">16px</option>
-          <option value="18px">18px</option>
-          <option value="20px">20px</option>
-          <option value="24px">24px</option>
-        </select>
+        {/* Font Selector - Custom Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowFontMenu(!showFontMenu)}
+            disabled={disabled}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              border: '1px solid #E2E8F0',
+              borderRadius: 6,
+              padding: '6px 12px',
+              fontSize: 13,
+              fontWeight: '500',
+              color: '#475569',
+              backgroundColor: '#fff',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              outline: 'none',
+              minWidth: 140,
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{selectedFont}</span>
+            <ChevronDown size={14} color="#94a3b8" />
+          </button>
+          {showFontMenu && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              zIndex: 2000,
+              marginTop: 4,
+              backgroundColor: '#fff',
+              border: '1px solid #E2E8F0',
+              borderRadius: 8,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              maxHeight: 300,
+              overflowY: 'auto',
+              minWidth: 200,
+            }}>
+              {fonts.map(font => (
+                <button
+                  key={font}
+                  onClick={() => changeFontFamily(font)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    border: 'none',
+                    backgroundColor: selectedFont === font ? '#EFF6FF' : 'transparent',
+                    color: selectedFont === font ? colors.primary : '#334155',
+                    fontFamily: font,
+                    fontSize: 14,
+                    fontWeight: selectedFont === font ? '600' : '400',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedFont !== font) e.currentTarget.style.backgroundColor = '#F8FAFC';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedFont !== font) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  {font}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
         <View style={styles.separator} />
         
+        {/* Size Selector - Custom Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowSizeMenu(!showSizeMenu)}
+            disabled={disabled}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              border: '1px solid #E2E8F0',
+              borderRadius: 6,
+              padding: '6px 12px',
+              fontSize: 13,
+              fontWeight: '500',
+              color: '#475569',
+              backgroundColor: '#fff',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              outline: 'none',
+              minWidth: 80,
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{selectedSize}</span>
+            <ChevronDown size={14} color="#94a3b8" />
+          </button>
+          {showSizeMenu && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              zIndex: 2000,
+              marginTop: 4,
+              backgroundColor: '#fff',
+              border: '1px solid #E2E8F0',
+              borderRadius: 8,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              maxHeight: 300,
+              overflowY: 'auto',
+              minWidth: 100,
+            }}>
+              {sizes.map(size => (
+                <button
+                  key={size}
+                  onClick={() => changeFontSize(size)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    border: 'none',
+                    backgroundColor: selectedSize === size ? '#EFF6FF' : 'transparent',
+                    color: selectedSize === size ? colors.primary : '#334155',
+                    fontSize: 14,
+                    fontWeight: selectedSize === size ? '600' : '400',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedSize !== size) e.currentTarget.style.backgroundColor = '#F8FAFC';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selectedSize !== size) e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <View style={styles.separator} />
+        
+        {/* Color Picker */}
         <div style={{ position: 'relative' }}>
           <TouchableOpacity 
             style={styles.colorPicker}
@@ -163,7 +306,8 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
               position: 'absolute',
               top: '100%',
               left: 0,
-              zIndex: 1000,
+              zIndex: 2000,
+              marginTop: 4,
               backgroundColor: '#fff',
               border: '1px solid #E2E8F0',
               borderRadius: 8,
@@ -171,7 +315,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
               display: 'grid',
               gridTemplateColumns: 'repeat(5, 32px)',
               gap: 4,
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             }}>
               {['#000000', '#DC2626', '#EA580C', '#F59E0B', '#84CC16', '#10B981', '#06B6D4', '#2563eb', '#7C3AED', '#DB2777', '#64748b', '#ffffff'].map(color => (
                 <button
@@ -181,9 +325,16 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
                     width: 32,
                     height: 32,
                     borderRadius: 6,
-                    border: '2px solid #E2E8F0',
+                    border: selectedColor === color ? `3px solid ${colors.primary}` : '2px solid #E2E8F0',
                     backgroundColor: color,
                     cursor: 'pointer',
+                    transition: 'transform 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
                   }}
                 />
               ))}
@@ -261,17 +412,11 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
             lineHeight: '1.6',
             color: '#0f172a',
           }}
-          data-placeholder={placeholder}
           className="rich-text-editor"
         />
       </ScrollView>
 
       <style>{`
-        .rich-text-editor:empty:before {
-          content: attr(data-placeholder);
-          color: #94A3B8;
-          pointer-events: none;
-        }
         .rich-text-editor p {
           margin: 0 0 8px 0;
         }
