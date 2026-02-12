@@ -545,13 +545,6 @@ export function ProjectTasks() {
       showToast('Bitte nur Bilddateien hochladen', 'error');
     }
   };
-    
-    // Use setTimeout to ensure modal opens immediately
-    setTimeout(() => {
-      setIsDetailModalOpen(true);
-      loadTaskDetails(task.id);
-    }, 0);
-  };
 
   const handleDragEnd = async (result: any) => {
     if (!result.destination) return;
