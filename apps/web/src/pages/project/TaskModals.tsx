@@ -391,8 +391,7 @@ export const TaskDetailModal: React.FC<{
       onImageUpload(syntheticEvent as any);
     }
   };
-  getUserName,
-}) => {
+
   if (!visible || !task) return null;
 
   const priorities = [
