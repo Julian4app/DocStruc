@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { Card, Button, Input } from '@docstruc/ui';
+import { Card } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
@@ -143,6 +142,10 @@ export function ProjectTasks() {
   // Image upload for create modal
   const [createImages, setCreateImages] = useState<File[]>([]);
   const [isDraggingCreate, setIsDraggingCreate] = useState(false);
+  
+  // Native drag-and-drop state for Kanban
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -545,36 +548,55 @@ export function ProjectTasks() {
     }
   };
 
-  const handleDragEnd = async (result: any) => {
-    console.log('🎯 Drag ended:', result);
+  // Native HTML5 drag-and-drop handlers for Kanban
+  const handleTaskDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
+    setDragTaskId(taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', taskId);
+    // Add a slight delay so the drag image renders
+    requestAnimationFrame(() => {
+      (e.target as HTMLElement).style.opacity = '0.5';
+    });
+  };
+
+  const handleTaskDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    (e.target as HTMLElement).style.opacity = '1';
+    setDragTaskId(null);
+    setDragOverColumn(null);
+  };
+
+  const handleColumnDragOver = (e: React.DragEvent<HTMLDivElement>, columnStatus: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(columnStatus);
+  };
+
+  const handleColumnDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // Only clear if actually leaving the column (not entering a child)
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!e.currentTarget.contains(relatedTarget)) {
+      setDragOverColumn(null);
+    }
+  };
+
+  const handleColumnDrop = async (e: React.DragEvent<HTMLDivElement>, newStatus: string) => {
+    e.preventDefault();
+    setDragOverColumn(null);
     
-    if (!result.destination) {
-      console.log('❌ No destination');
+    const taskId = e.dataTransfer.getData('text/plain') || dragTaskId;
+    if (!taskId) return;
+    
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === newStatus) {
+      setDragTaskId(null);
       return;
     }
-
-    const { source, destination, draggableId } = result;
-    
-    console.log('📦 Moving task:', draggableId, 'from', source.droppableId, 'to', destination.droppableId);
-    
-    // If dropped in same column at same position, do nothing
-    if (source.droppableId === destination.droppableId && source.index === destination.index) {
-      console.log('↩️ Same position, no change');
-      return;
-    }
-
-    const newStatus = destination.droppableId;
-    const taskId = draggableId;
 
     // Optimistic UI update
-    const tasksCopy = [...tasks];
-    const taskIndex = tasksCopy.findIndex(t => t.id === taskId);
-    if (taskIndex >= 0) {
-      tasksCopy[taskIndex] = { ...tasksCopy[taskIndex], status: newStatus as any };
-      setTasks(tasksCopy);
-    }
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus as any } : t));
+    setDragTaskId(null);
 
-      // Update in database
+    // Update in database
     try {
       const { error } = await supabase
         .from('tasks')
@@ -585,7 +607,6 @@ export function ProjectTasks() {
         .eq('id', taskId);
 
       if (error) throw error;
-
       showToast('Status aktualisiert', 'success');
       
       if (selectedTask?.id === taskId) {
@@ -594,7 +615,6 @@ export function ProjectTasks() {
     } catch (error: any) {
       console.error('Error updating status:', error);
       showToast('Fehler beim Aktualisieren', 'error');
-      // Revert on error
       loadTasks();
     }
   };  const getStatusIcon = (status: string) => {
@@ -665,118 +685,119 @@ export function ProjectTasks() {
     ];
 
     return (
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '16px 0' }}>
-          {columns.map(column => {
-            const columnTasks = filteredTasks.filter(t => t.status === column.status);
-            
-            return (
-              <div key={column.status} style={{ minWidth: 300, flex: '0 0 300px', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ backgroundColor: column.color, padding: 12, borderRadius: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{column.label}</span>
-                  <div style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '4px 8px', borderRadius: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{columnTasks.length}</span>
-                  </div>
+      <div style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '16px 0' }}>
+        {columns.map(column => {
+          const columnTasks = filteredTasks.filter(t => t.status === column.status);
+          const isOver = dragOverColumn === column.status;
+          
+          return (
+            <div key={column.status} style={{ minWidth: 300, flex: '0 0 300px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ backgroundColor: column.color, padding: 12, borderRadius: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{column.label}</span>
+                <div style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '4px 8px', borderRadius: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{columnTasks.length}</span>
                 </div>
-                
-                <Droppable droppableId={column.status}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      style={{
-                        minHeight: 200,
-                        padding: 8,
-                        backgroundColor: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent',
-                        borderRadius: 8,
-                        transition: 'background-color 0.2s'
-                      }}
-                    >
-                      {columnTasks.map((task, index) => (
-                        <Draggable key={task.id} draggableId={task.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              onClick={() => {
-                                if (!snapshot.isDragging) {
-                                  openTaskDetail(task);
-                                }
-                              }}
-                              style={{
-                                ...provided.draggableProps.style,
-                                marginBottom: 12,
-                                padding: 16,
-                                backgroundColor: snapshot.isDragging ? '#EFF6FF' : '#ffffff',
-                                borderRadius: 12,
-                                borderWidth: 1,
-                                borderStyle: 'solid',
-                                borderColor: snapshot.isDragging ? colors.primary : '#E2E8F0',
-                                boxShadow: snapshot.isDragging
-                                  ? '0 8px 25px rgba(0,0,0,0.15)'
-                                  : '0 1px 3px rgba(0,0,0,0.08)',
-                                cursor: snapshot.isDragging ? 'grabbing' : 'grab',
-                                transition: 'box-shadow 0.2s, border-color 0.2s',
-                                userSelect: 'none',
-                              }}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                                <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
-                                {task.priority && (
-                                  <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
-                                )}
-                              </div>
-                              
-                              {task.description && (
-                                <Text style={styles.kanbanCardDesc} numberOfLines={2}>{task.description}</Text>
-                              )}
-                              
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  {task.assigned_to && (
-                                    <View style={styles.assigneeAvatar}>
-                                      <Text style={styles.assigneeAvatarText}>
-                                        {projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.first_name?.[0] ||
-                                         projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.email?.[0] || '?'}
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {task.due_date && (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', backgroundColor: new Date(task.due_date) < new Date() ? '#FEE2E2' : '#F1F5F9', borderRadius: 6 }}>
-                                      <Calendar size={12} color={new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b'} />
-                                      <span style={{ fontSize: 11, fontWeight: 600, color: new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b' }}>
-                                        {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                                {task.story_points && (
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', backgroundColor: '#F1F5F9', padding: '2px 8px', borderRadius: 6 }}>
-                                    {task.story_points} SP
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                      
-                      {columnTasks.length === 0 && (
-                        <div style={{ padding: 24, textAlign: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, border: '2px dashed #E2E8F0' }}>
-                          <p style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', margin: '0 0 4px 0' }}>Keine Aufgaben</p>
-                          <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0 }}>Ziehen Sie Aufgaben hierher</p>
-                        </div>
+              </div>
+              
+              {/* Droppable Column */}
+              <div
+                onDragOver={(e) => handleColumnDragOver(e, column.status)}
+                onDragLeave={handleColumnDragLeave}
+                onDrop={(e) => handleColumnDrop(e, column.status)}
+                style={{
+                  minHeight: 200,
+                  padding: 8,
+                  backgroundColor: isOver ? '#DBEAFE' : '#F8FAFC',
+                  borderRadius: 8,
+                  transition: 'background-color 0.2s, border-color 0.2s',
+                  border: isOver ? '2px dashed #3B82F6' : '2px dashed transparent',
+                  flex: 1,
+                }}
+              >
+                {columnTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    draggable
+                    onDragStart={(e) => handleTaskDragStart(e, task.id)}
+                    onDragEnd={handleTaskDragEnd}
+                    onClick={() => openTaskDetail(task)}
+                    style={{
+                      marginBottom: 12,
+                      padding: 16,
+                      backgroundColor: dragTaskId === task.id ? '#DBEAFE' : '#ffffff',
+                      borderRadius: 12,
+                      border: dragTaskId === task.id ? `2px solid ${colors.primary}` : '1px solid #E2E8F0',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                      cursor: 'grab',
+                      transition: 'box-shadow 0.2s, transform 0.15s, opacity 0.2s',
+                      userSelect: 'none' as const,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!dragTaskId) {
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', flex: 1, marginRight: 8 }}>{task.title}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <GripVertical size={14} color="#94a3b8" />
+                        {task.priority && (
+                          <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: getPriorityColor(task.priority) }} />
+                        )}
+                      </div>
+                    </div>
+                    
+                    {task.description && (
+                      <p style={{ fontSize: 13, color: '#64748b', lineHeight: '18px', marginBottom: 12, margin: '0 0 12px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+                        {task.description}
+                      </p>
+                    )}
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {task.assigned_to && (
+                          <div style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                              {projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.first_name?.[0] ||
+                               projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.email?.[0] || '?'}
+                            </span>
+                          </div>
+                        )}
+                        {task.due_date && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', backgroundColor: new Date(task.due_date) < new Date() ? '#FEE2E2' : '#F1F5F9', borderRadius: 6 }}>
+                            <Calendar size={12} color={new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b'} />
+                            <span style={{ fontSize: 11, fontWeight: 600, color: new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b' }}>
+                              {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {task.story_points && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', backgroundColor: '#F1F5F9', padding: '2px 8px', borderRadius: 6 }}>
+                          {task.story_points} SP
+                        </span>
                       )}
                     </div>
-                  )}
-                </Droppable>
+                  </div>
+                ))}
+                
+                {columnTasks.length === 0 && (
+                  <div style={{ padding: 24, textAlign: 'center', backgroundColor: isOver ? 'transparent' : '#F8FAFC', borderRadius: 8, border: isOver ? 'none' : '2px dashed #E2E8F0' }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', margin: '0 0 4px 0' }}>Keine Aufgaben</p>
+                    <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0 }}>Ziehen Sie Aufgaben hierher</p>
+                  </div>
+                )}
               </div>
-            );
-          })}
-        </div>
-      </DragDropContext>
+            </div>
+          );
+        })}
+      </div>
     );
   };
 
@@ -855,7 +876,7 @@ export function ProjectTasks() {
     // Add days of month
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayTasks = filteredTasks.filter(t => t.due_date === dateStr);
+      const dayTasks = filteredTasks.filter(t => t.due_date && t.due_date.substring(0, 10) === dateStr);
       const isToday = todayStr === dateStr;
       const isPast = new Date(dateStr) < new Date(todayStr);
       
@@ -1058,9 +1079,28 @@ export function ProjectTasks() {
             <Text style={styles.pageTitle}>Aufgaben</Text>
             <Text style={styles.pageSubtitle}>Scrum Board & Task Management</Text>
           </View>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 20px',
+              backgroundColor: colors.primary,
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: '0 2px 8px rgba(59,130,246,0.3)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(59,130,246,0.4)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(59,130,246,0.3)'; }}
+          >
             <Plus size={18} /> Neue Aufgabe
-          </Button>
+          </button>
         </View>
 
         {/* View Switcher & Filters */}
@@ -1132,12 +1172,13 @@ export function ProjectTasks() {
         {viewMode !== 'calendar' && (
           <View style={styles.filterBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', alignSelf: 'center', marginRight: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Status:</Text>
               <TouchableOpacity
                 style={[styles.filterChip, statusFilter === 'all' && styles.filterChipActive]}
                 onPress={() => setStatusFilter('all')}
               >
                 <Text style={[styles.filterChipText, statusFilter === 'all' && styles.filterChipTextActive]}>
-                  Alle Status
+                  Alle
                 </Text>
               </TouchableOpacity>
               
@@ -1155,12 +1196,14 @@ export function ProjectTasks() {
               
               <View style={styles.filterDivider} />
               
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', alignSelf: 'center', marginRight: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Priorität:</Text>
+              
               <TouchableOpacity
                 style={[styles.filterChip, priorityFilter === 'all' && styles.filterChipActive]}
                 onPress={() => setPriorityFilter('all')}
               >
                 <Text style={[styles.filterChipText, priorityFilter === 'all' && styles.filterChipTextActive]}>
-                  Alle Prioritäten
+                  Alle
                 </Text>
               </TouchableOpacity>
               
@@ -1286,7 +1329,7 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   filterChipText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
   filterChipTextActive: { color: '#ffffff' },
-  filterDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0', marginHorizontal: 8, alignSelf: 'center' },
+  filterDivider: { width: 2, height: 32, backgroundColor: '#CBD5E1', marginHorizontal: 14, alignSelf: 'center', borderRadius: 1 },
   kanbanContainer: { flex: 1 },
   kanbanColumn: { width: 320, marginRight: 16, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', padding: 16 },
   kanbanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 8, marginBottom: 12 },
