@@ -659,18 +659,18 @@ export function ProjectTasks() {
 
     return (
       <DragDropContext onDragEnd={handleDragEnd}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kanbanContainer}>
+        <div style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '16px 0' }}>
           {columns.map(column => {
             const columnTasks = filteredTasks.filter(t => t.status === column.status);
             
             return (
-              <View key={column.status} style={styles.kanbanColumn}>
-                <View style={[styles.kanbanHeader, { backgroundColor: column.color }]}>
-                  <Text style={styles.kanbanHeaderText}>{column.label}</Text>
-                  <View style={styles.kanbanCount}>
-                    <Text style={styles.kanbanCountText}>{columnTasks.length}</Text>
-                  </View>
-                </View>
+              <div key={column.status} style={{ minWidth: 300, flex: '0 0 300px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ backgroundColor: column.color, padding: 12, borderRadius: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{column.label}</span>
+                  <div style={{ backgroundColor: 'rgba(0,0,0,0.1)', padding: '4px 8px', borderRadius: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{columnTasks.length}</span>
+                  </div>
+                </div>
                 
                 <Droppable droppableId={column.status}>
                   {(provided, snapshot) => (
@@ -757,18 +757,18 @@ export function ProjectTasks() {
                       {provided.placeholder}
                       
                       {columnTasks.length === 0 && (
-                        <View style={styles.emptyColumn}>
-                          <Text style={styles.emptyColumnText}>Keine Aufgaben</Text>
-                          <Text style={styles.emptyColumnHint}>Ziehen Sie Aufgaben hierher</Text>
-                        </View>
+                        <div style={{ padding: 24, textAlign: 'center', backgroundColor: '#F8FAFC', borderRadius: 8, border: '2px dashed #E2E8F0' }}>
+                          <p style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', margin: '0 0 4px 0' }}>Keine Aufgaben</p>
+                          <p style={{ fontSize: 12, color: '#cbd5e1', margin: 0 }}>Ziehen Sie Aufgaben hierher</p>
+                        </div>
                       )}
                     </div>
                   )}
                 </Droppable>
-              </View>
+              </div>
             );
           })}
-        </ScrollView>
+        </div>
       </DragDropContext>
     );
   };

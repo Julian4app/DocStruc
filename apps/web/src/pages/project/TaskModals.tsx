@@ -695,11 +695,17 @@ export const TaskDetailModal: React.FC<{
 
             {/* Documentation */}
             <View style={styles.detailSection}>
-              <Text style={styles.detailSectionTitle}>Dokumentation ({taskDocumentation.length})</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <Text style={[styles.detailSectionTitle, { fontSize: 18 }]}>📝 Dokumentation</Text>
+                <View style={{ backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#ffffff' }}>{taskDocumentation.length}</Text>
+                </View>
+              </View>
 
               {/* Documentation List */}
-              <View style={styles.docList}>
-                {taskDocumentation.map((doc) => {
+              {taskDocumentation.length > 0 ? (
+                <View style={{ gap: 12, marginBottom: 16 }}>
+                  {taskDocumentation.map((doc) => {
                   const docIcons = {
                     text: FileText,
                     voice: Mic,
@@ -709,8 +715,22 @@ export const TaskDetailModal: React.FC<{
                   const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
 
                   return (
-                    <View key={doc.id} style={styles.docItem}>
-                      <View style={styles.docItemIcon}>
+                    <View key={doc.id} style={[
+                      styles.docItem,
+                      {
+                        backgroundColor: doc.documentation_type === 'text' ? '#F8FAFC' : '#EFF6FF',
+                        borderLeftWidth: 4,
+                        borderLeftColor: doc.documentation_type === 'text' ? colors.primary : '#F59E0B',
+                        padding: 16,
+                        borderRadius: 12,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.05,
+                        shadowRadius: 3,
+                        elevation: 1,
+                      }
+                    ]}>
+                      <View style={[styles.docItemIcon, { width: 44, height: 44, borderRadius: 22 }]}>
                         <DocIcon size={20} color="#ffffff" />
                       </View>
                       <View style={styles.docItemContent}>
@@ -719,12 +739,12 @@ export const TaskDetailModal: React.FC<{
                           <Text style={styles.docItemTime}>{formatDateTime(doc.created_at)}</Text>
                         </View>
                         {doc.documentation_type === 'text' ? (
-                          <Text style={styles.docItemText}>{doc.content}</Text>
+                          <Text style={[styles.docItemText, { fontSize: 14, lineHeight: 22, color: '#334155' }]}>{doc.content}</Text>
                         ) : (
                           <View style={styles.docItemFile}>
-                            <Text style={styles.docItemFileName}>{doc.file_name}</Text>
+                            <Text style={[styles.docItemFileName, { fontSize: 14 }]}>{doc.file_name}</Text>
                             {doc.duration_seconds && (
-                              <Text style={styles.docItemTime}>
+                              <Text style={[styles.docItemTime, { fontSize: 12 }]}>
                                 {Math.floor(doc.duration_seconds / 60)}:{String(doc.duration_seconds % 60).padStart(2, '0')}
                               </Text>
                             )}
@@ -734,10 +754,18 @@ export const TaskDetailModal: React.FC<{
                     </View>
                   );
                 })}
-              </View>
+                </View>
+              ) : (
+                <View style={{ padding: 24, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: '#E2E8F0', alignItems: 'center', marginBottom: 16 }}>
+                  <FileText size={32} color="#cbd5e1" style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>Noch keine Dokumentation vorhanden</Text>
+                  <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', marginTop: 4 }}>Fügen Sie unten Notizen, Sprachaufnahmen oder Videos hinzu</Text>
+                </View>
+              )}
 
               {/* Add Documentation */}
-              <View style={styles.docAddSection}>
+              <View style={[styles.docAddSection, { backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', padding: 16, marginTop: 0 }]}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
                 <View style={styles.docAddButtons}>
                   <TouchableOpacity
                     style={[
