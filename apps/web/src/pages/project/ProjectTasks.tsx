@@ -258,7 +258,7 @@ export function ProjectTasks() {
   };
 
   const handleCreateTask = async () => {
-    if (!formTitle.trim()) {
+    if (!createFormData.title.trim()) {
       showToast('Bitte geben Sie einen Titel ein', 'error');
       return;
     }
@@ -269,13 +269,13 @@ export function ProjectTasks() {
       // Create the task first
       const { data: newTask, error: taskError } = await supabase.from('tasks').insert({
         project_id: id,
-        title: formTitle.trim(),
-        description: formDescription.trim(),
-        status: formStatus,
-        priority: formPriority,
-        assigned_to: formAssignedTo || null,
-        due_date: formDueDate || null,
-        story_points: formStoryPoints ? parseInt(formStoryPoints) : null,
+        title: createFormData.title.trim(),
+        description: createFormData.description.trim(),
+        status: createFormData.status,
+        priority: createFormData.priority,
+        assigned_to: createFormData.assigned_to || null,
+        due_date: createFormData.due_date || null,
+        story_points: createFormData.story_points ? parseInt(createFormData.story_points) : null,
         creator_id: userData.user?.id,
         board_position: tasks.length
       }).select().single();
@@ -316,7 +316,8 @@ export function ProjectTasks() {
 
       showToast('Aufgabe erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
-      resetForm();
+      setCreateFormData({ title: '', description: '', priority: 'medium', status: 'open', assigned_to: '', due_date: '', story_points: '' });
+      setCreateImages([]);
       loadTasks();
     } catch (error: any) {
       console.error('Error creating task:', error);
@@ -325,7 +326,7 @@ export function ProjectTasks() {
   };
 
   const handleUpdateTask = async () => {
-    if (!selectedTask || !formTitle.trim()) {
+    if (!selectedTask || !editFormData.title.trim()) {
       showToast('Bitte geben Sie einen Titel ein', 'error');
       return;
     }
@@ -334,13 +335,13 @@ export function ProjectTasks() {
       const { error } = await supabase
         .from('tasks')
         .update({
-          title: formTitle.trim(),
-          description: formDescription.trim(),
-          status: formStatus,
-          priority: formPriority,
-          assigned_to: formAssignedTo || null,
-          due_date: formDueDate || null,
-          story_points: formStoryPoints ? parseInt(formStoryPoints) : null,
+          title: editFormData.title.trim(),
+          description: editFormData.description.trim(),
+          status: editFormData.status,
+          priority: editFormData.priority,
+          assigned_to: editFormData.assigned_to || null,
+          due_date: editFormData.due_date || null,
+          story_points: editFormData.story_points ? parseInt(editFormData.story_points) : null,
         })
         .eq('id', selectedTask.id);
 
@@ -353,13 +354,13 @@ export function ProjectTasks() {
       // Update selected task
       const updatedTask = {
         ...selectedTask,
-        title: formTitle.trim(),
-        description: formDescription.trim(),
-        status: formStatus as any,
-        priority: formPriority as any,
-        assigned_to: formAssignedTo || null,
-        due_date: formDueDate || null,
-        story_points: formStoryPoints ? parseInt(formStoryPoints) : undefined,
+        title: editFormData.title.trim(),
+        description: editFormData.description.trim(),
+        status: editFormData.status as any,
+        priority: editFormData.priority as any,
+        assigned_to: editFormData.assigned_to || null,
+        due_date: editFormData.due_date || null,
+        story_points: editFormData.story_points ? parseInt(editFormData.story_points) : undefined,
       };
       setSelectedTask(updatedTask);
     } catch (error: any) {
@@ -442,39 +443,45 @@ export function ProjectTasks() {
     }
   };
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedTask || !event.target.files?.length) return;
-
-    const file = event.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
-    const filePath = `${id}/${selectedTask.id}/${fileName}`;
+  const handleImageUpload = async (event: any) => {
+    if (!selectedTask) return;
+    
+    const files = event.target?.files ? Array.from(event.target.files) as File[] : [];
+    if (files.length === 0) return;
 
     try {
       const { data: userData } = await supabase.auth.getUser();
 
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('task-attachments')
-        .upload(filePath, file);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${id}/${selectedTask.id}/${fileName}`;
 
-      if (uploadError) throw uploadError;
+        // Upload to storage
+        const { error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(filePath, file);
 
-      // Save to database
-      const { error: dbError } = await supabase.from('task_images').insert({
-        task_id: selectedTask.id,
-        project_id: id,
-        uploaded_by: userData.user?.id,
-        storage_path: filePath,
-        file_name: file.name,
-        file_size: file.size,
-        mime_type: file.type,
-        display_order: taskImages.length
-      });
+        if (uploadError) {
+          console.error('Error uploading image:', uploadError);
+          continue;
+        }
 
-      if (dbError) throw dbError;
+        // Save to database
+        await supabase.from('task_images').insert({
+          task_id: selectedTask.id,
+          project_id: id,
+          uploaded_by: userData.user?.id,
+          storage_path: filePath,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+          display_order: taskImages.length + i
+        });
+      }
 
-      showToast('Bild hochgeladen', 'success');
+      showToast(`${files.length} Bild(er) hochgeladen`, 'success');
       loadTaskDetails(selectedTask.id);
     } catch (error: any) {
       console.error('Error uploading image:', error);
@@ -482,27 +489,20 @@ export function ProjectTasks() {
     }
   };
 
-  const openTaskDetail = (task: Task, event?: React.MouseEvent) => {
-    // Prevent event bubbling
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    
+  const openTaskDetail = (task: Task) => {
     setSelectedTask(task);
-    setFormTitle(task.title);
-    setFormDescription(task.description || '');
-    setFormStatus(task.status);
-    setFormPriority(task.priority || 'medium');
-    setFormAssignedTo(task.assigned_to || '');
-    setFormDueDate(task.due_date || '');
-    setFormStoryPoints(task.story_points?.toString() || '');
+    setEditFormData({
+      title: task.title,
+      description: task.description || '',
+      status: task.status,
+      priority: task.priority || 'medium',
+      assigned_to: task.assigned_to || '',
+      due_date: task.due_date || '',
+      story_points: task.story_points?.toString() || ''
+    });
     setIsEditMode(false);
-    
-    // Use setTimeout to ensure modal opens immediately
-    setTimeout(() => {
-      setIsDetailModalOpen(true);
-    }, 0);
+    setIsDetailModalOpen(true);
+    loadTaskDetails(task.id);
   };
 
   // Handle image upload for create modal
@@ -691,33 +691,42 @@ export function ProjectTasks() {
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              onClick={() => {
+                                if (!snapshot.isDragging) {
+                                  openTaskDetail(task);
+                                }
+                              }}
                               style={{
                                 ...provided.draggableProps.style,
                                 marginBottom: 12,
+                                padding: 16,
+                                backgroundColor: snapshot.isDragging ? '#EFF6FF' : '#ffffff',
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderStyle: 'solid',
+                                borderColor: snapshot.isDragging ? colors.primary : '#E2E8F0',
+                                boxShadow: snapshot.isDragging
+                                  ? '0 8px 25px rgba(0,0,0,0.15)'
+                                  : '0 1px 3px rgba(0,0,0,0.08)',
+                                cursor: snapshot.isDragging ? 'grabbing' : 'grab',
+                                transition: 'box-shadow 0.2s, border-color 0.2s',
+                                userSelect: 'none',
                               }}
                             >
-                              <TouchableOpacity
-                                style={[
-                                  styles.kanbanCard,
-                                  snapshot.isDragging && styles.kanbanCardDragging
-                                ]}
-                                onPress={(e) => openTaskDetail(task, e)}
-                              >
-                                <div {...provided.dragHandleProps} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                                  <GripVertical size={16} color="#94a3b8" />
-                                </div>
-                                <View style={styles.kanbanCardHeader}>
-                                  <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
-                                  {task.priority && (
-                                    <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
-                                  )}
-                                </View>
-                                
-                                {task.description && (
-                                  <Text style={styles.kanbanCardDesc} numberOfLines={3}>{task.description}</Text>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                                <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
+                                {task.priority && (
+                                  <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
                                 )}
-                                
-                                <View style={styles.kanbanCardFooter}>
+                              </div>
+                              
+                              {task.description && (
+                                <Text style={styles.kanbanCardDesc} numberOfLines={2}>{task.description}</Text>
+                              )}
+                              
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                   {task.assigned_to && (
                                     <View style={styles.assigneeAvatar}>
                                       <Text style={styles.assigneeAvatarText}>
@@ -727,15 +736,20 @@ export function ProjectTasks() {
                                     </View>
                                   )}
                                   {task.due_date && (
-                                    <View style={styles.dueDateBadge}>
-                                      <Calendar size={12} color="#64748b" />
-                                      <Text style={styles.dueDateText}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', backgroundColor: new Date(task.due_date) < new Date() ? '#FEE2E2' : '#F1F5F9', borderRadius: 6 }}>
+                                      <Calendar size={12} color={new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b'} />
+                                      <span style={{ fontSize: 11, fontWeight: 600, color: new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b' }}>
                                         {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
-                                      </Text>
-                                    </View>
+                                      </span>
+                                    </div>
                                   )}
-                                </View>
-                              </TouchableOpacity>
+                                </div>
+                                {task.story_points && (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', backgroundColor: '#F1F5F9', padding: '2px 8px', borderRadius: 6 }}>
+                                    {task.story_points} SP
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                         </Draggable>
@@ -771,7 +785,7 @@ export function ProjectTasks() {
             <TouchableOpacity
               key={task.id}
               style={styles.listCard}
-              onPress={(e) => openTaskDetail(task, e)}
+              onPress={() => openTaskDetail(task)}
             >
               <View style={styles.listCardLeft}>
                 {getStatusIcon(task.status)}
@@ -784,6 +798,14 @@ export function ProjectTasks() {
               </View>
               
               <View style={styles.listCardRight}>
+                {task.due_date && (
+                  <View style={[styles.dueDateBadge, new Date(task.due_date) < new Date() ? { backgroundColor: '#FEE2E2' } : {}]}>
+                    <Calendar size={12} color={new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b'} />
+                    <Text style={[styles.dueDateText, new Date(task.due_date) < new Date() ? { color: '#DC2626' } : {}]}>
+                      {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                    </Text>
+                  </View>
+                )}
                 {task.priority && (
                   <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) }]}>
                     <Text style={styles.priorityBadgeText}>{getPriorityLabel(task.priority)}</Text>
@@ -838,9 +860,9 @@ export function ProjectTasks() {
             isToday && styles.calendarDayToday,
             dayTasks.length > 0 && styles.calendarDayHasTasks
           ]}
-          onPress={(e) => {
+          onPress={() => {
             if (dayTasks.length > 0) {
-              openTaskDetail(dayTasks[0], e);
+              openTaskDetail(dayTasks[0]);
             }
           }}
         >
@@ -852,18 +874,25 @@ export function ProjectTasks() {
             {day}
           </Text>
           {dayTasks.length > 0 && (
-            <View style={styles.calendarTaskIndicators}>
-              {dayTasks.slice(0, 3).map((task, idx) => (
-                <View
+            <View style={{ width: '100%', gap: 2, marginTop: 2 }}>
+              {dayTasks.slice(0, 2).map((task) => (
+                <div
                   key={task.id}
-                  style={[
-                    styles.calendarTaskDot,
-                    { backgroundColor: getPriorityColor(task.priority || 'medium') }
-                  ]}
-                />
+                  style={{
+                    width: '100%',
+                    padding: '2px 4px',
+                    backgroundColor: getPriorityColor(task.priority || 'medium'),
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <span style={{ fontSize: 9, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                    {task.title}
+                  </span>
+                </div>
               ))}
-              {dayTasks.length > 3 && (
-                <Text style={styles.calendarTaskMore}>+{dayTasks.length - 3}</Text>
+              {dayTasks.length > 2 && (
+                <Text style={{ fontSize: 9, fontWeight: '700', color: '#64748b', textAlign: 'center' }}>+{dayTasks.length - 2} mehr</Text>
               )}
             </View>
           )}
@@ -930,10 +959,10 @@ export function ProjectTasks() {
         {/* Tasks for selected month */}
         <ScrollView style={styles.calendarTasksList}>
           <Text style={styles.calendarTasksTitle}>
-            Aufgaben in diesem Monat ({filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month).length})
+            Aufgaben mit Fälligkeitsdatum ({filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month && new Date(t.due_date).getFullYear() === year).length})
           </Text>
           {filteredTasks
-            .filter(t => t.due_date && new Date(t.due_date).getMonth() === month)
+            .filter(t => t.due_date && new Date(t.due_date).getMonth() === month && new Date(t.due_date).getFullYear() === year)
             .sort((a, b) => {
               if (!a.due_date) return 1;
               if (!b.due_date) return -1;
@@ -943,7 +972,7 @@ export function ProjectTasks() {
               <TouchableOpacity
                 key={task.id}
                 style={styles.calendarTaskCard}
-                onPress={(e) => openTaskDetail(task, e)}
+                onPress={() => openTaskDetail(task)}
               >
                 <View style={styles.calendarTaskCardLeft}>
                   <View style={[styles.calendarTaskCardIndicator, { backgroundColor: getPriorityColor(task.priority || 'medium') }]} />
@@ -968,10 +997,37 @@ export function ProjectTasks() {
                 </View>
               </TouchableOpacity>
             ))}
-          {filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month).length === 0 && (
+          {filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month && new Date(t.due_date).getFullYear() === year).length === 0 && (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Keine Aufgaben in diesem Monat</Text>
+              <Text style={styles.emptyText}>Keine Aufgaben mit Fälligkeitsdatum in diesem Monat</Text>
             </View>
+          )}
+
+          {/* Tasks without due date */}
+          {filteredTasks.filter(t => !t.due_date).length > 0 && (
+            <>
+              <Text style={[styles.calendarTasksTitle, { marginTop: 20 }]}>
+                Ohne Fälligkeitsdatum ({filteredTasks.filter(t => !t.due_date).length})
+              </Text>
+              {filteredTasks.filter(t => !t.due_date).map(task => (
+                <TouchableOpacity
+                  key={task.id}
+                  style={styles.calendarTaskCard}
+                  onPress={() => openTaskDetail(task)}
+                >
+                  <View style={styles.calendarTaskCardLeft}>
+                    <View style={[styles.calendarTaskCardIndicator, { backgroundColor: getPriorityColor(task.priority || 'medium') }]} />
+                    <View>
+                      <Text style={[styles.calendarTaskCardDate, { color: '#94a3b8' }]}>Kein Datum</Text>
+                      <Text style={styles.calendarTaskCardTitle}>{task.title}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
+                    <Text style={styles.statusBadgeText}>{getStatusLabel(task.status)}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
           )}
         </ScrollView>
       </View>
@@ -1240,7 +1296,7 @@ const styles = StyleSheet.create({
   calendarWeekday: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   calendarWeekdayText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#ffffff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  calendarDay: { width: `${100 / 7}%` as any, aspectRatio: 1, padding: 4, alignItems: 'center', justifyContent: 'flex-start', borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8, position: 'relative' },
+  calendarDay: { width: `${100 / 7}%` as any, minHeight: 80, padding: 6, alignItems: 'center', justifyContent: 'flex-start', borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8, position: 'relative' },
   calendarDayToday: { backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: colors.primary },
   calendarDayHasTasks: { backgroundColor: '#fef3c7' },
   calendarDayNumber: { fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 4 },
