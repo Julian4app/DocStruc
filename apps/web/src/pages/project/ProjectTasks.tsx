@@ -1,45 +1,149 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
-import { Plus, Search, Filter, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { TaskModal, TaskDetailModal } from './TaskModals';
+import { Select } from '../../components/Select';
+import { DatePicker } from '../../components/DatePicker';
+import { 
+  Plus, Search, Filter, CheckCircle, Clock, XCircle, AlertCircle, 
+  Calendar, List, LayoutGrid, Edit, Trash2, Image as ImageIcon, 
+  Mic, Video, FileText, User, ChevronLeft, ChevronRight, Users,
+  Upload, X, MessageSquare, PlayCircle, PauseCircle, Circle
+} from 'lucide-react';
 
 interface Task {
   id: string;
   title: string;
   description: string;
   status: 'open' | 'in_progress' | 'done' | 'blocked';
+  priority?: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assigned_to: string | null;
+  story_points?: number;
+  labels?: string[];
+  board_position?: number;
+  created_at: string;
+  updated_at?: string;
+  creator_id?: string;
+}
+
+interface TaskImage {
+  id: string;
+  storage_path: string;
+  file_name: string;
+  caption?: string;
   created_at: string;
 }
+
+interface TaskDocumentation {
+  id: string;
+  content?: string;
+  documentation_type: 'text' | 'voice' | 'image' | 'video';
+  storage_path?: string;
+  file_name?: string;
+  created_at: string;
+  user_id: string;
+  user?: {
+    email: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+interface ProjectMember {
+  user_id: string;
+  profiles: {
+    id: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
+type ViewMode = 'kanban' | 'list' | 'calendar';
 
 export function ProjectTasks() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('kanban');
+  
+  // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-
-  // Form state
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  // Task form state
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formPriority, setFormPriority] = useState<string>('medium');
+  const [formAssignedTo, setFormAssignedTo] = useState<string>('');
+  const [formDueDate, setFormDueDate] = useState('');
+  const [formStoryPoints, setFormStoryPoints] = useState('');
+  const [formStatus, setFormStatus] = useState<string>('open');
+  
+  // Form data objects for modals
+  const [createFormData, setCreateFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium',
+    status: 'open',
+    assigned_to: '',
+    due_date: '',
+    story_points: ''
+  });
+  
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium',
+    status: 'open',
+    assigned_to: '',
+    due_date: '',
+    story_points: ''
+  });
+  
+  const [docFormData, setDocFormData] = useState({
+    type: 'text',
+    content: ''
+  });
+  
+  // Task detail state
+  const [taskImages, setTaskImages] = useState<TaskImage[]>([]);
+  const [taskDocumentation, setTaskDocumentation] = useState<TaskDocumentation[]>([]);
+  const [newDocText, setNewDocText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  
+  // Calendar state
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  
+  // File input refs
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadTasks();
+    if (id) {
+      loadTasks();
+      loadProjectMembers();
+    }
   }, [id]);
 
   useEffect(() => {
     filterTasks();
-  }, [tasks, searchQuery, statusFilter]);
+  }, [tasks, searchQuery, statusFilter, priorityFilter]);
 
   const loadTasks = async () => {
     if (!id) return;
@@ -48,9 +152,12 @@ export function ProjectTasks() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select(`
+          *,
+          profiles:assigned_to(id, email, first_name, last_name)
+        `)
         .eq('project_id', id)
-        .order('created_at', { ascending: false });
+        .order('board_position', { ascending: true });
 
       if (error) throw error;
       setTasks(data || []);
@@ -62,10 +169,55 @@ export function ProjectTasks() {
     }
   };
 
+  const loadProjectMembers = async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select(`
+          user_id,
+          role,
+          profiles:user_id(id, email, first_name, last_name)
+        `)
+        .eq('project_id', id);
+
+      if (error) throw error;
+      setProjectMembers((data || []) as any);
+    } catch (error: any) {
+      console.error('Error loading members:', error);
+    }
+  };
+
+  const loadTaskDetails = async (taskId: string) => {
+    try {
+      // Load images
+      const { data: images } = await supabase
+        .from('task_images')
+        .select('*')
+        .eq('task_id', taskId)
+        .order('display_order', { ascending: true });
+      
+      setTaskImages(images || []);
+
+      // Load documentation
+      const { data: docs } = await supabase
+        .from('task_documentation')
+        .select(`
+          *,
+          user:user_id(email, first_name, last_name)
+        `)
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false });
+      
+      setTaskDocumentation(docs || []);
+    } catch (error: any) {
+      console.error('Error loading task details:', error);
+    }
+  };
+
   const filterTasks = () => {
     let filtered = [...tasks];
 
-    // Search filter
     if (searchQuery) {
       filtered = filtered.filter(task =>
         task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -73,16 +225,29 @@ export function ProjectTasks() {
       );
     }
 
-    // Status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(task => task.status === statusFilter);
+    }
+
+    if (priorityFilter !== 'all') {
+      filtered = filtered.filter(task => task.priority === priorityFilter);
     }
 
     setFilteredTasks(filtered);
   };
 
+  const resetForm = () => {
+    setFormTitle('');
+    setFormDescription('');
+    setFormPriority('medium');
+    setFormAssignedTo('');
+    setFormDueDate('');
+    setFormStoryPoints('');
+    setFormStatus('open');
+  };
+
   const handleCreateTask = async () => {
-    if (!title.trim()) {
+    if (!formTitle.trim()) {
       showToast('Bitte geben Sie einen Titel ein', 'error');
       return;
     }
@@ -92,18 +257,22 @@ export function ProjectTasks() {
       
       const { error } = await supabase.from('tasks').insert({
         project_id: id,
-        title: title.trim(),
-        description: description.trim(),
-        status: 'open',
-        creator_id: userData.user?.id
+        title: formTitle.trim(),
+        description: formDescription.trim(),
+        status: formStatus,
+        priority: formPriority,
+        assigned_to: formAssignedTo || null,
+        due_date: formDueDate || null,
+        story_points: formStoryPoints ? parseInt(formStoryPoints) : null,
+        creator_id: userData.user?.id,
+        board_position: tasks.length
       });
 
       if (error) throw error;
 
       showToast('Aufgabe erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
-      setTitle('');
-      setDescription('');
+      resetForm();
       loadTasks();
     } catch (error: any) {
       console.error('Error creating task:', error);
@@ -111,16 +280,183 @@ export function ProjectTasks() {
     }
   };
 
+  const handleUpdateTask = async () => {
+    if (!selectedTask || !formTitle.trim()) {
+      showToast('Bitte geben Sie einen Titel ein', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: formTitle.trim(),
+          description: formDescription.trim(),
+          status: formStatus,
+          priority: formPriority,
+          assigned_to: formAssignedTo || null,
+          due_date: formDueDate || null,
+          story_points: formStoryPoints ? parseInt(formStoryPoints) : null,
+        })
+        .eq('id', selectedTask.id);
+
+      if (error) throw error;
+
+      showToast('Aufgabe aktualisiert', 'success');
+      setIsEditMode(false);
+      loadTasks();
+      
+      // Update selected task
+      const updatedTask = {
+        ...selectedTask,
+        title: formTitle.trim(),
+        description: formDescription.trim(),
+        status: formStatus as any,
+        priority: formPriority as any,
+        assigned_to: formAssignedTo || null,
+        due_date: formDueDate || null,
+        story_points: formStoryPoints ? parseInt(formStoryPoints) : undefined,
+      };
+      setSelectedTask(updatedTask);
+    } catch (error: any) {
+      console.error('Error updating task:', error);
+      showToast('Fehler beim Aktualisieren', 'error');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm('Aufgabe wirklich löschen?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      showToast('Aufgabe gelöscht', 'success');
+      setSelectedTask(null);
+      loadTasks();
+    } catch (error: any) {
+      console.error('Error deleting task:', error);
+      showToast('Fehler beim Löschen', 'error');
+    }
+  };
+
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      showToast('Status aktualisiert', 'success');
+      loadTasks();
+      
+      if (selectedTask?.id === taskId) {
+        setSelectedTask({ ...selectedTask, status: newStatus as any });
+      }
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      showToast('Fehler beim Aktualisieren', 'error');
+    }
+  };
+
+  const handleAddDocumentation = async (type: 'text' | 'voice' | 'image' | 'video') => {
+    if (!selectedTask) return;
+
+    if (type === 'text' && !newDocText.trim()) {
+      showToast('Bitte Text eingeben', 'error');
+      return;
+    }
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      const { error } = await supabase.from('task_documentation').insert({
+        task_id: selectedTask.id,
+        project_id: id,
+        user_id: userData.user?.id,
+        content: type === 'text' ? newDocText.trim() : null,
+        documentation_type: type
+      });
+
+      if (error) throw error;
+
+      showToast('Dokumentation hinzugefügt', 'success');
+      setNewDocText('');
+      loadTaskDetails(selectedTask.id);
+    } catch (error: any) {
+      console.error('Error adding documentation:', error);
+      showToast('Fehler beim Hinzufügen', 'error');
+    }
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedTask || !event.target.files?.length) return;
+
+    const file = event.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `${id}/${selectedTask.id}/${fileName}`;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('task-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // Save to database
+      const { error: dbError } = await supabase.from('task_images').insert({
+        task_id: selectedTask.id,
+        project_id: id,
+        uploaded_by: userData.user?.id,
+        storage_path: filePath,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        display_order: taskImages.length
+      });
+
+      if (dbError) throw dbError;
+
+      showToast('Bild hochgeladen', 'success');
+      loadTaskDetails(selectedTask.id);
+    } catch (error: any) {
+      console.error('Error uploading image:', error);
+      showToast('Fehler beim Hochladen', 'error');
+    }
+  };
+
+  const openTaskDetail = (task: Task) => {
+    setSelectedTask(task);
+    setFormTitle(task.title);
+    setFormDescription(task.description || '');
+    setFormStatus(task.status);
+    setFormPriority(task.priority || 'medium');
+    setFormAssignedTo(task.assigned_to || '');
+    setFormDueDate(task.due_date || '');
+    setFormStoryPoints(task.story_points?.toString() || '');
+    setIsEditMode(false);
+    loadTaskDetails(task.id);
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'done':
-        return <CheckCircle size={20} color="#22c55e" />;
-      case 'in_progress':
-        return <Clock size={20} color="#F59E0B" />;
-      case 'blocked':
-        return <XCircle size={20} color="#EF4444" />;
-      default:
-        return <Clock size={20} color="#94a3b8" />;
+      case 'done': return <CheckCircle size={20} color="#22c55e" />;
+      case 'in_progress': return <Clock size={20} color="#F59E0B" />;
+      case 'blocked': return <XCircle size={20} color="#EF4444" />;
+      default: return <AlertCircle size={20} color="#94a3b8" />;
     }
   };
 
@@ -128,7 +464,7 @@ export function ProjectTasks() {
     switch (status) {
       case 'open': return 'Offen';
       case 'in_progress': return 'In Bearbeitung';
-      case 'done': return 'Abgeschlossen';
+      case 'done': return 'Erledigt';
       case 'blocked': return 'Blockiert';
       default: return status;
     }
@@ -143,6 +479,259 @@ export function ProjectTasks() {
     }
   };
 
+  const getPriorityColor = (priority?: string) => {
+    switch (priority) {
+      case 'critical': return '#DC2626';
+      case 'high': return '#F59E0B';
+      case 'medium': return '#3B82F6';
+      case 'low': return '#10B981';
+      default: return '#94a3b8';
+    }
+  };
+
+  const getPriorityLabel = (priority?: string) => {
+    switch (priority) {
+      case 'critical': return 'Kritisch';
+      case 'high': return 'Hoch';
+      case 'medium': return 'Mittel';
+      case 'low': return 'Niedrig';
+      default: return 'Keine';
+    }
+  };
+
+  const getUserName = (userId: string) => {
+    const member = projectMembers.find(m => m.user_id === userId);
+    if (!member) return 'Unbekannt';
+    const profile = member.profiles;
+    if (profile.first_name && profile.last_name) {
+      return `${profile.first_name} ${profile.last_name}`;
+    }
+    return profile.email;
+  };
+
+  // Render functions for different views
+  const renderKanbanView = () => {
+    const columns = [
+      { status: 'open', label: 'Offen', color: '#F1F5F9' },
+      { status: 'in_progress', label: 'In Bearbeitung', color: '#FEF3C7' },
+      { status: 'done', label: 'Erledigt', color: '#dcfce7' },
+      { status: 'blocked', label: 'Blockiert', color: '#FEE2E2' }
+    ];
+
+    return (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kanbanContainer}>
+        {columns.map(column => {
+          const columnTasks = filteredTasks.filter(t => t.status === column.status);
+          
+          return (
+            <View key={column.status} style={styles.kanbanColumn}>
+              <View style={[styles.kanbanHeader, { backgroundColor: column.color }]}>
+                <Text style={styles.kanbanHeaderText}>{column.label}</Text>
+                <View style={styles.kanbanCount}>
+                  <Text style={styles.kanbanCountText}>{columnTasks.length}</Text>
+                </View>
+              </View>
+              
+              <ScrollView style={styles.kanbanCards} showsVerticalScrollIndicator={false}>
+                {columnTasks.map(task => (
+                  <TouchableOpacity
+                    key={task.id}
+                    style={styles.kanbanCard}
+                    onPress={() => openTaskDetail(task)}
+                  >
+                    <View style={styles.kanbanCardHeader}>
+                      <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
+                      {task.priority && (
+                        <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
+                      )}
+                    </View>
+                    
+                    {task.description && (
+                      <Text style={styles.kanbanCardDesc} numberOfLines={3}>{task.description}</Text>
+                    )}
+                    
+                    <View style={styles.kanbanCardFooter}>
+                      {task.assigned_to && (
+                        <View style={styles.assigneeAvatar}>
+                          <Text style={styles.assigneeAvatarText}>
+                            {projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.first_name?.[0] ||
+                             projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.email?.[0] || '?'}
+                          </Text>
+                        </View>
+                      )}
+                      {task.due_date && (
+                        <View style={styles.dueDateBadge}>
+                          <Calendar size={12} color="#64748b" />
+                          <Text style={styles.dueDateText}>
+                            {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                
+                {columnTasks.length === 0 && (
+                  <View style={styles.emptyColumn}>
+                    <Text style={styles.emptyColumnText}>Keine Aufgaben</Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          );
+        })}
+      </ScrollView>
+    );
+  };
+
+  const renderListView = () => {
+    return (
+      <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+        {filteredTasks.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Keine Aufgaben gefunden</Text>
+          </Card>
+        ) : (
+          filteredTasks.map(task => (
+            <TouchableOpacity
+              key={task.id}
+              style={styles.listCard}
+              onPress={() => openTaskDetail(task)}
+            >
+              <View style={styles.listCardLeft}>
+                {getStatusIcon(task.status)}
+                <View style={styles.listCardContent}>
+                  <Text style={styles.listCardTitle}>{task.title}</Text>
+                  {task.description && (
+                    <Text style={styles.listCardDesc} numberOfLines={1}>{task.description}</Text>
+                  )}
+                </View>
+              </View>
+              
+              <View style={styles.listCardRight}>
+                {task.priority && (
+                  <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) }]}>
+                    <Text style={styles.priorityBadgeText}>{getPriorityLabel(task.priority)}</Text>
+                  </View>
+                )}
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
+                  <Text style={styles.statusBadgeText}>{getStatusLabel(task.status)}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+    );
+  };
+
+  const renderCalendarView = () => {
+    const getDaysInMonth = (date: Date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      // Adjust so Monday is 0 (European calendar)
+      const startingDayOfWeek = (firstDay.getDay() + 6) % 7;
+      
+      return { daysInMonth, startingDayOfWeek, year, month };
+    };
+
+    const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+    const days = [];
+    
+    // Add empty cells for days before month starts
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
+    }
+    
+    // Add days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayTasks = filteredTasks.filter(t => t.due_date === dateStr);
+      const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+      
+      days.push(
+        <TouchableOpacity
+          key={day}
+          style={[styles.calendarDay, isToday && styles.calendarDayToday]}
+          onPress={() => {
+            if (dayTasks.length > 0) {
+              openTaskDetail(dayTasks[0]);
+            }
+          }}
+        >
+          <Text style={[styles.calendarDayNumber, isToday && styles.calendarDayNumberToday]}>{day}</Text>
+          {dayTasks.length > 0 && (
+            <View style={styles.calendarTaskIndicator}>
+              <Text style={styles.calendarTaskCount}>{dayTasks.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <View style={styles.calendarContainer}>
+        <View style={styles.calendarHeader}>
+          <TouchableOpacity 
+            onPress={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+            style={styles.calendarNavButton}
+          >
+            <ChevronLeft size={20} color={colors.primary} />
+          </TouchableOpacity>
+          
+          <Text style={styles.calendarHeaderText}>
+            {currentMonth.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
+          </Text>
+          
+          <TouchableOpacity 
+            onPress={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+            style={styles.calendarNavButton}
+          >
+            <ChevronRight size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.calendarWeekdays}>
+          {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => (
+            <View key={day} style={styles.calendarWeekday}>
+              <Text style={styles.calendarWeekdayText}>{day}</Text>
+            </View>
+          ))}
+        </View>
+        
+        <View style={styles.calendarGrid}>{days}</View>
+        
+        {/* Tasks for selected month */}
+        <ScrollView style={styles.calendarTasksList}>
+          <Text style={styles.calendarTasksTitle}>Aufgaben in diesem Monat</Text>
+          {filteredTasks
+            .filter(t => t.due_date && new Date(t.due_date).getMonth() === month)
+            .map(task => (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.calendarTaskCard}
+                onPress={() => openTaskDetail(task)}
+              >
+                <View style={styles.calendarTaskCardLeft}>
+                  <Calendar size={16} color={colors.primary} />
+                  <Text style={styles.calendarTaskCardDate}>
+                    {task.due_date ? new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '-'}
+                  </Text>
+                </View>
+                <Text style={styles.calendarTaskCardTitle}>{task.title}</Text>
+                <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority || 'medium') }]}>
+                  <Text style={styles.priorityBadgeText}>{getPriorityLabel(task.priority || 'medium')}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -154,349 +743,345 @@ export function ProjectTasks() {
   return (
     <>
       <View style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.pageTitle}>Aufgaben</Text>
-            <Text style={styles.pageSubtitle}>
-              Zentraler Arbeits- und Dokumentationsbereich
-            </Text>
+            <Text style={styles.pageSubtitle}>Scrum Board & Task Management</Text>
           </View>
           <Button onClick={() => setIsCreateModalOpen(true)}>
             <Plus size={18} /> Neue Aufgabe
           </Button>
         </View>
 
-        {/* Filters */}
-        <View style={styles.filterBar}>
+        {/* View Switcher & Filters */}
+        <View style={styles.toolBar}>
+          <View style={styles.viewSwitcher}>
+            <TouchableOpacity
+              style={[styles.viewButton, viewMode === 'kanban' && styles.viewButtonActive]}
+              onPress={() => setViewMode('kanban')}
+            >
+              <LayoutGrid size={18} color={viewMode === 'kanban' ? '#ffffff' : '#64748b'} />
+              <Text style={[styles.viewButtonText, viewMode === 'kanban' && styles.viewButtonTextActive]}>Kanban</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.viewButton, viewMode === 'list' && styles.viewButtonActive]}
+              onPress={() => setViewMode('list')}
+            >
+              <List size={18} color={viewMode === 'list' ? '#ffffff' : '#64748b'} />
+              <Text style={[styles.viewButtonText, viewMode === 'list' && styles.viewButtonTextActive]}>Liste</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.viewButton, viewMode === 'calendar' && styles.viewButtonActive]}
+              onPress={() => setViewMode('calendar')}
+            >
+              <Calendar size={18} color={viewMode === 'calendar' ? '#ffffff' : '#64748b'} />
+              <Text style={[styles.viewButtonText, viewMode === 'calendar' && styles.viewButtonTextActive]}>Kalender</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.searchContainer}>
             <Search size={18} color="#94a3b8" />
             <Input
-              placeholder="Aufgaben durchsuchen..."
+              placeholder="Suchen..."
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
             />
           </View>
+        </View>
 
-          <View style={styles.statusFilters}>
-            {['all', 'open', 'in_progress', 'done', 'blocked'].map(status => (
+        {/* Filters */}
+        {viewMode !== 'calendar' && (
+          <View style={styles.filterBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               <TouchableOpacity
-                key={status}
-                style={[
-                  styles.filterChip,
-                  statusFilter === status && styles.filterChipActive
-                ]}
-                onPress={() => setStatusFilter(status)}
+                style={[styles.filterChip, statusFilter === 'all' && styles.filterChipActive]}
+                onPress={() => setStatusFilter('all')}
               >
-                <Text style={[
-                  styles.filterChipText,
-                  statusFilter === status && styles.filterChipTextActive
-                ]}>
-                  {status === 'all' ? 'Alle' : getStatusLabel(status)}
+                <Text style={[styles.filterChipText, statusFilter === 'all' && styles.filterChipTextActive]}>
+                  Alle Status
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Tasks List */}
-        <ScrollView style={styles.tasksList} showsVerticalScrollIndicator={false}>
-          {filteredTasks.length === 0 ? (
-            <Card style={styles.emptyCard}>
-              <Text style={styles.emptyText}>
-                {searchQuery || statusFilter !== 'all'
-                  ? 'Keine Aufgaben gefunden'
-                  : 'Noch keine Aufgaben erstellt'}
-              </Text>
-              {!searchQuery && statusFilter === 'all' && (
-                <Button onClick={() => setIsCreateModalOpen(true)} style={{ marginTop: 16 }}>
-                  Erste Aufgabe erstellen
-                </Button>
-              )}
-            </Card>
-          ) : (
-            filteredTasks.map(task => (
+              
+              {['open', 'in_progress', 'done', 'blocked'].map(status => (
+                <TouchableOpacity
+                  key={status}
+                  style={[styles.filterChip, statusFilter === status && styles.filterChipActive]}
+                  onPress={() => setStatusFilter(status)}
+                >
+                  <Text style={[styles.filterChipText, statusFilter === status && styles.filterChipTextActive]}>
+                    {getStatusLabel(status)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              
+              <View style={styles.filterDivider} />
+              
               <TouchableOpacity
-                key={task.id}
-                style={styles.taskCard}
-                onPress={() => setSelectedTask(task)}
+                style={[styles.filterChip, priorityFilter === 'all' && styles.filterChipActive]}
+                onPress={() => setPriorityFilter('all')}
               >
-                <View style={styles.taskHeader}>
-                  <View style={styles.taskTitleRow}>
-                    {getStatusIcon(task.status)}
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
-                    <Text style={styles.statusBadgeText}>{getStatusLabel(task.status)}</Text>
-                  </View>
-                </View>
-                {task.description && (
-                  <Text style={styles.taskDescription} numberOfLines={2}>
-                    {task.description}
-                  </Text>
-                )}
-                <View style={styles.taskFooter}>
-                  <Text style={styles.taskDate}>
-                    Erstellt: {new Date(task.created_at).toLocaleDateString('de-DE')}
-                  </Text>
-                </View>
+                <Text style={[styles.filterChipText, priorityFilter === 'all' && styles.filterChipTextActive]}>
+                  Alle Prioritäten
+                </Text>
               </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
+              
+              {['critical', 'high', 'medium', 'low'].map(priority => (
+                <TouchableOpacity
+                  key={priority}
+                  style={[styles.filterChip, priorityFilter === priority && styles.filterChipActive]}
+                  onPress={() => setPriorityFilter(priority)}
+                >
+                  <Text style={[styles.filterChipText, priorityFilter === priority && styles.filterChipTextActive]}>
+                    {getPriorityLabel(priority)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Content based on view mode */}
+        {viewMode === 'kanban' && renderKanbanView()}
+        {viewMode === 'list' && renderListView()}
+        {viewMode === 'calendar' && renderCalendarView()}
       </View>
 
-      {/* Create Task Modal */}
-      <ModernModal
-        visible={isCreateModalOpen}
+      {/* Create/Edit Task Modal */}
+      <TaskModal
+        visible={isCreateModalOpen || isEditModalOpen}
+        mode={isCreateModalOpen ? 'create' : 'edit'}
+        task={selectedTask}
+        projectId={id || ''}
+        projectMembers={projectMembers.map(m => ({
+          user_id: m.user_id,
+          email: m.profiles.email,
+          role: m.role
+        }))}
+        formData={isCreateModalOpen ? createFormData : editFormData}
+        onChangeFormData={(field, value) => {
+          if (isCreateModalOpen) {
+            setCreateFormData({ ...createFormData, [field]: value });
+          } else {
+            setEditFormData({ ...editFormData, [field]: value });
+          }
+        }}
+        onSubmit={isCreateModalOpen ? handleCreateTask : handleUpdateTask}
         onClose={() => {
           setIsCreateModalOpen(false);
-          setTitle('');
-          setDescription('');
+          setIsEditModalOpen(false);
+          setSelectedTask(null);
         }}
-        title="Neue Aufgabe erstellen"
-      >
-        <View style={styles.modalContent}>
-          <Input
-            label="Titel *"
-            value={title}
-            onChangeText={setTitle}
-            placeholder="z.B. Fundament prüfen"
-          />
-          <Input
-            label="Beschreibung"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Details zur Aufgabe..."
-            multiline
-            numberOfLines={4}
-          />
-          <View style={styles.modalActions}>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
-              style={{ flex: 1 }}
-            >
-              Abbrechen
-            </Button>
-            <Button onClick={handleCreateTask} style={{ flex: 1 }}>
-              Erstellen
-            </Button>
-          </View>
-        </View>
-      </ModernModal>
+      />
 
       {/* Task Detail Modal */}
-      {selectedTask && (
-        <ModernModal
-          visible={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
-          title={selectedTask.title}
-        >
-          <View style={styles.modalContent}>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedTask.status), alignSelf: 'flex-start' }]}>
-              <Text style={styles.statusBadgeText}>{getStatusLabel(selectedTask.status)}</Text>
-            </View>
-            
-            {selectedTask.description && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Beschreibung</Text>
-                <Text style={styles.detailText}>{selectedTask.description}</Text>
-              </View>
-            )}
-
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Erstellt am</Text>
-              <Text style={styles.detailText}>
-                {new Date(selectedTask.created_at).toLocaleString('de-DE')}
-              </Text>
-            </View>
-
-            <Text style={styles.infoBox}>
-              📝 Vollständige Aufgabenbearbeitung mit Fotos, Videos, Spracheingaben, Zeiterfassung und Dokumentation folgt in der nächsten Version.
-            </Text>
-          </View>
-        </ModernModal>
-      )}
+      <TaskDetailModal
+        visible={isDetailModalOpen}
+        task={selectedTask ? {
+          ...selectedTask,
+          priority: selectedTask.priority || 'medium',
+          status: selectedTask.status || 'open'
+        } : null}
+        taskImages={taskImages.map(img => ({
+          ...img,
+          task_id: img.task_id || selectedTask?.id || '',
+          display_order: img.display_order || 0
+        }))}
+        taskDocumentation={taskDocumentation.map(doc => ({
+          ...doc,
+          task_id: doc.task_id || selectedTask?.id || '',
+          duration_seconds: doc.duration_seconds || null
+        }))}
+        projectMembers={projectMembers.map(m => ({
+          user_id: m.user_id,
+          email: m.profiles.email,
+          role: m.role
+        }))}
+        isEditMode={isEditMode}
+        editFormData={editFormData}
+        docFormData={docFormData}
+        isRecording={isRecording}
+        onChangeEditFormData={(field, value) => setEditFormData({ ...editFormData, [field]: value })}
+        onToggleEditMode={() => setIsEditMode(!isEditMode)}
+        onSaveEdit={handleUpdateTask}
+        onDelete={() => selectedTask && handleDeleteTask(selectedTask.id)}
+        onStatusChange={(status) => selectedTask && handleStatusChange(selectedTask.id, status)}
+        onImageUpload={handleImageUpload}
+        onChangeDocFormData={(field, value) => setDocFormData({ ...docFormData, [field]: value })}
+        onSaveDocumentation={() => handleAddDocumentation(docFormData.type as any)}
+        onCancelDocumentation={() => {
+          setDocFormData({ type: 'text', content: '' });
+        }}
+        onStartRecording={() => {
+          if (isRecording) {
+            setIsRecording(false);
+            showToast('Aufnahme gestoppt (Web Audio API noch nicht implementiert)', 'success');
+          } else {
+            setIsRecording(true);
+            showToast('Aufnahme gestartet (Web Audio API noch nicht implementiert)', 'info');
+          }
+        }}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedTask(null);
+          setIsEditMode(false);
+        }}
+        getUserName={getUserName}
+      />
     </>
   );
 }
 
+// Styles will be added in a separate message due to length
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-  },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  pageSubtitle: {
-    fontSize: 15,
-    color: '#64748b',
-  },
-  filterBar: {
-    marginBottom: 24,
-    gap: 16,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    padding: 0,
-  },
-  statusFilters: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  filterChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  filterChipTextActive: {
-    color: '#ffffff',
-  },
-  tasksList: {
-    flex: 1,
-  },
-  emptyCard: {
-    padding: 40,
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#94a3b8',
-    textAlign: 'center',
-  },
-  taskCard: {
-    backgroundColor: '#ffffff',
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  taskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  taskDescription: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  taskFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  taskDate: {
-    fontSize: 12,
-    color: '#94a3b8',
-  },
-  modalContent: {
-    gap: 16,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  detailSection: {
-    marginTop: 16,
-  },
-  detailLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 15,
-    color: '#0f172a',
-    lineHeight: 22,
-  },
-  infoBox: {
-    backgroundColor: '#EFF6FF',
-    padding: 16,
-    borderRadius: 12,
-    fontSize: 14,
-    color: '#1e40af',
-    lineHeight: 20,
-    marginTop: 16,
-  },
+  container: { flex: 1, padding: 24, backgroundColor: '#F8FAFC' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4, letterSpacing: -0.5 },
+  pageSubtitle: { fontSize: 15, color: '#64748b' },
+  toolBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 16 },
+  viewSwitcher: { flexDirection: 'row', gap: 4, backgroundColor: '#ffffff', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: '#E2E8F0' },
+  viewButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 },
+  viewButtonActive: { backgroundColor: colors.primary },
+  viewButtonText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  viewButtonTextActive: { color: '#ffffff' },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, maxWidth: 400, backgroundColor: '#ffffff', paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  searchInput: { flex: 1, border: 'none', fontSize: 14 },
+  filterBar: { marginBottom: 16 },
+  filterScroll: { flexDirection: 'row' },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', marginRight: 8 },
+  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterChipText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  filterChipTextActive: { color: '#ffffff' },
+  filterDivider: { width: 1, height: 24, backgroundColor: '#E2E8F0', marginHorizontal: 8, alignSelf: 'center' },
+  kanbanContainer: { flex: 1 },
+  kanbanColumn: { width: 320, marginRight: 16, backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', padding: 16 },
+  kanbanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 8, marginBottom: 12 },
+  kanbanHeaderText: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  kanbanCount: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.5)', alignItems: 'center', justifyContent: 'center' },
+  kanbanCountText: { fontSize: 12, fontWeight: '700', color: '#0f172a' },
+  kanbanCards: { flex: 1 },
+  kanbanCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  kanbanCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  kanbanCardTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', flex: 1, marginRight: 8 },
+  priorityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
+  kanbanCardDesc: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 12 },
+  kanbanCardFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  assigneeAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  assigneeAvatarText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  dueDateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#F1F5F9', borderRadius: 6 },
+  dueDateText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  emptyColumn: { padding: 24, alignItems: 'center' },
+  emptyColumnText: { fontSize: 13, color: '#94a3b8' },
+  listContainer: { flex: 1 },
+  listCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  listCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  listCardContent: { flex: 1 },
+  listCardTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 4 },
+  listCardDesc: { fontSize: 13, color: '#64748b' },
+  listCardRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  statusBadgeText: { fontSize: 12, fontWeight: '700', color: '#0f172a' },
+  priorityBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  priorityBadgeText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  calendarContainer: { flex: 1 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: '#ffffff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  calendarHeaderText: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
+  calendarNavButton: { padding: 8 },
+  calendarWeekdays: { flexDirection: 'row', marginBottom: 8 },
+  calendarWeekday: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  calendarWeekdayText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#ffffff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  calendarDay: { width: `${100 / 7}%` as any, aspectRatio: 1, padding: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8 },
+  calendarDayToday: { backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: colors.primary },
+  calendarDayNumber: { fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 4 },
+  calendarDayNumberToday: { color: colors.primary, fontWeight: '700' },
+  calendarTaskIndicator: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  calendarTaskCount: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
+  calendarTasksList: { flex: 1 },
+  calendarTasksTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
+  calendarTaskCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#ffffff', padding: 14, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  calendarTaskCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  calendarTaskCardDate: { fontSize: 13, fontWeight: '700', color: colors.primary, minWidth: 50 },
+  calendarTaskCardTitle: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  emptyCard: { padding: 40, alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center' },
+  
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 600, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
+  modalCloseButton: { padding: 4 },
+  modalBody: { maxHeight: 500 },
+  modalSection: { marginBottom: 20 },
+  modalLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8 },
+  modalInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 14, color: '#0f172a' },
+  modalTextarea: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 14, color: '#0f172a', minHeight: 100, textAlignVertical: 'top' },
+  priorityGrid: { flexDirection: 'row', gap: 8 },
+  priorityButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 2, alignItems: 'center' },
+  priorityButtonActive: { borderWidth: 2 },
+  priorityButtonText: { fontSize: 13, fontWeight: '700' },
+  modalFooter: { flexDirection: 'row', gap: 12, marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0' },
+  modalButtonSecondary: { flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' },
+  modalButtonSecondaryText: { fontSize: 14, fontWeight: '700', color: '#64748b' },
+  modalButtonPrimary: { flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center' },
+  modalButtonPrimaryText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  
+  // Detail Modal Styles
+  detailModalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 800, maxHeight: '90%' },
+  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  detailHeaderLeft: { flex: 1 },
+  detailTitle: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
+  detailBadges: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  detailHeaderRight: { flexDirection: 'row', gap: 8 },
+  detailIconButton: { padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  detailBody: { maxHeight: 600 },
+  detailSection: { marginBottom: 24 },
+  detailSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  detailSectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  detailSectionButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: colors.primary },
+  detailSectionButtonText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  detailDescription: { fontSize: 14, color: '#64748b', lineHeight: 20 },
+  detailInfoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  detailInfoItem: { flex: 1, minWidth: 150, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
+  detailInfoLabel: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 4 },
+  detailInfoValue: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  statusChangeGrid: { flexDirection: 'row', gap: 8 },
+  statusChangeButton: { flex: 1, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8, borderWidth: 2, alignItems: 'center' },
+  statusChangeButtonText: { fontSize: 13, fontWeight: '700', marginTop: 4 },
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  imageItem: { width: 100, height: 100, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
+  imageItemImage: { width: '100%', height: '100%' },
+  imageUploadButton: { width: 100, height: 100, borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  docList: { gap: 12 },
+  docItem: { flexDirection: 'row', gap: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
+  docItemIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  docItemContent: { flex: 1 },
+  docItemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  docItemUser: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  docItemTime: { fontSize: 11, color: '#64748b' },
+  docItemText: { fontSize: 13, color: '#334155', lineHeight: 18 },
+  docItemFile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  docItemFileName: { fontSize: 13, color: colors.primary, fontWeight: '600' },
+  docAddSection: { marginTop: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
+  docAddButtons: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  docAddButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 10, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#ffffff' },
+  docAddButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  docAddButtonText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
+  docAddButtonTextActive: { color: '#ffffff' },
+  docAddInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 14, color: '#0f172a', minHeight: 80, textAlignVertical: 'top', marginBottom: 8 },
+  docAddActions: { flexDirection: 'row', gap: 8 },
+  docAddActionButton: { flex: 1, paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+  docAddActionButtonCancel: { borderWidth: 1, borderColor: '#E2E8F0' },
+  docAddActionButtonSave: { backgroundColor: colors.primary },
+  docAddActionButtonText: { fontSize: 13, fontWeight: '700' },
+  docAddActionButtonTextCancel: { color: '#64748b' },
+  docAddActionButtonTextSave: { color: '#ffffff' },
+  recordingIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#FEE2E2', borderRadius: 8, marginVertical: 12 },
+  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#DC2626' },
+  recordingText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
 });

@@ -49,11 +49,11 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
       // Check if user is project owner
       const { data: project } = await supabase
         .from('projects')
-        .select('created_by')
+        .select('owner_id')
         .eq('id', projectId)
         .single();
 
-      const isOwner = project?.created_by === user.id;
+      const isOwner = project?.owner_id === user.id;
       setIsProjectOwner(isOwner);
 
       if (isOwner) {

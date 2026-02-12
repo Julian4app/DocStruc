@@ -17,6 +17,7 @@ import { Feedback } from './pages/Feedback';
 import { Help } from './pages/Help';
 import { ProjectDashboard } from './pages/project/ProjectDashboard';
 import { ProjectTasks } from './pages/project/ProjectTasks';
+import { ProjectGeneralInfo } from './pages/project/ProjectGeneralInfo';
 import { ProjectDefects } from './pages/project/ProjectDefects';
 import { ProjectSchedule } from './pages/project/ProjectSchedule';
 import { ProjectTimeTracking } from './pages/project/ProjectTimeTracking';
@@ -127,6 +128,7 @@ function App() {
               <Route path="/manage-projects" element={<ManageProjects />} />
               <Route path="/project/:id" element={<ProjectDetail />}>
                 <Route index element={<ProjectDashboard />} />
+                <Route path="general-info" element={<ProjectGeneralInfo />} />
                 <Route path="tasks" element={<ProjectTasks />} />
                 <Route path="defects" element={<ProjectDefects />} />
                 <Route path="schedule" element={<ProjectSchedule />} />
