@@ -80,7 +80,32 @@ export const TaskModal: React.FC<{
   onChangeFormData: (field: string, value: string) => void;
   onSubmit: () => void;
   onClose: () => void;
-}> = ({ visible, mode, task, projectId, projectMembers, formData, onChangeFormData, onSubmit, onClose }) => {
+  // Image upload props for create mode
+  createImages?: File[];
+  onAddCreateImage?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveCreateImage?: (index: number) => void;
+  isDragging?: boolean;
+  onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
+}> = ({ 
+  visible, 
+  mode, 
+  task, 
+  projectId, 
+  projectMembers, 
+  formData, 
+  onChangeFormData, 
+  onSubmit, 
+  onClose,
+  createImages = [],
+  onAddCreateImage,
+  onRemoveCreateImage,
+  isDragging = false,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}) => {
   if (!visible) return null;
 
   const priorities = [
@@ -192,6 +217,85 @@ export const TaskModal: React.FC<{
                 keyboardType="numeric"
               />
             </View>
+
+            {/* Image Upload Section - Only in Create Mode */}
+            {mode === 'create' && (
+              <View style={styles.modalSection}>
+                <Text style={styles.modalLabel}>Bilder hinzufügen</Text>
+                
+                {/* Drag and Drop Zone */}
+                <div
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                  style={{
+                    border: `2px dashed ${isDragging ? colors.primary : '#cbd5e1'}`,
+                    borderRadius: 8,
+                    padding: 24,
+                    textAlign: 'center',
+                    backgroundColor: isDragging ? '#f1f5f9' : '#f8fafc',
+                    cursor: 'pointer',
+                    marginBottom: 12,
+                  }}
+                  onClick={() => document.getElementById('create-image-input')?.click()}
+                >
+                  <Image size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                  <Text style={{ color: '#64748b', fontSize: 14 }}>
+                    Bilder per Drag & Drop ablegen oder klicken zum Auswählen
+                  </Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
+                    PNG, JPG, GIF bis 10MB
+                  </Text>
+                </div>
+
+                <input
+                  id="create-image-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={onAddCreateImage}
+                  style={{ display: 'none' }}
+                />
+
+                {/* Image Previews */}
+                {createImages.length > 0 && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {createImages.map((file, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          position: 'relative',
+                          width: 80,
+                          height: 80,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          backgroundColor: '#f1f5f9',
+                        }}
+                      >
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        <TouchableOpacity
+                          onPress={() => onRemoveCreateImage?.(index)}
+                          style={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            backgroundColor: 'rgba(0,0,0,0.6)',
+                            borderRadius: 12,
+                            padding: 4,
+                          }}
+                        >
+                          <X size={12} color="#ffffff" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -254,6 +358,39 @@ export const TaskDetailModal: React.FC<{
   onCancelDocumentation,
   onStartRecording,
   onClose,
+  getUserName,
+}) => {
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/')
+    );
+
+    if (files.length > 0) {
+      // Create a synthetic event for compatibility
+      const syntheticEvent = {
+        target: { files }
+      };
+      onImageUpload(syntheticEvent as any);
+    }
+  };
   getUserName,
 }) => {
   if (!visible || !task) return null;
@@ -507,28 +644,54 @@ export const TaskDetailModal: React.FC<{
               <View style={styles.detailSectionHeader}>
                 <Text style={styles.detailSectionTitle}>Bilder ({taskImages.length})</Text>
               </View>
-              <View style={styles.imageGrid}>
-                {taskImages.map((image) => (
-                  <View key={image.id} style={styles.imageItem}>
-                    <img
-                      src={`${supabase.storage.from('task-attachments').getPublicUrl(image.storage_path).data.publicUrl}`}
-                      alt={image.file_name || ''}
-                      style={styles.imageItemImage}
-                    />
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{
+                  border: `2px dashed ${isDragging ? colors.primary : 'transparent'}`,
+                  borderRadius: 8,
+                  padding: isDragging ? 16 : 0,
+                  backgroundColor: isDragging ? '#f1f5f9' : 'transparent',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {isDragging && (
+                  <View style={{ 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    padding: 24,
+                    marginBottom: 12,
+                  }}>
+                    <Image size={32} color={colors.primary} style={{ marginBottom: 8 }} />
+                    <Text style={{ color: colors.primary, fontSize: 14 }}>
+                      Bilder hier ablegen...
+                    </Text>
                   </View>
-                ))}
-                <label htmlFor="image-upload" style={styles.imageUploadButton}>
-                  <Plus size={24} color="#94a3b8" />
-                  <input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    style={{ display: 'none' }}
-                    onChange={onImageUpload}
-                  />
-                </label>
-              </View>
+                )}
+                <View style={styles.imageGrid}>
+                  {taskImages.map((image) => (
+                    <View key={image.id} style={styles.imageItem}>
+                      <img
+                        src={`${supabase.storage.from('task-attachments').getPublicUrl(image.storage_path).data.publicUrl}`}
+                        alt={image.file_name || ''}
+                        style={styles.imageItemImage}
+                      />
+                    </View>
+                  ))}
+                  <label htmlFor="image-upload" style={styles.imageUploadButton}>
+                    <Plus size={24} color="#94a3b8" />
+                    <input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={onImageUpload}
+                    />
+                  </label>
+                </View>
+              </div>
             </View>
 
             {/* Documentation */}

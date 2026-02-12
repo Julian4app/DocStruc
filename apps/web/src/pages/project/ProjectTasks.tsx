@@ -139,6 +139,10 @@ export function ProjectTasks() {
   // File input refs
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  
+  // Image upload for create modal
+  const [createImages, setCreateImages] = useState<File[]>([]);
+  const [isDraggingCreate, setIsDraggingCreate] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -250,6 +254,7 @@ export function ProjectTasks() {
     setFormDueDate('');
     setFormStoryPoints('');
     setFormStatus('open');
+    setCreateImages([]);
   };
 
   const handleCreateTask = async () => {
@@ -261,7 +266,8 @@ export function ProjectTasks() {
     try {
       const { data: userData } = await supabase.auth.getUser();
       
-      const { error } = await supabase.from('tasks').insert({
+      // Create the task first
+      const { data: newTask, error: taskError } = await supabase.from('tasks').insert({
         project_id: id,
         title: formTitle.trim(),
         description: formDescription.trim(),
@@ -272,9 +278,41 @@ export function ProjectTasks() {
         story_points: formStoryPoints ? parseInt(formStoryPoints) : null,
         creator_id: userData.user?.id,
         board_position: tasks.length
-      });
+      }).select().single();
 
-      if (error) throw error;
+      if (taskError) throw taskError;
+
+      // Upload images if any
+      if (createImages.length > 0 && newTask) {
+        for (let i = 0; i < createImages.length; i++) {
+          const file = createImages[i];
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Math.random()}.${fileExt}`;
+          const filePath = `${id}/${newTask.id}/${fileName}`;
+
+          // Upload to storage
+          const { error: uploadError } = await supabase.storage
+            .from('task-attachments')
+            .upload(filePath, file);
+
+          if (uploadError) {
+            console.error('Error uploading image:', uploadError);
+            continue;
+          }
+
+          // Save to database
+          await supabase.from('task_images').insert({
+            task_id: newTask.id,
+            project_id: id,
+            uploaded_by: userData.user?.id,
+            storage_path: filePath,
+            file_name: file.name,
+            file_size: file.size,
+            mime_type: file.type,
+            display_order: i
+          });
+        }
+      }
 
       showToast('Aufgabe erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
@@ -444,7 +482,13 @@ export function ProjectTasks() {
     }
   };
 
-  const openTaskDetail = (task: Task) => {
+  const openTaskDetail = (task: Task, event?: React.MouseEvent) => {
+    // Prevent event bubbling
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     setSelectedTask(task);
     setFormTitle(task.title);
     setFormDescription(task.description || '');
@@ -454,8 +498,59 @@ export function ProjectTasks() {
     setFormDueDate(task.due_date || '');
     setFormStoryPoints(task.story_points?.toString() || '');
     setIsEditMode(false);
-    setIsDetailModalOpen(true);
-    loadTaskDetails(task.id);
+    
+    // Use setTimeout to ensure modal opens immediately
+    setTimeout(() => {
+      setIsDetailModalOpen(true);
+    }, 0);
+  };
+
+  // Handle image upload for create modal
+  const handleCreateImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      setCreateImages(prev => [...prev, ...filesArray]);
+    }
+  };
+
+  const handleRemoveCreateImage = (index: number) => {
+    setCreateImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Drag and drop handlers for create modal
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingCreate(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingCreate(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingCreate(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/')
+    );
+
+    if (files.length > 0) {
+      setCreateImages(prev => [...prev, ...files]);
+    } else {
+      showToast('Bitte nur Bilddateien hochladen', 'error');
+    }
+  };
+    
+    // Use setTimeout to ensure modal opens immediately
+    setTimeout(() => {
+      setIsDetailModalOpen(true);
+      loadTaskDetails(task.id);
+    }, 0);
   };
 
   const handleDragEnd = async (result: any) => {
@@ -1033,6 +1128,13 @@ export function ProjectTasks() {
           setIsEditModalOpen(false);
           setSelectedTask(null);
         }}
+        createImages={createImages}
+        onAddCreateImage={handleCreateImageSelect}
+        onRemoveCreateImage={handleRemoveCreateImage}
+        isDragging={isDraggingCreate}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       />
 
       {/* Task Detail Modal */}
