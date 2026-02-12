@@ -122,7 +122,7 @@ export function ProjectTasks() {
   });
   
   const [docFormData, setDocFormData] = useState({
-    type: 'text',
+    type: '',
     content: ''
   });
   
@@ -1286,7 +1286,7 @@ export function ProjectTasks() {
         onChangeDocFormData={(field, value) => setDocFormData({ ...docFormData, [field]: value })}
         onSaveDocumentation={() => handleAddDocumentation(docFormData.type as any)}
         onCancelDocumentation={() => {
-          setDocFormData({ type: 'text', content: '' });
+          setDocFormData({ type: '', content: '' });
         }}
         onStartRecording={() => {
           if (isRecording) {
