@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -13,7 +14,7 @@ import {
   Plus, Search, Filter, CheckCircle, Clock, XCircle, AlertCircle, 
   Calendar, List, LayoutGrid, Edit, Trash2, Image as ImageIcon, 
   Mic, Video, FileText, User, ChevronLeft, ChevronRight, Users,
-  Upload, X, MessageSquare, PlayCircle, PauseCircle, Circle
+  Upload, X, MessageSquare, PlayCircle, PauseCircle, Circle, GripVertical
 } from 'lucide-react';
 
 interface Task {
@@ -24,7 +25,7 @@ interface Task {
   priority?: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assigned_to: string | null;
-  story_points?: number;
+  story_points?: number | null;
   labels?: string[];
   board_position?: number;
   created_at: string;
@@ -34,18 +35,22 @@ interface Task {
 
 interface TaskImage {
   id: string;
+  task_id: string;
   storage_path: string;
-  file_name: string;
-  caption?: string;
+  file_name: string | null;
+  caption?: string | null;
+  display_order: number;
   created_at: string;
 }
 
 interface TaskDocumentation {
   id: string;
-  content?: string;
+  task_id: string;
+  content?: string | null;
   documentation_type: 'text' | 'voice' | 'image' | 'video';
-  storage_path?: string;
-  file_name?: string;
+  storage_path?: string | null;
+  file_name?: string | null;
+  duration_seconds?: number | null;
   created_at: string;
   user_id: string;
   user?: {
@@ -57,6 +62,7 @@ interface TaskDocumentation {
 
 interface ProjectMember {
   user_id: string;
+  role?: string;
   profiles: {
     id: string;
     email: string;
@@ -448,10 +454,55 @@ export function ProjectTasks() {
     setFormDueDate(task.due_date || '');
     setFormStoryPoints(task.story_points?.toString() || '');
     setIsEditMode(false);
+    setIsDetailModalOpen(true);
     loadTaskDetails(task.id);
   };
 
-  const getStatusIcon = (status: string) => {
+  const handleDragEnd = async (result: any) => {
+    if (!result.destination) return;
+
+    const { source, destination, draggableId } = result;
+    
+    // If dropped in same column at same position, do nothing
+    if (source.droppableId === destination.droppableId && source.index === destination.index) {
+      return;
+    }
+
+    const newStatus = destination.droppableId;
+    const taskId = draggableId;
+
+    // Optimistic UI update
+    const tasksCopy = [...tasks];
+    const taskIndex = tasksCopy.findIndex(t => t.id === taskId);
+    if (taskIndex >= 0) {
+      tasksCopy[taskIndex] = { ...tasksCopy[taskIndex], status: newStatus as any };
+      setTasks(tasksCopy);
+    }
+
+      // Update in database
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      showToast('Status aktualisiert', 'success');
+      
+      if (selectedTask?.id === taskId) {
+        setSelectedTask({ ...selectedTask, status: newStatus as any } as Task);
+      }
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      showToast('Fehler beim Aktualisieren', 'error');
+      // Revert on error
+      loadTasks();
+    }
+  };  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'done': return <CheckCircle size={20} color="#22c55e" />;
       case 'in_progress': return <Clock size={20} color="#F59E0B" />;
@@ -519,68 +570,104 @@ export function ProjectTasks() {
     ];
 
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kanbanContainer}>
-        {columns.map(column => {
-          const columnTasks = filteredTasks.filter(t => t.status === column.status);
-          
-          return (
-            <View key={column.status} style={styles.kanbanColumn}>
-              <View style={[styles.kanbanHeader, { backgroundColor: column.color }]}>
-                <Text style={styles.kanbanHeaderText}>{column.label}</Text>
-                <View style={styles.kanbanCount}>
-                  <Text style={styles.kanbanCountText}>{columnTasks.length}</Text>
-                </View>
-              </View>
-              
-              <ScrollView style={styles.kanbanCards} showsVerticalScrollIndicator={false}>
-                {columnTasks.map(task => (
-                  <TouchableOpacity
-                    key={task.id}
-                    style={styles.kanbanCard}
-                    onPress={() => openTaskDetail(task)}
-                  >
-                    <View style={styles.kanbanCardHeader}>
-                      <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
-                      {task.priority && (
-                        <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
-                      )}
-                    </View>
-                    
-                    {task.description && (
-                      <Text style={styles.kanbanCardDesc} numberOfLines={3}>{task.description}</Text>
-                    )}
-                    
-                    <View style={styles.kanbanCardFooter}>
-                      {task.assigned_to && (
-                        <View style={styles.assigneeAvatar}>
-                          <Text style={styles.assigneeAvatarText}>
-                            {projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.first_name?.[0] ||
-                             projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.email?.[0] || '?'}
-                          </Text>
-                        </View>
-                      )}
-                      {task.due_date && (
-                        <View style={styles.dueDateBadge}>
-                          <Calendar size={12} color="#64748b" />
-                          <Text style={styles.dueDateText}>
-                            {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-                
-                {columnTasks.length === 0 && (
-                  <View style={styles.emptyColumn}>
-                    <Text style={styles.emptyColumnText}>Keine Aufgaben</Text>
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.kanbanContainer}>
+          {columns.map(column => {
+            const columnTasks = filteredTasks.filter(t => t.status === column.status);
+            
+            return (
+              <View key={column.status} style={styles.kanbanColumn}>
+                <View style={[styles.kanbanHeader, { backgroundColor: column.color }]}>
+                  <Text style={styles.kanbanHeaderText}>{column.label}</Text>
+                  <View style={styles.kanbanCount}>
+                    <Text style={styles.kanbanCountText}>{columnTasks.length}</Text>
                   </View>
-                )}
-              </ScrollView>
-            </View>
-          );
-        })}
-      </ScrollView>
+                </View>
+                
+                <Droppable droppableId={column.status}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      style={{
+                        minHeight: 200,
+                        padding: 8,
+                        backgroundColor: snapshot.isDraggingOver ? '#f0f9ff' : 'transparent',
+                        borderRadius: 8,
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
+                      {columnTasks.map((task, index) => (
+                        <Draggable key={task.id} draggableId={task.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              style={{
+                                ...provided.draggableProps.style,
+                                marginBottom: 12,
+                              }}
+                            >
+                              <TouchableOpacity
+                                style={[
+                                  styles.kanbanCard,
+                                  snapshot.isDragging && styles.kanbanCardDragging
+                                ]}
+                                onPress={() => openTaskDetail(task)}
+                              >
+                                <div {...provided.dragHandleProps} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <GripVertical size={16} color="#94a3b8" />
+                                </div>
+                                <View style={styles.kanbanCardHeader}>
+                                  <Text style={styles.kanbanCardTitle} numberOfLines={2}>{task.title}</Text>
+                                  {task.priority && (
+                                    <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(task.priority) }]} />
+                                  )}
+                                </View>
+                                
+                                {task.description && (
+                                  <Text style={styles.kanbanCardDesc} numberOfLines={3}>{task.description}</Text>
+                                )}
+                                
+                                <View style={styles.kanbanCardFooter}>
+                                  {task.assigned_to && (
+                                    <View style={styles.assigneeAvatar}>
+                                      <Text style={styles.assigneeAvatarText}>
+                                        {projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.first_name?.[0] ||
+                                         projectMembers.find(m => m.user_id === task.assigned_to)?.profiles?.email?.[0] || '?'}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {task.due_date && (
+                                    <View style={styles.dueDateBadge}>
+                                      <Calendar size={12} color="#64748b" />
+                                      <Text style={styles.dueDateText}>
+                                        {new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </TouchableOpacity>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                      
+                      {columnTasks.length === 0 && (
+                        <View style={styles.emptyColumn}>
+                          <Text style={styles.emptyColumnText}>Keine Aufgaben</Text>
+                          <Text style={styles.emptyColumnHint}>Ziehen Sie Aufgaben hierher</Text>
+                        </View>
+                      )}
+                    </div>
+                  )}
+                </Droppable>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </DragDropContext>
     );
   };
 
@@ -640,6 +727,8 @@ export function ProjectTasks() {
 
     const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
     const days = [];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
     
     // Add empty cells for days before month starts
     for (let i = 0; i < startingDayOfWeek; i++) {
@@ -650,22 +739,44 @@ export function ProjectTasks() {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayTasks = filteredTasks.filter(t => t.due_date === dateStr);
-      const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+      const isToday = todayStr === dateStr;
+      const isPast = new Date(dateStr) < new Date(todayStr);
       
       days.push(
         <TouchableOpacity
           key={day}
-          style={[styles.calendarDay, isToday && styles.calendarDayToday]}
+          style={[
+            styles.calendarDay,
+            isToday && styles.calendarDayToday,
+            dayTasks.length > 0 && styles.calendarDayHasTasks
+          ]}
           onPress={() => {
             if (dayTasks.length > 0) {
               openTaskDetail(dayTasks[0]);
             }
           }}
         >
-          <Text style={[styles.calendarDayNumber, isToday && styles.calendarDayNumberToday]}>{day}</Text>
+          <Text style={[
+            styles.calendarDayNumber,
+            isToday && styles.calendarDayNumberToday,
+            isPast && !isToday && styles.calendarDayNumberPast
+          ]}>
+            {day}
+          </Text>
           {dayTasks.length > 0 && (
-            <View style={styles.calendarTaskIndicator}>
-              <Text style={styles.calendarTaskCount}>{dayTasks.length}</Text>
+            <View style={styles.calendarTaskIndicators}>
+              {dayTasks.slice(0, 3).map((task, idx) => (
+                <View
+                  key={task.id}
+                  style={[
+                    styles.calendarTaskDot,
+                    { backgroundColor: getPriorityColor(task.priority || 'medium') }
+                  ]}
+                />
+              ))}
+              {dayTasks.length > 3 && (
+                <Text style={styles.calendarTaskMore}>+{dayTasks.length - 3}</Text>
+              )}
             </View>
           )}
         </TouchableOpacity>
@@ -682,9 +793,15 @@ export function ProjectTasks() {
             <ChevronLeft size={20} color={colors.primary} />
           </TouchableOpacity>
           
-          <Text style={styles.calendarHeaderText}>
-            {currentMonth.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
-          </Text>
+          <TouchableOpacity
+            onPress={() => setCurrentMonth(new Date())}
+            style={styles.calendarTodayButton}
+          >
+            <Text style={styles.calendarHeaderText}>
+              {currentMonth.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })}
+            </Text>
+            <Text style={styles.calendarTodayButtonText}>Heute</Text>
+          </TouchableOpacity>
           
           <TouchableOpacity 
             onPress={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
@@ -704,11 +821,36 @@ export function ProjectTasks() {
         
         <View style={styles.calendarGrid}>{days}</View>
         
+        {/* Legend */}
+        <View style={styles.calendarLegend}>
+          <Text style={styles.calendarLegendTitle}>Prioritäten:</Text>
+          <View style={styles.calendarLegendItems}>
+            {[
+              { label: 'Kritisch', color: getPriorityColor('critical') },
+              { label: 'Hoch', color: getPriorityColor('high') },
+              { label: 'Mittel', color: getPriorityColor('medium') },
+              { label: 'Niedrig', color: getPriorityColor('low') },
+            ].map(item => (
+              <View key={item.label} style={styles.calendarLegendItem}>
+                <View style={[styles.calendarLegendDot, { backgroundColor: item.color }]} />
+                <Text style={styles.calendarLegendText}>{item.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        
         {/* Tasks for selected month */}
         <ScrollView style={styles.calendarTasksList}>
-          <Text style={styles.calendarTasksTitle}>Aufgaben in diesem Monat</Text>
+          <Text style={styles.calendarTasksTitle}>
+            Aufgaben in diesem Monat ({filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month).length})
+          </Text>
           {filteredTasks
             .filter(t => t.due_date && new Date(t.due_date).getMonth() === month)
+            .sort((a, b) => {
+              if (!a.due_date) return 1;
+              if (!b.due_date) return -1;
+              return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+            })
             .map(task => (
               <TouchableOpacity
                 key={task.id}
@@ -716,17 +858,33 @@ export function ProjectTasks() {
                 onPress={() => openTaskDetail(task)}
               >
                 <View style={styles.calendarTaskCardLeft}>
-                  <Calendar size={16} color={colors.primary} />
-                  <Text style={styles.calendarTaskCardDate}>
-                    {task.due_date ? new Date(task.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '-'}
-                  </Text>
+                  <View style={[styles.calendarTaskCardIndicator, { backgroundColor: getPriorityColor(task.priority || 'medium') }]} />
+                  <View>
+                    <Text style={styles.calendarTaskCardDate}>
+                      {task.due_date ? new Date(task.due_date).toLocaleDateString('de-DE', { 
+                        weekday: 'short',
+                        day: '2-digit', 
+                        month: 'short' 
+                      }) : '-'}
+                    </Text>
+                    <Text style={styles.calendarTaskCardTitle}>{task.title}</Text>
+                    {task.assigned_to && (
+                      <Text style={styles.calendarTaskCardAssignee}>
+                        {getUserName(task.assigned_to)}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-                <Text style={styles.calendarTaskCardTitle}>{task.title}</Text>
-                <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority || 'medium') }]}>
-                  <Text style={styles.priorityBadgeText}>{getPriorityLabel(task.priority || 'medium')}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(task.status) }]}>
+                  <Text style={styles.statusBadgeText}>{getStatusLabel(task.status)}</Text>
                 </View>
               </TouchableOpacity>
             ))}
+          {filteredTasks.filter(t => t.due_date && new Date(t.due_date).getMonth() === month).length === 0 && (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Keine Aufgaben in diesem Monat</Text>
+            </View>
+          )}
         </ScrollView>
       </View>
     );
@@ -854,12 +1012,12 @@ export function ProjectTasks() {
       <TaskModal
         visible={isCreateModalOpen || isEditModalOpen}
         mode={isCreateModalOpen ? 'create' : 'edit'}
-        task={selectedTask}
+        task={selectedTask ? { ...selectedTask, priority: selectedTask.priority || 'medium' } : null}
         projectId={id || ''}
         projectMembers={projectMembers.map(m => ({
           user_id: m.user_id,
           email: m.profiles.email,
-          role: m.role
+          role: m.role || 'member'
         }))}
         formData={isCreateModalOpen ? createFormData : editFormData}
         onChangeFormData={(field, value) => {
@@ -880,25 +1038,13 @@ export function ProjectTasks() {
       {/* Task Detail Modal */}
       <TaskDetailModal
         visible={isDetailModalOpen}
-        task={selectedTask ? {
-          ...selectedTask,
-          priority: selectedTask.priority || 'medium',
-          status: selectedTask.status || 'open'
-        } : null}
-        taskImages={taskImages.map(img => ({
-          ...img,
-          task_id: img.task_id || selectedTask?.id || '',
-          display_order: img.display_order || 0
-        }))}
-        taskDocumentation={taskDocumentation.map(doc => ({
-          ...doc,
-          task_id: doc.task_id || selectedTask?.id || '',
-          duration_seconds: doc.duration_seconds || null
-        }))}
+        task={selectedTask ? { ...selectedTask, priority: selectedTask.priority || 'medium' } : null}
+        taskImages={taskImages}
+        taskDocumentation={taskDocumentation}
         projectMembers={projectMembers.map(m => ({
           user_id: m.user_id,
           email: m.profiles.email,
-          role: m.role
+          role: m.role || 'member'
         }))}
         isEditMode={isEditMode}
         editFormData={editFormData}
@@ -964,7 +1110,8 @@ const styles = StyleSheet.create({
   kanbanCount: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.5)', alignItems: 'center', justifyContent: 'center' },
   kanbanCountText: { fontSize: 12, fontWeight: '700', color: '#0f172a' },
   kanbanCards: { flex: 1 },
-  kanbanCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  kanbanCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', cursor: 'pointer', transition: 'all 0.2s' },
+  kanbanCardDragging: { boxShadow: '0 8px 16px rgba(0, 0, 0, 0.15)', transform: 'rotate(2deg)' },
   kanbanCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   kanbanCardTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', flex: 1, marginRight: 8 },
   priorityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
@@ -975,7 +1122,8 @@ const styles = StyleSheet.create({
   dueDateBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#F1F5F9', borderRadius: 6 },
   dueDateText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
   emptyColumn: { padding: 24, alignItems: 'center' },
-  emptyColumnText: { fontSize: 13, color: '#94a3b8' },
+  emptyColumnText: { fontSize: 13, color: '#94a3b8', marginBottom: 4 },
+  emptyColumnHint: { fontSize: 11, color: '#cbd5e1', fontStyle: 'italic' },
   listContainer: { flex: 1 },
   listCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   listCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
@@ -990,23 +1138,36 @@ const styles = StyleSheet.create({
   calendarContainer: { flex: 1 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, backgroundColor: '#ffffff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   calendarHeaderText: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
+  calendarTodayButton: { flex: 1, alignItems: 'center', gap: 4 },
+  calendarTodayButtonText: { fontSize: 12, fontWeight: '600', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.5 },
   calendarNavButton: { padding: 8 },
   calendarWeekdays: { flexDirection: 'row', marginBottom: 8 },
   calendarWeekday: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   calendarWeekdayText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#ffffff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
-  calendarDay: { width: `${100 / 7}%` as any, aspectRatio: 1, padding: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8 },
+  calendarDay: { width: `${100 / 7}%` as any, aspectRatio: 1, padding: 4, alignItems: 'center', justifyContent: 'flex-start', borderWidth: 1, borderColor: '#F1F5F9', borderRadius: 8, position: 'relative' },
   calendarDayToday: { backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: colors.primary },
+  calendarDayHasTasks: { backgroundColor: '#fef3c7' },
   calendarDayNumber: { fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 4 },
   calendarDayNumberToday: { color: colors.primary, fontWeight: '700' },
-  calendarTaskIndicator: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  calendarTaskCount: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
+  calendarDayNumberPast: { color: '#94a3b8' },
+  calendarTaskIndicators: { flexDirection: 'row', gap: 2, alignItems: 'center', flexWrap: 'wrap', marginTop: 2 },
+  calendarTaskDot: { width: 6, height: 6, borderRadius: 3 },
+  calendarTaskMore: { fontSize: 9, fontWeight: '700', color: '#64748b', marginLeft: 2 },
+  calendarLegend: { backgroundColor: '#ffffff', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16 },
+  calendarLegendTitle: { fontSize: 13, fontWeight: '700', color: '#64748b', marginBottom: 8 },
+  calendarLegendItems: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  calendarLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  calendarLegendDot: { width: 10, height: 10, borderRadius: 5 },
+  calendarLegendText: { fontSize: 12, color: '#64748b' },
   calendarTasksList: { flex: 1 },
   calendarTasksTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
-  calendarTaskCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#ffffff', padding: 14, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
-  calendarTaskCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  calendarTaskCardDate: { fontSize: 13, fontWeight: '700', color: colors.primary, minWidth: 50 },
-  calendarTaskCardTitle: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  calendarTaskCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: '#ffffff', padding: 14, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  calendarTaskCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  calendarTaskCardIndicator: { width: 4, height: 40, borderRadius: 2 },
+  calendarTaskCardDate: { fontSize: 12, fontWeight: '700', color: colors.primary, marginBottom: 2 },
+  calendarTaskCardTitle: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  calendarTaskCardAssignee: { fontSize: 11, color: '#64748b', marginTop: 2 },
   emptyCard: { padding: 40, alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
   emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center' },
   

@@ -24,13 +24,13 @@ interface Task {
   id: string;
   title: string;
   description: string | null;
-  status: string;
-  priority: string;
+  status: 'open' | 'in_progress' | 'done' | 'blocked';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   assigned_to: string | null;
   due_date: string | null;
-  story_points: number | null;
+  story_points?: number | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 interface TaskImage {
@@ -38,7 +38,7 @@ interface TaskImage {
   task_id: string;
   storage_path: string;
   file_name: string | null;
-  caption: string | null;
+  caption?: string | null;
   display_order: number;
   created_at: string;
 }
@@ -47,11 +47,11 @@ interface TaskDocumentation {
   id: string;
   task_id: string;
   user_id: string;
-  content: string | null;
+  content?: string | null;
   documentation_type: string;
-  file_name: string | null;
-  storage_path: string | null;
-  duration_seconds: number | null;
+  file_name?: string | null;
+  storage_path?: string | null;
+  duration_seconds?: number | null;
   created_at: string;
 }
 
