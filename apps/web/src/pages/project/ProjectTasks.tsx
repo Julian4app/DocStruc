@@ -701,7 +701,7 @@ export function ProjectTasks() {
                                   styles.kanbanCard,
                                   snapshot.isDragging && styles.kanbanCardDragging
                                 ]}
-                                onPress={() => openTaskDetail(task)}
+                                onPress={(e) => openTaskDetail(task, e)}
                               >
                                 <div {...provided.dragHandleProps} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
                                   <GripVertical size={16} color="#94a3b8" />
@@ -771,7 +771,7 @@ export function ProjectTasks() {
             <TouchableOpacity
               key={task.id}
               style={styles.listCard}
-              onPress={() => openTaskDetail(task)}
+              onPress={(e) => openTaskDetail(task, e)}
             >
               <View style={styles.listCardLeft}>
                 {getStatusIcon(task.status)}
@@ -838,9 +838,9 @@ export function ProjectTasks() {
             isToday && styles.calendarDayToday,
             dayTasks.length > 0 && styles.calendarDayHasTasks
           ]}
-          onPress={() => {
+          onPress={(e) => {
             if (dayTasks.length > 0) {
-              openTaskDetail(dayTasks[0]);
+              openTaskDetail(dayTasks[0], e);
             }
           }}
         >
@@ -943,7 +943,7 @@ export function ProjectTasks() {
               <TouchableOpacity
                 key={task.id}
                 style={styles.calendarTaskCard}
-                onPress={() => openTaskDetail(task)}
+                onPress={(e) => openTaskDetail(task, e)}
               >
                 <View style={styles.calendarTaskCardLeft}>
                   <View style={[styles.calendarTaskCardIndicator, { backgroundColor: getPriorityColor(task.priority || 'medium') }]} />
