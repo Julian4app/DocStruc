@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from 'react-native';
-import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List } from 'lucide-react';
+import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Heading1, Heading2, Heading3, Strikethrough, Link } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 
 interface RichTextEditorProps {
@@ -42,14 +42,31 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
     handleInput();
   };
 
+  const createLink = () => {
+    const url = prompt('URL eingeben:');
+    if (url) {
+      execCommand('createLink', url);
+    }
+  };
+
+  const insertHeading = (level: number) => {
+    execCommand('formatBlock', `h${level}`);
+  };
+
   const buttons = [
     { icon: Bold, command: 'bold', label: 'Fett' },
     { icon: Italic, command: 'italic', label: 'Kursiv' },
     { icon: Underline, command: 'underline', label: 'Unterstrichen' },
+    { icon: Strikethrough, command: 'strikeThrough', label: 'Durchgestrichen' },
+    { icon: List, command: 'insertUnorderedList', label: 'Aufzählung' },
+    { icon: ListOrdered, command: 'insertOrderedList', label: 'Nummerierung' },
+    { icon: Heading1, command: 'h1', label: 'Überschrift 1' },
+    { icon: Heading2, command: 'h2', label: 'Überschrift 2' },
+    { icon: Heading3, command: 'h3', label: 'Überschrift 3' },
     { icon: AlignLeft, command: 'justifyLeft', label: 'Linksbündig' },
     { icon: AlignCenter, command: 'justifyCenter', label: 'Zentriert' },
     { icon: AlignRight, command: 'justifyRight', label: 'Rechtsbündig' },
-    { icon: List, command: 'insertUnorderedList', label: 'Aufzählung' },
+    { icon: Link, command: 'link', label: 'Link einfügen' },
   ];
 
   return (
@@ -72,6 +89,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
             <button
               key={index}
               type="button"
+              title={btn.label}
               style={{
                 width: 36,
                 height: 36,
@@ -82,10 +100,27 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                transition: 'background-color 0.2s',
               }}
               onMouseDown={(e) => {
                 e.preventDefault(); // Prevent losing focus
-                execCommand(btn.command);
+                if (btn.command === 'link') {
+                  createLink();
+                } else if (btn.command === 'h1') {
+                  insertHeading(1);
+                } else if (btn.command === 'h2') {
+                  insertHeading(2);
+                } else if (btn.command === 'h3') {
+                  insertHeading(3);
+                } else {
+                  execCommand(btn.command);
+                }
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled) e.currentTarget.style.backgroundColor = '#E2E8F0';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
               disabled={disabled}
             >
@@ -130,12 +165,43 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
         .rich-text-editor p {
           margin: 0 0 8px 0;
         }
-        .rich-text-editor ul {
+        .rich-text-editor h1 {
+          font-size: 2em;
+          font-weight: 700;
+          margin: 16px 0 8px 0;
+          color: #0f172a;
+        }
+        .rich-text-editor h2 {
+          font-size: 1.5em;
+          font-weight: 600;
+          margin: 14px 0 6px 0;
+          color: #0f172a;
+        }
+        .rich-text-editor h3 {
+          font-size: 1.25em;
+          font-weight: 600;
+          margin: 12px 0 6px 0;
+          color: #0f172a;
+        }
+        .rich-text-editor ul, .rich-text-editor ol {
           margin: 8px 0;
           padding-left: 24px;
         }
         .rich-text-editor li {
           margin: 4px 0;
+        }
+        .rich-text-editor a {
+          color: #2563eb;
+          text-decoration: underline;
+          cursor: pointer;
+        }
+        .rich-text-editor a:hover {
+          color: #1d4ed8;
+        }
+        .rich-text-editor strike,
+        .rich-text-editor s {
+          text-decoration: line-through;
+          opacity: 0.7;
         }
       `}</style>
     </View>

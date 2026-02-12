@@ -326,8 +326,7 @@ export function ProjectTasks() {
   };
 
   const handleUpdateTask = async () => {
-    if (!selectedTask || !editFormData.title.trim()) {
-      showToast('Bitte geben Sie einen Titel ein', 'error');
+    if (!selectedTask) {
       return;
     }
 
@@ -335,8 +334,8 @@ export function ProjectTasks() {
       const { error } = await supabase
         .from('tasks')
         .update({
-          title: editFormData.title.trim(),
-          description: editFormData.description.trim(),
+          title: editFormData.title?.trim() || selectedTask.title,
+          description: editFormData.description?.trim() || selectedTask.description || '',
           status: editFormData.status,
           priority: editFormData.priority,
           assigned_to: editFormData.assigned_to || null,
