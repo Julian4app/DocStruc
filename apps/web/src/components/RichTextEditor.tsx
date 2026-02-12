@@ -12,6 +12,10 @@ interface RichTextEditorProps {
 
 export function RichTextEditor({ value, onChange, placeholder, disabled }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const [selectedFont, setSelectedFont] = React.useState('Poppins');
+  const [selectedSize, setSelectedSize] = React.useState('14px');
+  const [selectedColor, setSelectedColor] = React.useState('#2563eb');
+  const [showColorPicker, setShowColorPicker] = React.useState(false);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -53,6 +57,31 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
     execCommand('formatBlock', `h${level}`);
   };
 
+  const changeFontFamily = (font: string) => {
+    setSelectedFont(font);
+    execCommand('fontName', font);
+  };
+
+  const changeFontSize = (size: string) => {
+    setSelectedSize(size);
+    // Convert px to font size number (1-7)
+    const sizeMap: {[key: string]: string} = {
+      '12px': '2',
+      '14px': '3',
+      '16px': '4',
+      '18px': '5',
+      '20px': '6',
+      '24px': '7'
+    };
+    execCommand('fontSize', sizeMap[size] || '3');
+  };
+
+  const changeColor = (color: string) => {
+    setSelectedColor(color);
+    execCommand('foreColor', color);
+    setShowColorPicker(false);
+  };
+
   const buttons = [
     { icon: Bold, command: 'bold', label: 'Fett' },
     { icon: Italic, command: 'italic', label: 'Kursiv' },
@@ -72,14 +101,95 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
   return (
     <View style={styles.container}>
       <View style={styles.toolbar}>
-        <Text style={styles.toolbarLabel}>Poppins</Text>
+        <select 
+          value={selectedFont}
+          onChange={(e) => changeFontFamily(e.target.value)}
+          disabled={disabled}
+          style={{
+            border: '1px solid #E2E8F0',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 13,
+            fontWeight: '500',
+            color: '#475569',
+            backgroundColor: '#fff',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value="Poppins">Poppins</option>
+          <option value="Arial">Arial</option>
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times New Roman">Times</option>
+          <option value="Courier New">Courier</option>
+          <option value="Georgia">Georgia</option>
+        </select>
         <View style={styles.separator} />
-        <Text style={styles.toolbarLabel}>14px</Text>
+        <select
+          value={selectedSize}
+          onChange={(e) => changeFontSize(e.target.value)}
+          disabled={disabled}
+          style={{
+            border: '1px solid #E2E8F0',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 13,
+            fontWeight: '500',
+            color: '#475569',
+            backgroundColor: '#fff',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value="12px">12px</option>
+          <option value="14px">14px</option>
+          <option value="16px">16px</option>
+          <option value="18px">18px</option>
+          <option value="20px">20px</option>
+          <option value="24px">24px</option>
+        </select>
         <View style={styles.separator} />
         
-        <View style={styles.colorPicker}>
-          <View style={[styles.colorCircle, { backgroundColor: colors.primary }]} />
-        </View>
+        <div style={{ position: 'relative' }}>
+          <TouchableOpacity 
+            style={styles.colorPicker}
+            onPress={() => setShowColorPicker(!showColorPicker)}
+            disabled={disabled}
+          >
+            <View style={[styles.colorCircle, { backgroundColor: selectedColor }]} />
+          </TouchableOpacity>
+          {showColorPicker && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              zIndex: 1000,
+              backgroundColor: '#fff',
+              border: '1px solid #E2E8F0',
+              borderRadius: 8,
+              padding: 8,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(5, 32px)',
+              gap: 4,
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            }}>
+              {['#000000', '#DC2626', '#EA580C', '#F59E0B', '#84CC16', '#10B981', '#06B6D4', '#2563eb', '#7C3AED', '#DB2777', '#64748b', '#ffffff'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => changeColor(color)}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 6,
+                    border: '2px solid #E2E8F0',
+                    backgroundColor: color,
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
         
         <View style={styles.separator} />
         

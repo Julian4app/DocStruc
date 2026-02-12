@@ -546,12 +546,20 @@ export function ProjectTasks() {
   };
 
   const handleDragEnd = async (result: any) => {
-    if (!result.destination) return;
+    console.log('🎯 Drag ended:', result);
+    
+    if (!result.destination) {
+      console.log('❌ No destination');
+      return;
+    }
 
     const { source, destination, draggableId } = result;
     
+    console.log('📦 Moving task:', draggableId, 'from', source.droppableId, 'to', destination.droppableId);
+    
     // If dropped in same column at same position, do nothing
     if (source.droppableId === destination.droppableId && source.index === destination.index) {
+      console.log('↩️ Same position, no change');
       return;
     }
 
@@ -1083,15 +1091,41 @@ export function ProjectTasks() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.searchContainer}>
-            <Search size={18} color="#94a3b8" />
-            <Input
+          <div style={{
+            position: 'relative',
+            width: 320,
+            display: 'flex',
+            alignItems: 'center',
+          }}>
+            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: 12, zIndex: 1, pointerEvents: 'none' }} />
+            <input
+              type="text"
               placeholder="Suchen..."
               value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={styles.searchInput}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                paddingLeft: 40,
+                paddingRight: 16,
+                paddingTop: 10,
+                paddingBottom: 10,
+                fontSize: 14,
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                outline: 'none',
+                backgroundColor: '#F8FAFC',
+                transition: 'all 0.2s',
+              }}
+              onFocus={(e) => {
+                e.target.style.backgroundColor = '#ffffff';
+                e.target.style.borderColor = colors.primary;
+              }}
+              onBlur={(e) => {
+                e.target.style.backgroundColor = '#F8FAFC';
+                e.target.style.borderColor = '#E2E8F0';
+              }}
             />
-          </View>
+          </div>
         </View>
 
         {/* Filters */}

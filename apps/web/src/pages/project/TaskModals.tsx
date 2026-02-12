@@ -1044,6 +1044,25 @@ export const TaskDetailModal: React.FC<{
               </View>
             </View>
           </ScrollView>
+          
+          {/* Footer with Save Button for Edit Mode */}
+          {isEditMode && (
+            <View style={styles.detailFooter}>
+              <TouchableOpacity
+                style={styles.detailFooterButtonSecondary}
+                onPress={onToggleEditMode}
+              >
+                <Text style={styles.detailFooterButtonSecondaryText}>Abbrechen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.detailFooterButtonPrimary}
+                onPress={onSaveEdit}
+              >
+                <Check size={18} color="#ffffff" />
+                <Text style={styles.detailFooterButtonPrimaryText}>Änderungen speichern</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -1129,4 +1148,47 @@ const styles = StyleSheet.create({
   priorityBadgeText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
   statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   statusBadgeText: { fontSize: 12, fontWeight: '700', color: '#0f172a' },
+  
+  // Footer styles for edit mode
+  detailFooter: { 
+    flexDirection: 'row', 
+    gap: 12, 
+    paddingTop: 16, 
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    borderTopWidth: 1, 
+    borderTopColor: '#E2E8F0',
+    backgroundColor: '#ffffff',
+  },
+  detailFooterButtonSecondary: { 
+    flex: 1, 
+    paddingVertical: 12, 
+    paddingHorizontal: 16, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0', 
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
+  detailFooterButtonSecondaryText: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#64748b' 
+  },
+  detailFooterButtonPrimary: { 
+    flex: 2, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12, 
+    paddingHorizontal: 16, 
+    borderRadius: 8, 
+    backgroundColor: colors.primary,
+  },
+  detailFooterButtonPrimaryText: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#ffffff' 
+  },
 });
