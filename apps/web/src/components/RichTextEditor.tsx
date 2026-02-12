@@ -148,9 +148,13 @@ export function RichTextEditor({ value, onChange, placeholder = '', disabled }: 
     <View style={styles.container}>
       <View style={styles.toolbar}>
         {/* Font Selector - Custom Dropdown */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', zIndex: showFontMenu ? 9999 : 1 }}>
           <button
-            onClick={() => setShowFontMenu(!showFontMenu)}
+            onClick={() => {
+              setShowFontMenu(!showFontMenu);
+              setShowSizeMenu(false);
+              setShowColorPicker(false);
+            }}
             disabled={disabled}
             style={{
               display: 'flex',
@@ -167,63 +171,82 @@ export function RichTextEditor({ value, onChange, placeholder = '', disabled }: 
               outline: 'none',
               minWidth: 140,
               justifyContent: 'space-between',
+              position: 'relative',
+              zIndex: showFontMenu ? 10000 : 1,
             }}
           >
             <span>{selectedFont}</span>
             <ChevronDown size={14} color="#94a3b8" />
           </button>
           {showFontMenu && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              zIndex: 2000,
-              marginTop: 4,
-              backgroundColor: '#fff',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              maxHeight: 300,
-              overflowY: 'auto',
-              minWidth: 200,
-            }}>
-              {fonts.map(font => (
-                <button
-                  key={font}
-                  onClick={() => changeFontFamily(font)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    border: 'none',
-                    backgroundColor: selectedFont === font ? '#EFF6FF' : 'transparent',
-                    color: selectedFont === font ? colors.primary : '#334155',
-                    fontFamily: font,
-                    fontSize: 14,
-                    fontWeight: selectedFont === font ? '600' : '400',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedFont !== font) e.currentTarget.style.backgroundColor = '#F8FAFC';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedFont !== font) e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  {font}
-                </button>
-              ))}
-            </div>
+            <>
+              <div 
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 9998,
+                }}
+                onClick={() => setShowFontMenu(false)}
+              />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                zIndex: 9999,
+                marginTop: 4,
+                backgroundColor: '#fff',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                maxHeight: 300,
+                overflowY: 'auto',
+                minWidth: 200,
+              }}>
+                {fonts.map(font => (
+                  <button
+                    key={font}
+                    onClick={() => changeFontFamily(font)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 16px',
+                      border: 'none',
+                      backgroundColor: selectedFont === font ? '#EFF6FF' : 'transparent',
+                      color: selectedFont === font ? colors.primary : '#334155',
+                      fontFamily: font,
+                      fontSize: 14,
+                      fontWeight: selectedFont === font ? '600' : '400',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedFont !== font) e.currentTarget.style.backgroundColor = '#F8FAFC';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedFont !== font) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    {font}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
         
         <View style={styles.separator} />
         
         {/* Size Selector - Custom Dropdown */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', zIndex: showSizeMenu ? 9999 : 1 }}>
           <button
-            onClick={() => setShowSizeMenu(!showSizeMenu)}
+            onClick={() => {
+              setShowSizeMenu(!showSizeMenu);
+              setShowFontMenu(false);
+              setShowColorPicker(false);
+            }}
             disabled={disabled}
             style={{
               display: 'flex',
@@ -240,105 +263,137 @@ export function RichTextEditor({ value, onChange, placeholder = '', disabled }: 
               outline: 'none',
               minWidth: 80,
               justifyContent: 'space-between',
+              position: 'relative',
+              zIndex: showSizeMenu ? 10000 : 1,
             }}
           >
             <span>{selectedSize}</span>
             <ChevronDown size={14} color="#94a3b8" />
           </button>
           {showSizeMenu && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              zIndex: 2000,
-              marginTop: 4,
-              backgroundColor: '#fff',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              maxHeight: 300,
-              overflowY: 'auto',
-              minWidth: 100,
-            }}>
-              {sizes.map(size => (
-                <button
-                  key={size}
-                  onClick={() => changeFontSize(size)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 16px',
-                    border: 'none',
-                    backgroundColor: selectedSize === size ? '#EFF6FF' : 'transparent',
-                    color: selectedSize === size ? colors.primary : '#334155',
-                    fontSize: 14,
-                    fontWeight: selectedSize === size ? '600' : '400',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedSize !== size) e.currentTarget.style.backgroundColor = '#F8FAFC';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedSize !== size) e.currentTarget.style.backgroundColor = 'transparent';
-                  }}
-                >
-                  {size}
-                </button>
-              ))}
-            </div>
+            <>
+              <div 
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 9998,
+                }}
+                onClick={() => setShowSizeMenu(false)}
+              />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                zIndex: 9999,
+                marginTop: 4,
+                backgroundColor: '#fff',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                maxHeight: 300,
+                overflowY: 'auto',
+                minWidth: 100,
+              }}>
+                {sizes.map(size => (
+                  <button
+                    key={size}
+                    onClick={() => changeFontSize(size)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 16px',
+                      border: 'none',
+                      backgroundColor: selectedSize === size ? '#EFF6FF' : 'transparent',
+                      color: selectedSize === size ? colors.primary : '#334155',
+                      fontSize: 14,
+                      fontWeight: selectedSize === size ? '600' : '400',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedSize !== size) e.currentTarget.style.backgroundColor = '#F8FAFC';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedSize !== size) e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
         
         <View style={styles.separator} />
         
         {/* Color Picker */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', zIndex: showColorPicker ? 9999 : 1 }}>
           <TouchableOpacity 
             style={styles.colorPicker}
-            onPress={() => setShowColorPicker(!showColorPicker)}
+            onPress={() => {
+              setShowColorPicker(!showColorPicker);
+              setShowFontMenu(false);
+              setShowSizeMenu(false);
+            }}
             disabled={disabled}
           >
             <View style={[styles.colorCircle, { backgroundColor: selectedColor }]} />
           </TouchableOpacity>
           {showColorPicker && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              zIndex: 2000,
-              marginTop: 4,
-              backgroundColor: '#fff',
-              border: '1px solid #E2E8F0',
-              borderRadius: 8,
-              padding: 8,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(5, 32px)',
-              gap: 4,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            }}>
-              {['#000000', '#DC2626', '#EA580C', '#F59E0B', '#84CC16', '#10B981', '#06B6D4', '#2563eb', '#7C3AED', '#DB2777', '#64748b', '#ffffff'].map(color => (
-                <button
-                  key={color}
-                  onClick={() => changeColor(color)}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 6,
-                    border: selectedColor === color ? `3px solid ${colors.primary}` : '2px solid #E2E8F0',
-                    backgroundColor: color,
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
-                />
-              ))}
-            </div>
+            <>
+              <div 
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 9998,
+                }}
+                onClick={() => setShowColorPicker(false)}
+              />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                zIndex: 9999,
+                marginTop: 4,
+                backgroundColor: '#fff',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                padding: 8,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(5, 32px)',
+                gap: 4,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+              }}>
+                {['#000000', '#DC2626', '#EA580C', '#F59E0B', '#84CC16', '#10B981', '#06B6D4', '#2563eb', '#7C3AED', '#DB2777', '#64748b', '#ffffff'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => changeColor(color)}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      border: selectedColor === color ? `3px solid ${colors.primary}` : '2px solid #E2E8F0',
+                      backgroundColor: color,
+                      cursor: 'pointer',
+                      transition: 'transform 0.15s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
         
@@ -469,7 +524,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 12,
     backgroundColor: '#fff',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   toolbar: {
     flexDirection: 'row',
@@ -479,6 +534,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
     gap: 8,
+    overflow: 'visible',
   },
   toolbarLabel: {
     fontSize: 14,
@@ -525,5 +581,6 @@ const styles = StyleSheet.create({
     minHeight: 200,
     maxHeight: 400,
     backgroundColor: '#fff',
+    overflow: 'scroll',
   },
 });

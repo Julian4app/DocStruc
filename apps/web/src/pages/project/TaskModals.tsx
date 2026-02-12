@@ -909,64 +909,42 @@ export const TaskDetailModal: React.FC<{
                 <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 16 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
                   
-                  {/* Type Selector */}
-                  <View style={styles.docAddButtons}>
-                    <TouchableOpacity
-                      style={[
-                        styles.docAddButton,
-                        docFormData.type === 'text' && styles.docAddButtonActive,
-                      ]}
-                      onPress={() => onChangeDocFormData('type', 'text')}
-                    >
-                      <FileText size={18} color={docFormData.type === 'text' ? '#ffffff' : '#64748b'} />
-                      <Text
-                        style={[
-                          styles.docAddButtonText,
-                          docFormData.type === 'text' && styles.docAddButtonTextActive,
-                        ]}
+                  {/* Type Selector - Only show buttons initially */}
+                  {!docFormData.type && (
+                    <View style={styles.docAddButtons}>
+                      <TouchableOpacity
+                        style={styles.docAddButton}
+                        onPress={() => onChangeDocFormData('type', 'text')}
                       >
-                        Text
-                      </Text>
-                    </TouchableOpacity>
+                        <FileText size={20} color={colors.primary} />
+                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                          Text
+                        </Text>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.docAddButton,
-                        docFormData.type === 'voice' && styles.docAddButtonActive,
-                      ]}
-                      onPress={() => onChangeDocFormData('type', 'voice')}
-                    >
-                      <Mic size={18} color={docFormData.type === 'voice' ? '#ffffff' : '#64748b'} />
-                      <Text
-                        style={[
-                          styles.docAddButtonText,
-                          docFormData.type === 'voice' && styles.docAddButtonTextActive,
-                        ]}
+                      <TouchableOpacity
+                        style={styles.docAddButton}
+                        onPress={() => onChangeDocFormData('type', 'voice')}
                       >
-                        Sprache
-                      </Text>
-                    </TouchableOpacity>
+                        <Mic size={20} color={colors.primary} />
+                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                          Sprache
+                        </Text>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.docAddButton,
-                        docFormData.type === 'video' && styles.docAddButtonActive,
-                      ]}
-                      onPress={() => onChangeDocFormData('type', 'video')}
-                    >
-                      <Video size={18} color={docFormData.type === 'video' ? '#ffffff' : '#64748b'} />
-                      <Text
-                        style={[
-                          styles.docAddButtonText,
-                          docFormData.type === 'video' && styles.docAddButtonTextActive,
-                        ]}
+                      <TouchableOpacity
+                        style={styles.docAddButton}
+                        onPress={() => onChangeDocFormData('type', 'video')}
                       >
-                        Video
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                        <Video size={20} color={colors.primary} />
+                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                          Video
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
 
-                  {/* Content based on type */}
+                  {/* Content based on type - Only show when type is selected */}
                   {docFormData.type === 'text' && (
                     <>
                       <View style={{ marginTop: 16, marginBottom: 12 }}>
@@ -978,7 +956,10 @@ export const TaskDetailModal: React.FC<{
                       <View style={styles.docAddActions}>
                         <TouchableOpacity
                           style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                          onPress={onCancelDocumentation}
+                          onPress={() => {
+                            onCancelDocumentation();
+                            onChangeDocFormData('type', '');
+                          }}
                         >
                           <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
                             Abbrechen
@@ -1045,7 +1026,10 @@ export const TaskDetailModal: React.FC<{
                       <View style={styles.docAddActions}>
                         <TouchableOpacity
                           style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                          onPress={onCancelDocumentation}
+                          onPress={() => {
+                            onCancelDocumentation();
+                            onChangeDocFormData('type', '');
+                          }}
                         >
                           <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
                             Abbrechen
@@ -1095,7 +1079,10 @@ export const TaskDetailModal: React.FC<{
                       <View style={styles.docAddActions}>
                         <TouchableOpacity
                           style={[styles.docAddActionButton, styles.docAddActionButtonCancel]}
-                          onPress={onCancelDocumentation}
+                          onPress={() => {
+                            onCancelDocumentation();
+                            onChangeDocFormData('type', '');
+                          }}
                         >
                           <Text style={[styles.docAddActionButtonText, styles.docAddActionButtonTextCancel]}>
                             Abbrechen

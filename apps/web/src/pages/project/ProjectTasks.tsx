@@ -418,7 +418,7 @@ export function ProjectTasks() {
   const handleAddDocumentation = async (type: 'text' | 'voice' | 'image' | 'video') => {
     if (!selectedTask) return;
 
-    if (type === 'text' && !newDocText.trim()) {
+    if (type === 'text' && !docFormData.content.trim()) {
       showToast('Bitte Text eingeben', 'error');
       return;
     }
@@ -430,14 +430,14 @@ export function ProjectTasks() {
         task_id: selectedTask.id,
         project_id: id,
         user_id: userData.user?.id,
-        content: type === 'text' ? newDocText.trim() : null,
+        content: type === 'text' ? docFormData.content.trim() : null,
         documentation_type: type
       });
 
       if (error) throw error;
 
       showToast('Dokumentation hinzugefügt', 'success');
-      setNewDocText('');
+      setDocFormData({ type: '', content: '' });
       loadTaskDetails(selectedTask.id);
     } catch (error: any) {
       console.error('Error adding documentation:', error);
