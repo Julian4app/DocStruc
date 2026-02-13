@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { Card } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
-import { CheckCircle, Clock, AlertTriangle, TrendingUp, AlertCircle, Calendar } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle, TrendingUp, AlertCircle, Calendar, Flag, ArrowRight } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface DashboardStats {
@@ -33,6 +33,18 @@ interface UpcomingEvent {
   event_type: string;
 }
 
+interface Milestone {
+  id: string;
+  title: string;
+  event_date: string;
+  end_date?: string | null;
+  description?: string | null;
+  color?: string | null;
+  eventType: string;
+  completed: boolean;
+  linkedItemsCount?: number;
+}
+
 export function ProjectDashboard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -49,6 +61,7 @@ export function ProjectDashboard() {
   });
   const [recentTasks, setRecentTasks] = useState<RecentTask[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -83,6 +96,33 @@ export function ProjectDashboard() {
       });
 
       setRecentTasks(allTasks.slice(0, 5));
+
+      // Load upcoming milestones
+      const { data: milestonesData, error: milestonesError } = await supabase
+        .from('timeline_events')
+        .select('*')
+        .eq('project_id', id)
+        .gte('event_date', new Date().toISOString().split('T')[0])
+        .order('event_date', { ascending: true })
+        .limit(5);
+
+      if (!milestonesError && milestonesData) {
+        // Load linked items count for each milestone
+        const milestonesWithCounts = await Promise.all(
+          milestonesData.map(async (milestone) => {
+            const { data: linkedData, error: linkedError } = await supabase
+              .from('milestone_tasks')
+              .select('task_id', { count: 'exact' })
+              .eq('milestone_id', milestone.id);
+
+            return {
+              ...milestone,
+              linkedItemsCount: linkedData?.length || 0
+            };
+          })
+        );
+        setMilestones(milestonesWithCounts);
+      }
 
       // Load upcoming events
       const { data: events, error: eventsError } = await supabase
@@ -284,6 +324,146 @@ export function ProjectDashboard() {
           )}
         </Card>
       )}
+
+      {/* Milestones Overview */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.cardHeader}>
+          <Flag size={20} color={colors.primary} />
+          <Text style={styles.cardTitle}>Meilensteine & Termine</Text>
+          <TouchableOpacity
+            style={styles.viewAllButton}
+            onPress={() => navigate(`/project/${id}/schedule`)}
+          >
+            <Text style={styles.viewAllButtonText}>Alle anzeigen</Text>
+            <ArrowRight size={14} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {milestones.length === 0 ? (
+          <View style={styles.emptyMilestones}>
+            <Flag size={32} color="#CBD5E1" />
+            <Text style={styles.emptyMilestonesText}>Keine anstehenden Meilensteine</Text>
+            <TouchableOpacity
+              style={styles.emptyActionButton}
+              onPress={() => navigate(`/project/${id}/schedule`)}
+            >
+              <Text style={styles.emptyActionButtonText}>Meilenstein erstellen</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.milestonesList}>
+            {milestones.map((milestone) => {
+              const daysUntil = Math.ceil(
+                (new Date(milestone.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+              );
+              const isToday = daysUntil === 0;
+              const isPast = daysUntil < 0;
+              const isUpcoming = daysUntil > 0 && daysUntil <= 7;
+
+              return (
+                <TouchableOpacity
+                  key={milestone.id}
+                  style={styles.milestoneCard}
+                  onPress={() => navigate(`/project/${id}/schedule`)}
+                >
+                  {/* Milestone Color Bar */}
+                  <View
+                    style={[
+                      styles.milestoneColorBar,
+                      {
+                        backgroundColor: milestone.color || 
+                          (milestone.eventType === 'deadline' ? '#EF4444' :
+                           milestone.eventType === 'phase' ? '#8B5CF6' : colors.primary)
+                      }
+                    ]}
+                  />
+
+                  <View style={styles.milestoneContent}>
+                    {/* Header */}
+                    <View style={styles.milestoneHeader}>
+                      <View style={styles.milestoneHeaderLeft}>
+                        <Text style={styles.milestoneTitle} numberOfLines={1}>
+                          {milestone.title}
+                        </Text>
+                        <View style={[
+                          styles.milestoneTypeBadge,
+                          {
+                            backgroundColor: milestone.color || 
+                              (milestone.eventType === 'deadline' ? '#EF4444' :
+                               milestone.eventType === 'phase' ? '#8B5CF6' : colors.primary)
+                          }
+                        ]}>
+                          <Text style={styles.milestoneTypeBadgeText}>
+                            {milestone.eventType === 'deadline' ? 'Deadline' :
+                             milestone.eventType === 'phase' ? 'Bauphase' : 'Meilenstein'}
+                          </Text>
+                        </View>
+                      </View>
+                      {milestone.completed && (
+                        <View style={styles.completedBadge}>
+                          <CheckCircle size={14} color="#22c55e" />
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Date & Description */}
+                    <View style={styles.milestoneDetails}>
+                      <View style={styles.milestoneDateRow}>
+                        <Calendar size={14} color="#64748b" />
+                        <Text style={styles.milestoneDateText}>
+                          {new Date(milestone.event_date).toLocaleDateString('de-DE', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                          {milestone.end_date && (
+                            <Text style={styles.milestoneDateRange}>
+                              {' '}bis {new Date(milestone.end_date).toLocaleDateString('de-DE', {
+                                day: '2-digit',
+                                month: 'short'
+                              })}
+                            </Text>
+                          )}
+                        </Text>
+                      </View>
+                      
+                      {milestone.description && (
+                        <Text style={styles.milestoneDescription} numberOfLines={2}>
+                          {milestone.description}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Footer */}
+                    <View style={styles.milestoneFooter}>
+                      {milestone.linkedItemsCount !== undefined && milestone.linkedItemsCount > 0 && (
+                        <View style={styles.linkedItemsBadge}>
+                          <Text style={styles.linkedItemsText}>
+                            {milestone.linkedItemsCount} verknüpft{milestone.linkedItemsCount !== 1 ? 'e' : 'e'} Aufgabe{milestone.linkedItemsCount !== 1 ? 'n' : ''}
+                          </Text>
+                        </View>
+                      )}
+                      
+                      {!milestone.completed && (
+                        <Text style={[
+                          styles.milestoneDaysUntil,
+                          isToday && styles.milestoneDaysUntilToday,
+                          isPast && styles.milestoneDaysUntilOverdue,
+                          isUpcoming && styles.milestoneDaysUntilUpcoming
+                        ]}>
+                          {isToday ? '⚡ Heute' :
+                           isPast ? `⚠️ ${Math.abs(daysUntil)} Tag(e) überfällig` :
+                           `📅 in ${daysUntil} Tag(en)`}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </Card>
     </ScrollView>
   );
 }
@@ -521,5 +701,146 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     textAlign: 'center',
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  viewAllButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  emptyMilestones: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  emptyMilestonesText: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  emptyActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  emptyActionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  milestonesList: {
+    gap: 12,
+  },
+  milestoneCard: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  milestoneColorBar: {
+    width: 4,
+  },
+  milestoneContent: {
+    flex: 1,
+    padding: 16,
+    gap: 10,
+  },
+  milestoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  milestoneHeaderLeft: {
+    flex: 1,
+    gap: 6,
+  },
+  milestoneTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  milestoneTypeBadge: {
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  milestoneTypeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  completedBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  milestoneDetails: {
+    gap: 8,
+  },
+  milestoneDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  milestoneDateText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  milestoneDateRange: {
+    fontWeight: '400',
+  },
+  milestoneDescription: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+  },
+  milestoneFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  linkedItemsBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+  },
+  linkedItemsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  milestoneDaysUntil: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  milestoneDaysUntilToday: {
+    color: '#F59E0B',
+  },
+  milestoneDaysUntilOverdue: {
+    color: '#EF4444',
+  },
+  milestoneDaysUntilUpcoming: {
+    color: '#10B981',
   },
 });
