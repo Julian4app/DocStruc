@@ -315,6 +315,7 @@ export function ProjectSchedule() {
   };
 
   const handleMilestoneClick = async (milestone: TimelineEvent) => {
+    console.log('handleMilestoneClick called with milestone:', milestone.id, milestone.title);
     setSelectedMilestone(milestone);
     setIsEditMilestoneMode(false);
     
@@ -602,7 +603,10 @@ export function ProjectSchedule() {
                 <View key={milestone.id} style={styles.milestoneCard}>
                   <TouchableOpacity
                     style={styles.milestoneCheckbox}
-                    onPress={() => handleToggleMilestone(milestone.id, milestone.status)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleToggleMilestone(milestone.id, milestone.status);
+                    }}
                   >
                     {milestone.status === "completed" ? (
                       <CheckCircle size={24} color="#22c55e" />
@@ -612,7 +616,11 @@ export function ProjectSchedule() {
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.milestoneContent}
-                    onPress={() => handleMilestoneClick(milestone)}
+                    onPress={() => {
+                      console.log('List view milestone clicked:', milestone.id);
+                      handleMilestoneClick(milestone);
+                    }}
+                    activeOpacity={0.7}
                   >
                     <Text style={[
                       styles.milestoneTitle,
@@ -715,54 +723,49 @@ export function ProjectSchedule() {
       ) : (
         <View style={styles.timelineContent}>
           {milestonesWithLinkedItems.map((milestone, index) => (
-            <View key={milestone.id} style={styles.timelineItem}>
-              {/* Timeline Line */}
-              <View style={styles.timelineLine}>
-                <View style={[
-                  styles.timelineDot,
-                  { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
-                ]} />
-                {index < milestonesWithLinkedItems.length - 1 && (
-                  <View style={styles.timelineConnector} />
-                )}
-              </View>
-
-              {/* Timeline Content */}
-              <TouchableOpacity 
-                onPress={() => handleMilestoneClick(milestone)}
-                activeOpacity={0.7}
-              >
-                <Card style={styles.timelineCard}>
-                {/* Date Badge */}
-                <View style={styles.timelineDateBadge}>
-                  <Text style={styles.timelineDateText}>
-                    {formatDate(milestone.start_date)}
-                  </Text>
-                  {milestone.end_date && (
-                    <Text style={styles.timelineDateRange}>
-                      bis {formatDate(milestone.end_date)}
-                    </Text>
-                  )}
-                </View>
-
-                {/* Milestone Info */}
-                <View style={styles.timelineHeader}>
-                  <View style={styles.timelineTitleRow}>
-                    <Text style={styles.timelineTitle}>{milestone.title}</Text>
-                    {milestone.status === "completed" && (
-                      <View style={styles.completedBadge}>
-                        <CheckCircle size={16} color="#22c55e" />
-                        <Text style={styles.completedBadgeText}>Abgeschlossen</Text>
+            <TouchableOpacity 
+              key={milestone.id}
+              onPress={() => {
+                console.log('Timeline milestone clicked:', milestone.id);
+                handleMilestoneClick(milestone);
+              }}
+              activeOpacity={0.7}
+              style={styles.timelineItemWrapper}
+            >
+              <Card style={[
+                styles.timelineCard,
+                { borderLeftWidth: 4, borderLeftColor: milestone.color || getEventTypeColor(milestone.event_type) }
+              ]}>
+                {/* Header Row */}
+                <View style={styles.timelineCardHeader}>
+                  <View style={styles.timelineCardTitleSection}>
+                    <Text style={styles.timelineCardTitle}>{milestone.title}</Text>
+                    <View style={styles.timelineCardMeta}>
+                      <View style={[
+                        styles.timelineTypeBadge,
+                        { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
+                      ]}>
+                        <Text style={styles.timelineTypeBadgeText}>
+                          {getEventTypeLabel(milestone.event_type)}
+                        </Text>
                       </View>
-                    )}
+                      {milestone.status === "completed" && (
+                        <View style={styles.timelineCompletedBadge}>
+                          <CheckCircle size={12} color="#22c55e" />
+                          <Text style={styles.timelineCompletedText}>Abgeschlossen</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  <View style={[
-                    styles.eventTypeBadge,
-                    { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
-                  ]}>
-                    <Text style={styles.eventTypeBadgeText}>
-                      {getEventTypeLabel(milestone.event_type)}
+                  <View style={styles.timelineCardDate}>
+                    <Text style={styles.timelineCardDateText}>
+                      {formatDate(milestone.start_date)}
                     </Text>
+                    {milestone.end_date && (
+                      <Text style={styles.timelineCardDateRange}>
+                        bis {formatDate(milestone.end_date)}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -787,7 +790,10 @@ export function ProjectSchedule() {
                         <TouchableOpacity 
                           key={item.id} 
                           style={styles.linkedItem}
-                          onPress={() => handleTaskClick(item)}
+                          onPress={(e) => {
+                            e?.stopPropagation?.();
+                            handleTaskClick(item);
+                          }}
                         >
                           {item.task_type === 'defect' ? (
                             <AlertCircle size={14} color="#EF4444" />
@@ -833,8 +839,7 @@ export function ProjectSchedule() {
                   </View>
                 )}
               </Card>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -853,13 +858,13 @@ export function ProjectSchedule() {
     const startingDayOfWeek = (firstDay.getDay() + 6) % 7; // Adjust so Monday is 0
     
     // Get milestones for current month
-    const monthMilestones = milestones.filter(m => {
+    const monthMilestones = milestonesWithLinkedItems.filter(m => {
       const milestoneDate = new Date(m.start_date);
       return milestoneDate.getMonth() === month && milestoneDate.getFullYear() === year;
     });
     
     // Group milestones by day
-    const milestonesByDay: { [key: number]: TimelineEvent[] } = {};
+    const milestonesByDay: { [key: number]: typeof milestonesWithLinkedItems } = {};
     monthMilestones.forEach(m => {
       const day = new Date(m.start_date).getDate();
       if (!milestonesByDay[day]) {
@@ -938,9 +943,14 @@ export function ProjectSchedule() {
                 year === today.getFullYear();
               
               const dayMilestones = day !== null ? milestonesByDay[day] || [] : [];
+              const weekday = index % 7;
+              const isWeekend = weekday === 5 || weekday === 6; // Saturday or Sunday
               
               return (
-                <View key={index} style={styles.calendarDayCell}>
+                <View key={index} style={[
+                  styles.calendarDayCell,
+                  isWeekend && styles.calendarDayCellWeekend
+                ]}>
                   {day !== null && (
                     <>
                       <View style={[styles.dayNumber, isToday && styles.dayNumberToday]}>
@@ -949,24 +959,43 @@ export function ProjectSchedule() {
                         </Text>
                       </View>
                       
-                      {/* Milestone Dots */}
-                      {dayMilestones.length > 0 && (
-                        <View style={styles.milestoneDots}>
-                          {dayMilestones.slice(0, 3).map((milestone) => (
-                            <TouchableOpacity
-                              key={milestone.id}
-                              style={[
-                                styles.milestoneDot,
-                                { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
-                              ]}
-                              onPress={() => handleMilestoneClick(milestone)}
-                            />
-                          ))}
-                          {dayMilestones.length > 3 && (
-                            <Text style={styles.moreMilestonesText}>+{dayMilestones.length - 3}</Text>
-                          )}
-                        </View>
-                      )}
+                      {/* Milestone Cards */}
+                      <View style={styles.calendarMilestones}>
+                        {dayMilestones.map((milestone) => (
+                          <TouchableOpacity
+                            key={milestone.id}
+                            style={[
+                              styles.calendarMilestoneCard,
+                              { borderLeftColor: milestone.color || getEventTypeColor(milestone.event_type) }
+                            ]}
+                            onPress={() => handleMilestoneClick(milestone)}
+                          >
+                            <Text 
+                              style={styles.calendarMilestoneTitle}
+                              numberOfLines={2}
+                            >
+                              {milestone.title}
+                            </Text>
+                            <View style={styles.calendarMilestoneFooter}>
+                              <Text style={styles.calendarMilestoneTime}>
+                                {new Date(milestone.start_date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} hrs
+                              </Text>
+                              {milestone.status === "completed" && (
+                                <View style={styles.calendarMilestoneProgress}>
+                                  <Text style={styles.calendarMilestoneProgressText}>100%</Text>
+                                </View>
+                              )}
+                              {milestone.status !== "completed" && milestone.linkedItems && milestone.linkedItems.length > 0 && (
+                                <View style={styles.calendarMilestoneProgress}>
+                                  <Text style={styles.calendarMilestoneProgressText}>
+                                    {Math.round((milestone.linkedItems.filter((i: any) => i.status === 'done' || i.status === 'resolved').length / milestone.linkedItems.length) * 100)}%
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </>
                   )}
                 </View>
@@ -2126,93 +2155,85 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   timelineContent: {
-    gap: 0,
+    gap: 16,
   },
-  timelineItem: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  timelineLine: {
-    width: 40,
-    alignItems: 'center',
-  },
-  timelineDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 4,
-    borderColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  timelineConnector: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 8,
+  timelineItemWrapper: {
+    width: '100%',
   },
   timelineCard: {
-    flex: 1,
-    padding: 20,
+    width: '100%',
+    padding: 24,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F1F5F9',
-    marginBottom: 20,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  timelineDateBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  timelineDateText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  timelineDateRange: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  timelineHeader: {
-    gap: 12,
-    marginBottom: 12,
-  },
-  timelineTitleRow: {
+  timelineCardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 16,
   },
-  timelineTitle: {
+  timelineCardTitleSection: {
+    flex: 1,
+    gap: 8,
+  },
+  timelineCardTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#0f172a',
-    flex: 1,
   },
-  completedBadge: {
+  timelineCardMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timelineTypeBadge: {
     paddingVertical: 4,
     paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  timelineTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  timelineCompletedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     backgroundColor: '#F0FDF4',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#86EFAC',
   },
-  completedBadgeText: {
+  timelineCompletedText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#22c55e',
+  },
+  timelineCardDate: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  timelineCardDateText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  timelineCardDateRange: {
+    fontSize: 12,
+    color: '#64748b',
   },
   timelineDescription: {
     fontSize: 14,
@@ -2360,53 +2381,78 @@ const styles = StyleSheet.create({
   },
   calendarDayCell: {
     width: '14.285%', // 100% / 7 days
-    aspectRatio: 1,
-    padding: 4,
+    minHeight: 100,
+    padding: 6,
     borderWidth: 0.5,
-    borderColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
     position: 'relative',
+    backgroundColor: '#ffffff',
+  },
+  calendarDayCellWeekend: {
+    backgroundColor: '#F8FAFC',
   },
   dayNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   dayNumberToday: {
     backgroundColor: colors.primary,
   },
   dayNumberText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#0f172a',
   },
   dayNumberTextToday: {
     color: '#ffffff',
   },
-  milestoneDots: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 3,
-    paddingHorizontal: 2,
+  calendarMilestones: {
+    gap: 4,
   },
-  milestoneDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ffffff',
+  calendarMilestoneCard: {
+    backgroundColor: '#ffffff',
+    borderLeftWidth: 3,
+    borderRadius: 6,
+    padding: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
-  moreMilestonesText: {
+  calendarMilestoneTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  calendarMilestoneFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 4,
+  },
+  calendarMilestoneTime: {
+    fontSize: 9,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  calendarMilestoneProgress: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  calendarMilestoneProgressText: {
     fontSize: 9,
     fontWeight: '700',
-    color: '#64748b',
+    color: '#22c55e',
   },
   legendCard: {
     padding: 20,
