@@ -394,7 +394,12 @@ export function ProjectFiles() {
       const folderPath = isUploadingToFolder || 'root';
       const filePath = `${id}/${folderPath}/${fileName}`;
 
-      console.log('Uploading file to:', filePath);
+      console.log('Uploading file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path: filePath
+      });
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('project-files')
@@ -410,7 +415,9 @@ export function ProjectFiles() {
 
       console.log('File uploaded successfully:', uploadData);
 
-      // Create file record
+      // Create file record with fallback mime type
+      const mimeType = file.type || 'application/octet-stream';
+      
       const { error: insertError } = await supabase
         .from('project_files')
         .insert({
@@ -419,7 +426,7 @@ export function ProjectFiles() {
           name: file.name,
           storage_path: filePath,
           file_size: file.size,
-          mime_type: file.type,
+          mime_type: mimeType,
           uploaded_by: user.id
         });
 
