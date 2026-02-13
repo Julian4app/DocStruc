@@ -355,7 +355,10 @@ export function ProjectSchedule() {
     setEndDate(selectedMilestone.end_date || '');
     setColor(selectedMilestone.color || '#3B82F6');
     setEventType(selectedMilestone.event_type as any);
-    setIsEditMilestoneMode(true);
+    // Use setTimeout to ensure state updates in correct order
+    setTimeout(() => {
+      setIsEditMilestoneMode(true);
+    }, 0);
   };
 
   const handleUpdateMilestone = async () => {
@@ -1558,6 +1561,7 @@ export function ProjectSchedule() {
           }}
           title="Meilenstein bearbeiten"
           maxWidth={600}
+          zIndex={15000}
         >
           <View style={styles.formContent}>
             <Input

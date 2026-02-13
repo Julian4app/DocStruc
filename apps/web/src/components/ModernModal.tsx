@@ -10,13 +10,14 @@ interface ModernModalProps {
     title: string;
     children: React.ReactNode;
     maxWidth?: number;
+    zIndex?: number;
 }
 
 /**
  * ModernModal — uses React Portal to render outside the DOM hierarchy
  * with a true full-page overlay that covers the entire viewport.
  */
-export function ModernModal({ visible, onClose, title, children, maxWidth = 600 }: ModernModalProps) {
+export function ModernModal({ visible, onClose, title, children, maxWidth = 600, zIndex = 10000 }: ModernModalProps) {
     const portalRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -43,7 +44,7 @@ export function ModernModal({ visible, onClose, title, children, maxWidth = 600 
     if (!visible || typeof document === 'undefined' || !portalRef.current) return null;
 
     const modalContent = (
-        <div style={overlayStyles}>
+        <div style={{...overlayStyles, zIndex}}>
             {/* Backdrop */}
             <div 
                 style={backdropStyles}

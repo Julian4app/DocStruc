@@ -444,7 +444,7 @@ export const TaskDetailModal: React.FC<{
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, { zIndex: 20000, elevation: 20000 }]}>
+      <View style={[styles.modalOverlay, { zIndex: 30000, elevation: 30000 }]}>
         <View style={styles.detailModalContent}>
           {/* Header */}
           <View style={styles.detailHeader}>
