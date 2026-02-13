@@ -150,7 +150,11 @@ export function ProjectDefects() {
     }
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !userData.user) {
+        throw new Error('Benutzer nicht authentifiziert');
+      }
       
       const { data: newDefect, error } = await supabase.from('tasks').insert({
         project_id: id,
@@ -161,10 +165,13 @@ export function ProjectDefects() {
         status: 'open',
         due_date: dueDate || null,
         assigned_to: assignedTo || null,
-        creator_id: userData.user?.id
+        creator_id: userData.user.id
       }).select().single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase insert error:', error);
+        throw error;
+      }
 
       // Upload images if any
       if (createImages.length > 0 && newDefect) {
@@ -178,15 +185,24 @@ export function ProjectDefects() {
             .from('task-images')
             .upload(filePath, file);
 
-          if (uploadError) throw uploadError;
+          if (uploadError) {
+            console.error('Image upload error:', uploadError);
+            throw uploadError;
+          }
 
-          await supabase.from('task_images').insert({
+          const { error: imageInsertError } = await supabase.from('task_images').insert({
             task_id: newDefect.id,
             project_id: id,
             storage_path: filePath,
             file_name: file.name,
-            display_order: i
+            display_order: i,
+            uploaded_by: userData.user.id
           });
+
+          if (imageInsertError) {
+            console.error('Image insert error:', imageInsertError);
+            throw imageInsertError;
+          }
         }
       }
 
@@ -201,7 +217,7 @@ export function ProjectDefects() {
       loadDefects();
     } catch (error: any) {
       console.error('Error creating defect:', error);
-      showToast('Fehler beim Erstellen des Mangels', 'error');
+      showToast(error.message || 'Fehler beim Erstellen des Mangels', 'error');
     }
   };
 
