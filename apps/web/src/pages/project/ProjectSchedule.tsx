@@ -7,7 +7,8 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { DatePicker } from '../../components/DatePicker';
-import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2 } from 'lucide-react';
+import { TaskDetailModal } from './TaskModals';
 
 interface TimelineEvent {
   id: string;
@@ -75,6 +76,18 @@ export function ProjectSchedule() {
   // Calendar states
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMilestone, setSelectedMilestone] = useState<TimelineEvent | null>(null);
+  const [selectedMilestoneLinkedItems, setSelectedMilestoneLinkedItems] = useState<any[]>([]);
+  const [isEditMilestoneMode, setIsEditMilestoneMode] = useState(false);
+  
+  // Task detail modal states
+  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<any>(null);
+  const [taskImages, setTaskImages] = useState<any[]>([]);
+  const [taskDocumentation, setTaskDocumentation] = useState<any[]>([]);
+  const [projectMembers, setProjectMembers] = useState<any[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState<any>({});
+  const [docFormData, setDocFormData] = useState<any>({});
+  const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -301,6 +314,177 @@ export function ProjectSchedule() {
     }
   };
 
+  const handleMilestoneClick = async (milestone: TimelineEvent) => {
+    setSelectedMilestone(milestone);
+    setIsEditMilestoneMode(false);
+    
+    // Load linked items for this milestone
+    try {
+      const { data: linkedData, error: linkedError } = await supabase
+        .from('milestone_tasks')
+        .select('task_id')
+        .eq('milestone_id', milestone.id);
+
+      if (linkedError) throw linkedError;
+
+      const taskIds = linkedData?.map(l => l.task_id) || [];
+      
+      if (taskIds.length > 0) {
+        const { data: tasksData, error: tasksError } = await supabase
+          .from('tasks')
+          .select('id, title, status, priority, task_type, description, due_date')
+          .in('id', taskIds);
+
+        if (tasksError) throw tasksError;
+        setSelectedMilestoneLinkedItems(tasksData || []);
+      } else {
+        setSelectedMilestoneLinkedItems([]);
+      }
+    } catch (error: any) {
+      console.error('Error loading milestone linked items:', error);
+      setSelectedMilestoneLinkedItems([]);
+    }
+  };
+
+  const handleEditMilestone = () => {
+    if (!selectedMilestone) return;
+    setTitle(selectedMilestone.title);
+    setDescription(selectedMilestone.description || '');
+    setEventDate(selectedMilestone.start_date);
+    setEndDate(selectedMilestone.end_date || '');
+    setColor(selectedMilestone.color || '#3B82F6');
+    setEventType(selectedMilestone.event_type as any);
+    setIsEditMilestoneMode(true);
+  };
+
+  const handleUpdateMilestone = async () => {
+    if (!selectedMilestone || !title.trim() || !eventDate) {
+      showToast('Bitte Titel und Startdatum ausfüllen', 'error');
+      return;
+    }
+
+    if (endDate && new Date(endDate) < new Date(eventDate)) {
+      showToast('Enddatum muss nach dem Startdatum liegen', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('timeline_events')
+        .update({
+          title: title.trim(),
+          description: description.trim() || null,
+          start_date: eventDate,
+          end_date: endDate || null,
+          color: color,
+          event_type: eventType
+        })
+        .eq('id', selectedMilestone.id);
+
+      if (error) throw error;
+
+      showToast('Meilenstein erfolgreich aktualisiert', 'success');
+      setSelectedMilestone(null);
+      setIsEditMilestoneMode(false);
+      resetForm();
+      loadScheduleData();
+    } catch (error: any) {
+      console.error('Error updating milestone:', error);
+      showToast('Fehler beim Aktualisieren des Meilensteins', 'error');
+    }
+  };
+
+  const handleDeleteMilestone = async () => {
+    if (!selectedMilestone) return;
+
+    if (!window.confirm(`Möchten Sie den Meilenstein "${selectedMilestone.title}" wirklich löschen?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('timeline_events')
+        .delete()
+        .eq('id', selectedMilestone.id);
+
+      if (error) throw error;
+
+      showToast('Meilenstein erfolgreich gelöscht', 'success');
+      setSelectedMilestone(null);
+      loadScheduleData();
+    } catch (error: any) {
+      console.error('Error deleting milestone:', error);
+      showToast('Fehler beim Löschen des Meilensteins', 'error');
+    }
+  };
+
+  const handleTaskClick = async (task: any) => {
+    try {
+      // Load full task details
+      const { data: taskData, error: taskError } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', task.id)
+        .single();
+
+      if (taskError) throw taskError;
+
+      setSelectedTaskForDetail(taskData);
+
+      // Load task images
+      const { data: imagesData } = await supabase
+        .from('task_images')
+        .select('*')
+        .eq('task_id', task.id)
+        .order('created_at', { ascending: false });
+
+      setTaskImages(imagesData || []);
+
+      // Load task documentation
+      const { data: docsData } = await supabase
+        .from('task_documentation')
+        .select('*')
+        .eq('task_id', task.id)
+        .order('created_at', { ascending: false });
+
+      setTaskDocumentation(docsData || []);
+
+      // Load project members
+      const { data: membersData } = await supabase
+        .from('project_members')
+        .select(`
+          user_id,
+          role,
+          profiles:user_id (
+            id,
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .eq('project_id', id);
+
+      setProjectMembers(membersData || []);
+    } catch (error: any) {
+      console.error('Error loading task details:', error);
+      showToast('Fehler beim Laden der Aufgabe', 'error');
+    }
+  };
+
+  const getUserName = (userId: string) => {
+    const member = projectMembers.find(m => m.user_id === userId);
+    if (member?.profiles) {
+      const profile = member.profiles as any;
+      return `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email;
+    }
+    return 'Unbekannt';
+  };
+
+  const getLinkedItemCount = (milestoneId: string) => {
+    const milestoneWithItems = milestonesWithLinkedItems.find(m => m.id === milestoneId);
+    return milestoneWithItems?.linkedItems?.length || 0;
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('de-DE', {
@@ -412,6 +596,7 @@ export function ProjectSchedule() {
               const daysUntil = getDaysUntil(milestone.start_date);
               const isPast = daysUntil < 0;
               const isToday = daysUntil === 0;
+              const linkedCount = getLinkedItemCount(milestone.id);
               
               return (
                 <View key={milestone.id} style={styles.milestoneCard}>
@@ -425,7 +610,10 @@ export function ProjectSchedule() {
                       <View style={styles.checkbox} />
                     )}
                   </TouchableOpacity>
-                  <View style={styles.milestoneContent}>
+                  <TouchableOpacity 
+                    style={styles.milestoneContent}
+                    onPress={() => handleMilestoneClick(milestone)}
+                  >
                     <Text style={[
                       styles.milestoneTitle,
                       milestone.status === "completed" && styles.milestoneTitleCompleted
@@ -441,6 +629,12 @@ export function ProjectSchedule() {
                           {getEventTypeLabel(milestone.event_type)}
                         </Text>
                       </View>
+                      {linkedCount > 0 && (
+                        <View style={styles.linkedCountBadge}>
+                          <Link2 size={12} color={colors.primary} />
+                          <Text style={styles.linkedCountText}>{linkedCount}</Text>
+                        </View>
+                      )}
                       <Text style={styles.milestoneDate}>
                         {formatDate(milestone.start_date)}
                       </Text>
@@ -456,7 +650,7 @@ export function ProjectSchedule() {
                          `📅 in ${daysUntil} Tag(en)`}
                       </Text>
                     )}
-                  </View>
+                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -534,7 +728,11 @@ export function ProjectSchedule() {
               </View>
 
               {/* Timeline Content */}
-              <Card style={styles.timelineCard}>
+              <TouchableOpacity 
+                onPress={() => handleMilestoneClick(milestone)}
+                activeOpacity={0.7}
+              >
+                <Card style={styles.timelineCard}>
                 {/* Date Badge */}
                 <View style={styles.timelineDateBadge}>
                   <Text style={styles.timelineDateText}>
@@ -586,7 +784,11 @@ export function ProjectSchedule() {
                     </View>
                     <View style={styles.linkedItemsList}>
                       {milestone.linkedItems.map((item: any) => (
-                        <View key={item.id} style={styles.linkedItem}>
+                        <TouchableOpacity 
+                          key={item.id} 
+                          style={styles.linkedItem}
+                          onPress={() => handleTaskClick(item)}
+                        >
                           {item.task_type === 'defect' ? (
                             <AlertCircle size={14} color="#EF4444" />
                           ) : (
@@ -609,7 +811,7 @@ export function ProjectSchedule() {
                           ]}>
                             {getStatusLabel(item.status)}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       ))}
                     </View>
                   </View>
@@ -631,6 +833,7 @@ export function ProjectSchedule() {
                   </View>
                 )}
               </Card>
+              </TouchableOpacity>
             </View>
           ))}
         </View>
@@ -756,7 +959,7 @@ export function ProjectSchedule() {
                                 styles.milestoneDot,
                                 { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
                               ]}
-                              onPress={() => setSelectedMilestone(milestone)}
+                              onPress={() => handleMilestoneClick(milestone)}
                             />
                           ))}
                           {dayMilestones.length > 3 && (
@@ -792,14 +995,35 @@ export function ProjectSchedule() {
         </Card>
         
         {/* Milestone Detail Modal */}
-        {selectedMilestone && (
+        {selectedMilestone && !isEditMilestoneMode && (
           <ModernModal
             visible={true}
-            onClose={() => setSelectedMilestone(null)}
+            onClose={() => {
+              setSelectedMilestone(null);
+              setSelectedMilestoneLinkedItems([]);
+            }}
             title={selectedMilestone.title}
-            maxWidth={600}
+            maxWidth={700}
           >
             <View style={styles.milestoneDetailContent}>
+              {/* Action Buttons Row */}
+              <View style={styles.modalActionButtons}>
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={handleEditMilestone}
+                >
+                  <Edit2 size={16} color={colors.primary} />
+                  <Text style={styles.editButtonText}>Bearbeiten</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={handleDeleteMilestone}
+                >
+                  <Trash2 size={16} color="#EF4444" />
+                  <Text style={styles.deleteButtonText}>Löschen</Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Type Badge */}
               <View style={[
                 styles.eventTypeBadge,
@@ -855,6 +1079,55 @@ export function ProjectSchedule() {
                   </>
                 )}
               </View>
+
+              {/* Linked Items */}
+              {selectedMilestoneLinkedItems.length > 0 && (
+                <View style={styles.detailSection}>
+                  <View style={styles.linkedItemsHeader}>
+                    <Link2 size={16} color="#64748b" />
+                    <Text style={styles.detailSectionTitle}>
+                      Verknüpfte Aufgaben & Mängel ({selectedMilestoneLinkedItems.length})
+                    </Text>
+                  </View>
+                  <View style={styles.linkedItemsList}>
+                    {selectedMilestoneLinkedItems.map((item: any) => (
+                      <TouchableOpacity 
+                        key={item.id} 
+                        style={styles.linkedItemCard}
+                        onPress={() => handleTaskClick(item)}
+                      >
+                        {item.task_type === 'defect' ? (
+                          <AlertCircle size={16} color="#EF4444" />
+                        ) : (
+                          <CheckSquare size={16} color={colors.primary} />
+                        )}
+                        <Text style={styles.linkedItemTitle}>{item.title}</Text>
+                        {item.priority && (
+                          <View style={[
+                            styles.linkedItemPriority,
+                            { backgroundColor: getPriorityColor(item.priority) }
+                          ]}>
+                            <Text style={styles.linkedItemPriorityText}>
+                              {getPriorityLabel(item.priority)}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={[
+                          styles.linkedItemStatusBadge,
+                          { backgroundColor: item.status === 'done' || item.status === 'resolved' ? '#22c55e20' : '#94a3b820' }
+                        ]}>
+                          <Text style={[
+                            styles.linkedItemStatusText,
+                            { color: item.status === 'done' || item.status === 'resolved' ? '#22c55e' : '#64748b' }
+                          ]}>
+                            {getStatusLabel(item.status)}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
               
               {/* Actions */}
               <View style={styles.milestoneDetailActions}>
@@ -862,6 +1135,7 @@ export function ProjectSchedule() {
                   variant="outline"
                   onClick={() => {
                     setSelectedMilestone(null);
+                    setSelectedMilestoneLinkedItems([]);
                     setActiveTab('timeline');
                   }}
                   style={{ flex: 1 }}
@@ -869,10 +1143,77 @@ export function ProjectSchedule() {
                   In Timeline anzeigen
                 </Button>
                 <Button
-                  onClick={() => setSelectedMilestone(null)}
+                  onClick={() => {
+                    setSelectedMilestone(null);
+                    setSelectedMilestoneLinkedItems([]);
+                  }}
                   style={{ flex: 1 }}
                 >
                   Schließen
+                </Button>
+              </View>
+            </View>
+          </ModernModal>
+        )}
+
+        {/* Edit Milestone Modal */}
+        {selectedMilestone && isEditMilestoneMode && (
+          <ModernModal
+            visible={true}
+            onClose={() => {
+              setIsEditMilestoneMode(false);
+              setSelectedMilestone(null);
+              resetForm();
+            }}
+            title="Meilenstein bearbeiten"
+            maxWidth={600}
+          >
+            <View style={styles.formContent}>
+              <Input
+                label="Titel *"
+                value={title}
+                onChangeText={setTitle}
+                placeholder="z.B. Rohbau abgeschlossen"
+              />
+
+              <Input
+                label="Beschreibung"
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Weitere Details..."
+                multiline
+                numberOfLines={3}
+              />
+
+              <DatePicker
+                label="Startdatum *"
+                value={eventDate}
+                onChange={setEventDate}
+              />
+
+              <DatePicker
+                label="Enddatum (optional)"
+                value={endDate}
+                onChange={setEndDate}
+              />
+
+              <View style={styles.formActions}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditMilestoneMode(false);
+                    resetForm();
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={handleUpdateMilestone}
+                  disabled={!title.trim() || !eventDate}
+                  style={{ flex: 1 }}
+                >
+                  Speichern
                 </Button>
               </View>
             </View>
@@ -1240,6 +1581,63 @@ export function ProjectSchedule() {
           </View>
         </View>
       </ModernModal>
+
+      {/* Task Detail Modal */}
+      {selectedTaskForDetail && (
+        <TaskDetailModal
+          visible={true}
+          task={selectedTaskForDetail}
+          taskImages={taskImages}
+          taskDocumentation={taskDocumentation}
+          projectMembers={projectMembers}
+          isEditMode={isEditMode}
+          editFormData={editFormData}
+          docFormData={docFormData}
+          isRecording={isRecording}
+          onChangeEditFormData={(field, value) => setEditFormData({ ...editFormData, [field]: value })}
+          onToggleEditMode={() => setIsEditMode(!isEditMode)}
+          onSaveEdit={async () => {
+            // Reload task details after save
+            if (selectedTaskForDetail) {
+              await handleTaskClick(selectedTaskForDetail);
+            }
+          }}
+          onDelete={async () => {
+            setSelectedTaskForDetail(null);
+            loadScheduleData();
+          }}
+          onStatusChange={async (status) => {
+            if (selectedTaskForDetail) {
+              const { error } = await supabase
+                .from('tasks')
+                .update({ status })
+                .eq('id', selectedTaskForDetail.id);
+              
+              if (!error) {
+                await handleTaskClick(selectedTaskForDetail);
+              }
+            }
+          }}
+          onImageUpload={async (event) => {
+            // Handle image upload if needed
+          }}
+          onChangeDocFormData={(field, value) => setDocFormData({ ...docFormData, [field]: value })}
+          onSaveDocumentation={async () => {
+            // Reload documentation after save
+            if (selectedTaskForDetail) {
+              await handleTaskClick(selectedTaskForDetail);
+            }
+          }}
+          onCancelDocumentation={() => setDocFormData({})}
+          onStartRecording={() => setIsRecording(!isRecording)}
+          onClose={() => {
+            setSelectedTaskForDetail(null);
+            setTaskImages([]);
+            setTaskDocumentation([]);
+          }}
+          getUserName={getUserName}
+        />
+      )}
     </>
   );
 }
@@ -2086,5 +2484,85 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+  },
+  linkedCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 12,
+  },
+  linkedCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  modalActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}10`,
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    backgroundColor: '#EF444410',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  linkedItemCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 8,
+  },
+  linkedItemStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 'auto',
+  },
+  linkedItemStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  formContent: {
+    gap: 16,
+  },
+  formActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
   },
 });
