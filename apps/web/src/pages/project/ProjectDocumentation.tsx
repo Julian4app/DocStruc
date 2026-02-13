@@ -260,6 +260,21 @@ export function ProjectDocumentation() {
     }
   };
 
+  const stripHtmlTags = (html: string): string => {
+    // Remove HTML tags
+    let text = html.replace(/<[^>]*>/g, '');
+    // Decode common HTML entities
+    text = text.replace(/&nbsp;/g, ' ');
+    text = text.replace(/&amp;/g, '&');
+    text = text.replace(/&lt;/g, '<');
+    text = text.replace(/&gt;/g, '>');
+    text = text.replace(/&quot;/g, '"');
+    text = text.replace(/&#39;/g, "'");
+    // Remove extra whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    return text;
+  };
+
   const exportToPDF = async (docs: DocumentationEntry[]) => {
     const grouped = groupByDate(docs);
     
@@ -357,7 +372,8 @@ export function ProjectDocumentation() {
         if (entry.content) {
           doc.setFontSize(10);
           doc.setTextColor(51, 65, 85);
-          const lines = doc.splitTextToSize(entry.content, maxWidth - 10);
+          const cleanContent = stripHtmlTags(entry.content);
+          const lines = doc.splitTextToSize(cleanContent, maxWidth - 10);
           doc.text(lines, margin + 5, yPos);
           yPos += lines.length * 5;
         }
@@ -509,7 +525,7 @@ export function ProjectDocumentation() {
             {showFilterMenu && (
               <>
                 <div 
-                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }}
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999998 }}
                   onClick={() => setShowFilterMenu(false)}
                 />
                 <div style={{
