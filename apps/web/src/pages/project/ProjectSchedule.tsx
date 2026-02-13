@@ -12,12 +12,12 @@ import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertC
 interface TimelineEvent {
   id: string;
   title: string;
-  event_date: string;
+  start_date: string;
   end_date?: string | null;
   description?: string | null;
   color?: string | null;
-  eventType: string;
-  completed: boolean;
+  event_type: string;
+  status: string;
   created_at: string;
 }
 
@@ -93,7 +93,7 @@ export function ProjectSchedule() {
         .from('timeline_events')
         .select('*')
         .eq('project_id', id)
-        .order('event_date', { ascending: true });
+        .order('start_date', { ascending: true });
 
       if (timelineError) throw timelineError;
       setMilestones(timelineData || []);
@@ -212,11 +212,11 @@ export function ProjectSchedule() {
           project_id: id,
           title: title.trim(),
           description: description.trim() || null,
-          event_date: eventDate,
+          start_date: eventDate,
           end_date: endDate || null,
           color: color,
-          eventType: eventType,
-          completed: false
+          event_type: eventType,
+          status: 'scheduled'
         })
         .select()
         .single();
@@ -285,11 +285,12 @@ export function ProjectSchedule() {
     setSelectedItems(selectedItems.filter(i => i.id !== itemId));
   };
 
-  const handleToggleMilestone = async (milestoneId: string, currentStatus: boolean) => {
+  const handleToggleMilestone = async (milestoneId: string, currentStatus: string) => {
     try {
+      const newStatus = currentStatus === 'completed' ? 'scheduled' : 'completed';
       const { error } = await supabase
         .from('timeline_events')
-        .update({ completed: !currentStatus })
+        .update({ status: newStatus })
         .eq('id', milestoneId);
 
       if (error) throw error;
@@ -387,7 +388,7 @@ export function ProjectSchedule() {
         </Card>
         <Card style={styles.statCard}>
           <Text style={styles.statValue}>
-            {milestones.filter(m => m.completed).length}
+            {milestones.filter(m => m.status === 'completed').length}
           </Text>
           <Text style={styles.statLabel}>Abgeschlossen</Text>
         </Card>
@@ -408,7 +409,7 @@ export function ProjectSchedule() {
         ) : (
           <View style={styles.milestonesList}>
             {milestones.map((milestone) => {
-              const daysUntil = getDaysUntil(milestone.event_date);
+              const daysUntil = getDaysUntil(milestone.start_date);
               const isPast = daysUntil < 0;
               const isToday = daysUntil === 0;
               
@@ -416,9 +417,9 @@ export function ProjectSchedule() {
                 <View key={milestone.id} style={styles.milestoneCard}>
                   <TouchableOpacity
                     style={styles.milestoneCheckbox}
-                    onPress={() => handleToggleMilestone(milestone.id, milestone.completed)}
+                    onPress={() => handleToggleMilestone(milestone.id, milestone.status)}
                   >
-                    {milestone.completed ? (
+                    {milestone.status === "completed" ? (
                       <CheckCircle size={24} color="#22c55e" />
                     ) : (
                       <View style={styles.checkbox} />
@@ -427,24 +428,24 @@ export function ProjectSchedule() {
                   <View style={styles.milestoneContent}>
                     <Text style={[
                       styles.milestoneTitle,
-                      milestone.completed && styles.milestoneTitleCompleted
+                      milestone.status === "completed" && styles.milestoneTitleCompleted
                     ]}>
                       {milestone.title}
                     </Text>
                     <View style={styles.milestoneFooter}>
                       <View style={[
                         styles.eventTypeBadge,
-                        { backgroundColor: getEventTypeColor(milestone.eventType) }
+                        { backgroundColor: getEventTypeColor(milestone.event_type) }
                       ]}>
                         <Text style={styles.eventTypeBadgeText}>
-                          {getEventTypeLabel(milestone.eventType)}
+                          {getEventTypeLabel(milestone.event_type)}
                         </Text>
                       </View>
                       <Text style={styles.milestoneDate}>
-                        {formatDate(milestone.event_date)}
+                        {formatDate(milestone.start_date)}
                       </Text>
                     </View>
-                    {!milestone.completed && (
+                    {milestone.status !== "completed" && (
                       <Text style={[
                         styles.daysUntil,
                         isPast && styles.daysUntilOverdue,
@@ -525,7 +526,7 @@ export function ProjectSchedule() {
               <View style={styles.timelineLine}>
                 <View style={[
                   styles.timelineDot,
-                  { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                  { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
                 ]} />
                 {index < milestonesWithLinkedItems.length - 1 && (
                   <View style={styles.timelineConnector} />
@@ -537,7 +538,7 @@ export function ProjectSchedule() {
                 {/* Date Badge */}
                 <View style={styles.timelineDateBadge}>
                   <Text style={styles.timelineDateText}>
-                    {formatDate(milestone.event_date)}
+                    {formatDate(milestone.start_date)}
                   </Text>
                   {milestone.end_date && (
                     <Text style={styles.timelineDateRange}>
@@ -550,7 +551,7 @@ export function ProjectSchedule() {
                 <View style={styles.timelineHeader}>
                   <View style={styles.timelineTitleRow}>
                     <Text style={styles.timelineTitle}>{milestone.title}</Text>
-                    {milestone.completed && (
+                    {milestone.status === "completed" && (
                       <View style={styles.completedBadge}>
                         <CheckCircle size={16} color="#22c55e" />
                         <Text style={styles.completedBadgeText}>Abgeschlossen</Text>
@@ -559,10 +560,10 @@ export function ProjectSchedule() {
                   </View>
                   <View style={[
                     styles.eventTypeBadge,
-                    { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                    { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
                   ]}>
                     <Text style={styles.eventTypeBadgeText}>
-                      {getEventTypeLabel(milestone.eventType)}
+                      {getEventTypeLabel(milestone.event_type)}
                     </Text>
                   </View>
                 </View>
@@ -615,17 +616,17 @@ export function ProjectSchedule() {
                 )}
 
                 {/* Days Until */}
-                {!milestone.completed && (
+                {milestone.status !== "completed" && (
                   <View style={styles.timelineFooter}>
                     <Text style={[
                       styles.timelineDaysUntil,
-                      getDaysUntil(milestone.event_date) < 0 && styles.daysUntilOverdue,
-                      getDaysUntil(milestone.event_date) === 0 && styles.daysUntilToday
+                      getDaysUntil(milestone.start_date) < 0 && styles.daysUntilOverdue,
+                      getDaysUntil(milestone.start_date) === 0 && styles.daysUntilToday
                     ]}>
-                      {getDaysUntil(milestone.event_date) === 0 ? '⚡ Heute!' :
-                       getDaysUntil(milestone.event_date) < 0 ? 
-                         `⚠️ ${Math.abs(getDaysUntil(milestone.event_date))} Tag(e) überfällig` :
-                         `📅 in ${getDaysUntil(milestone.event_date)} Tag(en)`}
+                      {getDaysUntil(milestone.start_date) === 0 ? '⚡ Heute!' :
+                       getDaysUntil(milestone.start_date) < 0 ? 
+                         `⚠️ ${Math.abs(getDaysUntil(milestone.start_date))} Tag(e) überfällig` :
+                         `📅 in ${getDaysUntil(milestone.start_date)} Tag(en)`}
                     </Text>
                   </View>
                 )}
@@ -650,14 +651,14 @@ export function ProjectSchedule() {
     
     // Get milestones for current month
     const monthMilestones = milestones.filter(m => {
-      const milestoneDate = new Date(m.event_date);
+      const milestoneDate = new Date(m.start_date);
       return milestoneDate.getMonth() === month && milestoneDate.getFullYear() === year;
     });
     
     // Group milestones by day
     const milestonesByDay: { [key: number]: TimelineEvent[] } = {};
     monthMilestones.forEach(m => {
-      const day = new Date(m.event_date).getDate();
+      const day = new Date(m.start_date).getDate();
       if (!milestonesByDay[day]) {
         milestonesByDay[day] = [];
       }
@@ -753,7 +754,7 @@ export function ProjectSchedule() {
                               key={milestone.id}
                               style={[
                                 styles.milestoneDot,
-                                { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                                { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
                               ]}
                               onPress={() => setSelectedMilestone(milestone)}
                             />
@@ -803,12 +804,12 @@ export function ProjectSchedule() {
               <View style={[
                 styles.eventTypeBadge,
                 { 
-                  backgroundColor: selectedMilestone.color || getEventTypeColor(selectedMilestone.eventType),
+                  backgroundColor: selectedMilestone.color || getEventTypeColor(selectedMilestone.event_type),
                   alignSelf: 'flex-start'
                 }
               ]}>
                 <Text style={styles.eventTypeBadgeText}>
-                  {getEventTypeLabel(selectedMilestone.eventType)}
+                  {getEventTypeLabel(selectedMilestone.event_type)}
                 </Text>
               </View>
               
@@ -816,7 +817,7 @@ export function ProjectSchedule() {
               <View style={styles.detailRow}>
                 <Calendar size={16} color="#64748b" />
                 <Text style={styles.detailLabel}>Datum:</Text>
-                <Text style={styles.detailValue}>{formatDate(selectedMilestone.event_date)}</Text>
+                <Text style={styles.detailValue}>{formatDate(selectedMilestone.start_date)}</Text>
               </View>
               
               {selectedMilestone.end_date && (
@@ -837,7 +838,7 @@ export function ProjectSchedule() {
               
               {/* Status */}
               <View style={styles.detailRow}>
-                {selectedMilestone.completed ? (
+                {selectedMilestone.status === 'completed' ? (
                   <>
                     <CheckCircle size={16} color="#22c55e" />
                     <Text style={[styles.detailLabel, { color: '#22c55e' }]}>Abgeschlossen</Text>
@@ -846,10 +847,10 @@ export function ProjectSchedule() {
                   <>
                     <Clock size={16} color="#F59E0B" />
                     <Text style={styles.detailLabel}>
-                      {getDaysUntil(selectedMilestone.event_date) === 0 ? 'Heute fällig' :
-                       getDaysUntil(selectedMilestone.event_date) < 0 ? 
-                         `${Math.abs(getDaysUntil(selectedMilestone.event_date))} Tag(e) überfällig` :
-                         `Fällig in ${getDaysUntil(selectedMilestone.event_date)} Tag(en)`}
+                      {getDaysUntil(selectedMilestone.start_date) === 0 ? 'Heute fällig' :
+                       getDaysUntil(selectedMilestone.start_date) < 0 ? 
+                         `${Math.abs(getDaysUntil(selectedMilestone.start_date))} Tag(e) überfällig` :
+                         `Fällig in ${getDaysUntil(selectedMilestone.start_date)} Tag(en)`}
                     </Text>
                   </>
                 )}
