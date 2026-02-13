@@ -52,7 +52,9 @@ export function ProjectSchedule() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'list' | 'timeline' | 'calendar'>('list');
   const [milestones, setMilestones] = useState<TimelineEvent[]>([]);
+  const [milestonesWithLinkedItems, setMilestonesWithLinkedItems] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -92,6 +94,9 @@ export function ProjectSchedule() {
       if (timelineError) throw timelineError;
       setMilestones(timelineData || []);
 
+      // Load milestones with linked tasks/defects for timeline view
+      await loadMilestonesWithLinkedItems(timelineData || []);
+
       // Load upcoming tasks with due dates
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
@@ -109,6 +114,48 @@ export function ProjectSchedule() {
       showToast('Fehler beim Laden der Termine', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMilestonesWithLinkedItems = async (milestonesData: TimelineEvent[]) => {
+    try {
+      const milestonesWithItems = await Promise.all(
+        milestonesData.map(async (milestone) => {
+          // Get linked task/defect IDs
+          const { data: linkedData, error: linkedError } = await supabase
+            .from('milestone_tasks')
+            .select('task_id')
+            .eq('milestone_id', milestone.id);
+
+          if (linkedError) throw linkedError;
+
+          const taskIds = linkedData?.map(l => l.task_id) || [];
+          
+          // Get task/defect details
+          if (taskIds.length > 0) {
+            const { data: tasksData, error: tasksError } = await supabase
+              .from('tasks')
+              .select('id, title, status, priority, task_type')
+              .in('id', taskIds);
+
+            if (tasksError) throw tasksError;
+
+            return {
+              ...milestone,
+              linkedItems: tasksData || []
+            };
+          }
+
+          return {
+            ...milestone,
+            linkedItems: []
+          };
+        })
+      );
+
+      setMilestonesWithLinkedItems(milestonesWithItems);
+    } catch (error: any) {
+      console.error('Error loading milestone linked items:', error);
     }
   };
 
@@ -325,6 +372,278 @@ export function ProjectSchedule() {
     defect.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Render List View
+  const renderListView = () => (
+    <>
+      {/* Stats Row */}
+      <View style={styles.statsRow}>
+        <Card style={styles.statCard}>
+          <Text style={styles.statValue}>{milestones.length}</Text>
+          <Text style={styles.statLabel}>Meilensteine</Text>
+        </Card>
+        <Card style={styles.statCard}>
+          <Text style={styles.statValue}>
+            {milestones.filter(m => m.completed).length}
+          </Text>
+          <Text style={styles.statLabel}>Abgeschlossen</Text>
+        </Card>
+        <Card style={styles.statCard}>
+          <Text style={styles.statValue}>{upcomingTasks.length}</Text>
+          <Text style={styles.statLabel}>Offene Termine</Text>
+        </Card>
+      </View>
+
+      {/* Milestones List */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Flag size={20} color={colors.primary} />
+          <Text style={styles.sectionTitle}>Meilensteine & Bauphasen</Text>
+        </View>
+        {milestones.length === 0 ? (
+          <Text style={styles.emptyText}>Noch keine Meilensteine definiert</Text>
+        ) : (
+          <View style={styles.milestonesList}>
+            {milestones.map((milestone) => {
+              const daysUntil = getDaysUntil(milestone.event_date);
+              const isPast = daysUntil < 0;
+              const isToday = daysUntil === 0;
+              
+              return (
+                <View key={milestone.id} style={styles.milestoneCard}>
+                  <TouchableOpacity
+                    style={styles.milestoneCheckbox}
+                    onPress={() => handleToggleMilestone(milestone.id, milestone.completed)}
+                  >
+                    {milestone.completed ? (
+                      <CheckCircle size={24} color="#22c55e" />
+                    ) : (
+                      <View style={styles.checkbox} />
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.milestoneContent}>
+                    <Text style={[
+                      styles.milestoneTitle,
+                      milestone.completed && styles.milestoneTitleCompleted
+                    ]}>
+                      {milestone.title}
+                    </Text>
+                    <View style={styles.milestoneFooter}>
+                      <View style={[
+                        styles.eventTypeBadge,
+                        { backgroundColor: getEventTypeColor(milestone.eventType) }
+                      ]}>
+                        <Text style={styles.eventTypeBadgeText}>
+                          {getEventTypeLabel(milestone.eventType)}
+                        </Text>
+                      </View>
+                      <Text style={styles.milestoneDate}>
+                        {formatDate(milestone.event_date)}
+                      </Text>
+                    </View>
+                    {!milestone.completed && (
+                      <Text style={[
+                        styles.daysUntil,
+                        isPast && styles.daysUntilOverdue,
+                        isToday && styles.daysUntilToday
+                      ]}>
+                        {isToday ? '⚡ Heute!' :
+                         isPast ? `⚠️ ${Math.abs(daysUntil)} Tag(e) überfällig` :
+                         `📅 in ${daysUntil} Tag(en)`}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+
+      {/* Upcoming Tasks */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Clock size={20} color="#F59E0B" />
+          <Text style={styles.sectionTitle}>Anstehende Aufgaben</Text>
+        </View>
+        {upcomingTasks.length === 0 ? (
+          <Text style={styles.emptyText}>Keine anstehenden Aufgaben mit Frist</Text>
+        ) : (
+          <View style={styles.tasksList}>
+            {upcomingTasks.map((task) => {
+              const daysUntil = task.due_date ? getDaysUntil(task.due_date) : null;
+              const isOverdue = daysUntil !== null && daysUntil < 0;
+              
+              return (
+                <View key={task.id} style={styles.taskCard}>
+                  <View style={styles.taskInfo}>
+                    <Text style={styles.taskTitle}>{task.title}</Text>
+                    {task.due_date && (
+                      <Text style={[
+                        styles.taskDueDate,
+                        isOverdue && styles.taskOverdue
+                      ]}>
+                        📅 {formatDate(task.due_date)}
+                        {daysUntil !== null && (
+                          <Text style={styles.taskDaysUntil}>
+                            {' '}({daysUntil < 0 ? 
+                              `${Math.abs(daysUntil)} Tag(e) überfällig` : 
+                              `in ${daysUntil} Tag(en)`})
+                          </Text>
+                        )}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+    </>
+  );
+
+  // Render Timeline View
+  const renderTimelineView = () => (
+    <View style={styles.timelineContainer}>
+      {milestonesWithLinkedItems.length === 0 ? (
+        <Card style={styles.emptyStateCard}>
+          <Flag size={48} color="#CBD5E1" />
+          <Text style={styles.emptyStateTitle}>Keine Meilensteine</Text>
+          <Text style={styles.emptyStateText}>
+            Erstellen Sie Ihren ersten Meilenstein, um die Timeline zu sehen
+          </Text>
+        </Card>
+      ) : (
+        <View style={styles.timelineContent}>
+          {milestonesWithLinkedItems.map((milestone, index) => (
+            <View key={milestone.id} style={styles.timelineItem}>
+              {/* Timeline Line */}
+              <View style={styles.timelineLine}>
+                <View style={[
+                  styles.timelineDot,
+                  { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                ]} />
+                {index < milestonesWithLinkedItems.length - 1 && (
+                  <View style={styles.timelineConnector} />
+                )}
+              </View>
+
+              {/* Timeline Content */}
+              <Card style={styles.timelineCard}>
+                {/* Date Badge */}
+                <View style={styles.timelineDateBadge}>
+                  <Text style={styles.timelineDateText}>
+                    {formatDate(milestone.event_date)}
+                  </Text>
+                  {milestone.end_date && (
+                    <Text style={styles.timelineDateRange}>
+                      bis {formatDate(milestone.end_date)}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Milestone Info */}
+                <View style={styles.timelineHeader}>
+                  <View style={styles.timelineTitleRow}>
+                    <Text style={styles.timelineTitle}>{milestone.title}</Text>
+                    {milestone.completed && (
+                      <View style={styles.completedBadge}>
+                        <CheckCircle size={16} color="#22c55e" />
+                        <Text style={styles.completedBadgeText}>Abgeschlossen</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={[
+                    styles.eventTypeBadge,
+                    { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                  ]}>
+                    <Text style={styles.eventTypeBadgeText}>
+                      {getEventTypeLabel(milestone.eventType)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Description */}
+                {milestone.description && (
+                  <Text style={styles.timelineDescription}>
+                    {milestone.description}
+                  </Text>
+                )}
+
+                {/* Linked Items */}
+                {milestone.linkedItems && milestone.linkedItems.length > 0 && (
+                  <View style={styles.linkedItemsSection}>
+                    <View style={styles.linkedItemsHeader}>
+                      <Link2 size={14} color="#64748b" />
+                      <Text style={styles.linkedItemsTitle}>
+                        Verknüpfte Aufgaben & Mängel ({milestone.linkedItems.length})
+                      </Text>
+                    </View>
+                    <View style={styles.linkedItemsList}>
+                      {milestone.linkedItems.map((item: any) => (
+                        <View key={item.id} style={styles.linkedItem}>
+                          {item.task_type === 'defect' ? (
+                            <AlertCircle size={14} color="#EF4444" />
+                          ) : (
+                            <CheckSquare size={14} color={colors.primary} />
+                          )}
+                          <Text style={styles.linkedItemTitle}>{item.title}</Text>
+                          {item.priority && (
+                            <View style={[
+                              styles.linkedItemPriority,
+                              { backgroundColor: getPriorityColor(item.priority) }
+                            ]}>
+                              <Text style={styles.linkedItemPriorityText}>
+                                {getPriorityLabel(item.priority)}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={[
+                            styles.linkedItemStatus,
+                            { color: item.status === 'done' || item.status === 'resolved' ? '#22c55e' : '#94a3b8' }
+                          ]}>
+                            {getStatusLabel(item.status)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Days Until */}
+                {!milestone.completed && (
+                  <View style={styles.timelineFooter}>
+                    <Text style={[
+                      styles.timelineDaysUntil,
+                      getDaysUntil(milestone.event_date) < 0 && styles.daysUntilOverdue,
+                      getDaysUntil(milestone.event_date) === 0 && styles.daysUntilToday
+                    ]}>
+                      {getDaysUntil(milestone.event_date) === 0 ? '⚡ Heute!' :
+                       getDaysUntil(milestone.event_date) < 0 ? 
+                         `⚠️ ${Math.abs(getDaysUntil(milestone.event_date))} Tag(e) überfällig` :
+                         `📅 in ${getDaysUntil(milestone.event_date)} Tag(en)`}
+                    </Text>
+                  </View>
+                )}
+              </Card>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  // Render Calendar View (Placeholder)
+  const renderCalendarView = () => (
+    <Card style={styles.emptyStateCard}>
+      <Calendar size={48} color="#CBD5E1" />
+      <Text style={styles.emptyStateTitle}>Kalenderansicht</Text>
+      <Text style={styles.emptyStateText}>
+        Die Kalenderansicht wird in Kürze verfügbar sein
+      </Text>
+    </Card>
+  );
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -348,131 +667,41 @@ export function ProjectSchedule() {
           </Button>
         </View>
 
+        {/* Tab Navigation */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'list' && styles.tabActive]}
+            onPress={() => setActiveTab('list')}
+          >
+            <Flag size={18} color={activeTab === 'list' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'list' && styles.tabTextActive]}>
+              Liste
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'timeline' && styles.tabActive]}
+            onPress={() => setActiveTab('timeline')}
+          >
+            <Clock size={18} color={activeTab === 'timeline' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'timeline' && styles.tabTextActive]}>
+              Timeline
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'calendar' && styles.tabActive]}
+            onPress={() => setActiveTab('calendar')}
+          >
+            <Calendar size={18} color={activeTab === 'calendar' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'calendar' && styles.tabTextActive]}>
+              Kalender
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Stats Row */}
-          <View style={styles.statsRow}>
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>{milestones.length}</Text>
-              <Text style={styles.statLabel}>Meilensteine</Text>
-            </Card>
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>
-                {milestones.filter(m => m.completed).length}
-              </Text>
-              <Text style={styles.statLabel}>Abgeschlossen</Text>
-            </Card>
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>{upcomingTasks.length}</Text>
-              <Text style={styles.statLabel}>Offene Termine</Text>
-            </Card>
-          </View>
-
-          {/* Milestones Timeline */}
-          <Card style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <Flag size={20} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Meilensteine & Bauphasen</Text>
-            </View>
-            {milestones.length === 0 ? (
-              <Text style={styles.emptyText}>Noch keine Meilensteine definiert</Text>
-            ) : (
-              <View style={styles.milestonesList}>
-                {milestones.map((milestone) => {
-                  const daysUntil = getDaysUntil(milestone.event_date);
-                  const isPast = daysUntil < 0;
-                  const isToday = daysUntil === 0;
-                  
-                  return (
-                    <View key={milestone.id} style={styles.milestoneCard}>
-                      <TouchableOpacity
-                        style={styles.milestoneCheckbox}
-                        onPress={() => handleToggleMilestone(milestone.id, milestone.completed)}
-                      >
-                        {milestone.completed ? (
-                          <CheckCircle size={24} color="#22c55e" />
-                        ) : (
-                          <View style={styles.checkbox} />
-                        )}
-                      </TouchableOpacity>
-                      <View style={styles.milestoneContent}>
-                        <Text style={[
-                          styles.milestoneTitle,
-                          milestone.completed && styles.milestoneTitleCompleted
-                        ]}>
-                          {milestone.title}
-                        </Text>
-                        <View style={styles.milestoneFooter}>
-                          <View style={[
-                            styles.eventTypeBadge,
-                            { backgroundColor: getEventTypeColor(milestone.eventType) }
-                          ]}>
-                            <Text style={styles.eventTypeBadgeText}>
-                              {getEventTypeLabel(milestone.eventType)}
-                            </Text>
-                          </View>
-                          <Text style={styles.milestoneDate}>
-                            {formatDate(milestone.event_date)}
-                          </Text>
-                        </View>
-                        {!milestone.completed && (
-                          <Text style={[
-                            styles.daysUntil,
-                            isPast && styles.daysUntilOverdue,
-                            isToday && styles.daysUntilToday
-                          ]}>
-                            {isToday ? '⚡ Heute!' :
-                             isPast ? `⚠️ ${Math.abs(daysUntil)} Tag(e) überfällig` :
-                             `📅 in ${daysUntil} Tag(en)`}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </Card>
-
-          {/* Upcoming Tasks */}
-          <Card style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <Clock size={20} color="#F59E0B" />
-              <Text style={styles.sectionTitle}>Anstehende Aufgaben</Text>
-            </View>
-            {upcomingTasks.length === 0 ? (
-              <Text style={styles.emptyText}>Keine anstehenden Aufgaben mit Frist</Text>
-            ) : (
-              <View style={styles.tasksList}>
-                {upcomingTasks.map((task) => {
-                  const daysUntil = task.due_date ? getDaysUntil(task.due_date) : null;
-                  const isOverdue = daysUntil !== null && daysUntil < 0;
-                  
-                  return (
-                    <View key={task.id} style={styles.taskCard}>
-                      <View style={styles.taskInfo}>
-                        <Text style={styles.taskTitle}>{task.title}</Text>
-                        {task.due_date && (
-                          <Text style={[
-                            styles.taskDueDate,
-                            isOverdue && styles.taskOverdue
-                          ]}>
-                            📅 {formatDate(task.due_date)}
-                            {daysUntil !== null && (
-                              <Text style={styles.taskDaysUntil}>
-                                {' '}({daysUntil < 0 ? 
-                                  `${Math.abs(daysUntil)} Tag(e) überfällig` : 
-                                  `in ${daysUntil} Tag(en)`})
-                              </Text>
-                            )}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </Card>
+          {activeTab === 'list' && renderListView()}
+          {activeTab === 'timeline' && renderTimelineView()}
+          {activeTab === 'calendar' && renderCalendarView()}
         </ScrollView>
       </View>
 
@@ -1158,5 +1387,218 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+  },
+  // Tabs
+  tabsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 24,
+    backgroundColor: '#F8FAFC',
+    padding: 6,
+    borderRadius: 12,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tabTextActive: {
+    color: colors.primary,
+  },
+  // Timeline View
+  timelineContainer: {
+    paddingVertical: 8,
+  },
+  emptyStateCard: {
+    padding: 60,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  timelineContent: {
+    gap: 0,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  timelineLine: {
+    width: 40,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 4,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timelineConnector: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 8,
+  },
+  timelineCard: {
+    flex: 1,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 20,
+  },
+  timelineDateBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  timelineDateText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  timelineDateRange: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  timelineHeader: {
+    gap: 12,
+    marginBottom: 12,
+  },
+  timelineTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  timelineTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  completedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#22c55e',
+  },
+  timelineDescription: {
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  linkedItemsSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  linkedItemsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  linkedItemsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  linkedItemsList: {
+    gap: 8,
+  },
+  linkedItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+  },
+  linkedItemTitle: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '500',
+  },
+  linkedItemPriority: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  linkedItemPriorityText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  linkedItemStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  timelineFooter: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  timelineDaysUntil: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
 });
