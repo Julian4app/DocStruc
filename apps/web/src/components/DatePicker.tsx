@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 
@@ -13,6 +14,7 @@ interface DatePickerProps {
 
 export function DatePicker({ label, value, onChange, placeholder = 'TT.MM.JJJJ', disabled = false }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState('');
   const [currentMonth, setCurrentMonth] = useState(() => {
     if (value) {
       const [year, month] = value.split('-');
@@ -20,24 +22,63 @@ export function DatePicker({ label, value, onChange, placeholder = 'TT.MM.JJJJ',
     }
     return new Date();
   });
+  const portalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    
+    if (!portalRef.current) {
+      portalRef.current = document.createElement('div');
+      portalRef.current.id = 'datepicker-portal';
+    }
+    
+    if (isOpen) {
+      document.body.appendChild(portalRef.current);
+      document.body.style.overflow = 'hidden';
+    }
+    
+    return () => {
+      if (portalRef.current && document.body.contains(portalRef.current)) {
+        document.body.removeChild(portalRef.current);
+      }
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   const formatDateToDisplay = (dateStr: string) => {
     if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return `${day}.${month}.${year}`;
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      if (year && month && day) {
+        return `${day}.${month}.${year}`;
+      }
+    }
+    return '';
   };
 
   const formatDateToValue = (displayStr: string) => {
-    const match = displayStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!displayStr) return '';
+    const match = displayStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
     if (match) {
-      return `${match[3]}-${match[2]}-${match[1]}`;
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3];
+      return `${year}-${month}-${day}`;
     }
-    return displayStr;
+    return '';
   };
 
   const handleInputChange = (text: string) => {
-    // Allow typing in DD.MM.YYYY format
-    onChange(formatDateToValue(text));
+    // Store input value locally for responsive typing
+    setInputValue(text);
+    
+    // Try to validate and convert to YYYY-MM-DD
+    const formatted = formatDateToValue(text);
+    if (formatted) {
+      // Valid complete date entered - update parent
+      onChange(formatted);
+    }
   };
 
   const handleDateSelect = (day: number) => {
@@ -60,7 +101,7 @@ export function DatePicker({ label, value, onChange, placeholder = 'TT.MM.JJJJ',
   };
 
   const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth();
-  const days = [];
+  const days: JSX.Element[] = [];
   
   // Add empty cells for days before month starts
   for (let i = 0; i < startingDayOfWeek; i++) {
@@ -98,43 +139,17 @@ export function DatePicker({ label, value, onChange, placeholder = 'TT.MM.JJJJ',
 
   const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-  return (
-    <View style={styles.container}>
-      {label && <Text style={styles.label}>{label}</Text>}
-      
-      <View style={styles.inputWrapper}>
-        <TextInput
-          style={[styles.input, disabled && styles.disabled]}
-          value={value ? formatDateToDisplay(value) : ''}
-          onChangeText={handleInputChange}
-          placeholder={placeholder}
-          editable={!disabled}
-        />
-        <TouchableOpacity
-          style={styles.calendarButton}
-          onPress={() => !disabled && setIsOpen(true)}
-          disabled={disabled}
-        >
-          <Calendar size={18} color={disabled ? '#94a3b8' : colors.primary} />
-        </TouchableOpacity>
-      </View>
+  const renderCalendar = () => {
+    if (!isOpen || typeof document === 'undefined' || !portalRef.current) return null;
 
-      <Modal
-        visible={isOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsOpen(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={() => setIsOpen(false)}
-        >
-          <TouchableOpacity 
-            style={styles.calendarModal} 
-            activeOpacity={1} 
-            onPress={(e) => e.stopPropagation()}
-          >
+    const calendarContent = (
+      <div style={portalOverlayStyles}>
+        <div 
+          style={portalBackdropStyles}
+          onClick={() => setIsOpen(false)}
+        />
+        <div style={portalModalWrapperStyles}>
+          <View style={styles.calendarModal}>
             {/* Header */}
             <View style={styles.calendarHeader}>
               <TouchableOpacity
@@ -188,12 +203,77 @@ export function DatePicker({ label, value, onChange, placeholder = 'TT.MM.JJJJ',
             >
               <Text style={styles.todayButtonText}>Heute</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
+        </div>
+      </div>
+    );
+
+    return createPortal(calendarContent, portalRef.current);
+  };
+
+  return (
+    <View style={styles.container}>
+      {label && <Text style={styles.label}>{label}</Text>}
+      
+      <View style={styles.inputWrapper}>
+        <TextInput
+          style={[styles.input, disabled && styles.disabled]}
+          value={inputValue || (value ? formatDateToDisplay(value) : '')}
+          onChangeText={handleInputChange}
+          onBlur={() => {
+            // Clear input value on blur to sync with actual value
+            setInputValue('');
+          }}
+          placeholder={placeholder}
+          editable={!disabled}
+        />
+        <TouchableOpacity
+          style={styles.calendarButton}
+          onPress={() => !disabled && setIsOpen(true)}
+          disabled={disabled}
+        >
+          <Calendar size={18} color={disabled ? '#94a3b8' : colors.primary} />
         </TouchableOpacity>
-      </Modal>
+      </View>
+
+      {renderCalendar()}
     </View>
   );
 }
+
+// Portal overlay styles - guaranteed to be on top
+const portalOverlayStyles: React.CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 999999,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  animation: 'fadeIn 0.2s ease-out',
+};
+
+const portalBackdropStyles: React.CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+};
+
+const portalModalWrapperStyles: React.CSSProperties = {
+  position: 'relative',
+  zIndex: 1,
+  width: '100%',
+  maxWidth: 400,
+  padding: 24,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -230,28 +310,16 @@ const styles = StyleSheet.create({
     right: 12,
     padding: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    // @ts-ignore
-    zIndex: 20000,
-  },
   calendarModal: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
     width: '100%',
-    maxWidth: 400,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-    // @ts-ignore
-    zIndex: 20001,
+    shadowRadius: 20,
+    elevation: 20,
   },
   calendarHeader: {
     flexDirection: 'row',
