@@ -12,7 +12,7 @@ import { RichTextEditor } from '../../components/RichTextEditor';
 import DOMPurify from 'dompurify';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
-  Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2
+  Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2, Check
 } from 'lucide-react';
 
 interface Defect {
@@ -85,6 +85,16 @@ export function ProjectDefects() {
   const [defectImages, setDefectImages] = useState<DefectImage[]>([]);
   const [defectDocumentation, setDefectDocumentation] = useState<DefectDocumentation[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
+  
+  // Edit form data
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as 'low' | 'medium' | 'high' | 'critical',
+    status: 'open' as string,
+    due_date: '',
+    assigned_to: ''
+  });
   
   // Documentation form
   const [docFormData, setDocFormData] = useState({
@@ -275,6 +285,107 @@ export function ProjectDefects() {
       setDefectDocumentation(docs || []);
     } catch (error: any) {
       console.error('Error loading defect details:', error);
+    }
+  };
+
+  const handleToggleEditMode = () => {
+    if (!selectedDefect) return;
+    
+    if (!isEditMode) {
+      // Entering edit mode - populate form
+      setEditFormData({
+        title: selectedDefect.title,
+        description: selectedDefect.description || '',
+        priority: selectedDefect.priority as 'low' | 'medium' | 'high' | 'critical',
+        status: selectedDefect.status,
+        due_date: selectedDefect.due_date || '',
+        assigned_to: selectedDefect.assigned_to || ''
+      });
+    }
+    setIsEditMode(!isEditMode);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedDefect || !editFormData.title.trim()) {
+      showToast('Titel erforderlich', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: editFormData.title.trim(),
+          description: editFormData.description.trim(),
+          priority: editFormData.priority,
+          status: editFormData.status,
+          due_date: editFormData.due_date || null,
+          assigned_to: editFormData.assigned_to || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedDefect.id);
+
+      if (error) throw error;
+
+      showToast('Mangel aktualisiert', 'success');
+      setIsEditMode(false);
+      loadDefects();
+      
+      // Update selected defect
+      const { data: updatedDefect } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', selectedDefect.id)
+        .single();
+      
+      if (updatedDefect) setSelectedDefect(updatedDefect);
+    } catch (error: any) {
+      console.error('Error updating defect:', error);
+      showToast('Fehler beim Speichern', 'error');
+    }
+  };
+
+  const handleDeleteDefect = async () => {
+    if (!selectedDefect) return;
+    
+    if (!confirm('Möchten Sie diesen Mangel wirklich löschen?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', selectedDefect.id);
+
+      if (error) throw error;
+
+      showToast('Mangel gelöscht', 'success');
+      setSelectedDefect(null);
+      loadDefects();
+    } catch (error: any) {
+      console.error('Error deleting defect:', error);
+      showToast('Fehler beim Löschen', 'error');
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!selectedDefect) return;
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', selectedDefect.id);
+
+      if (error) throw error;
+
+      showToast('Status aktualisiert', 'success');
+      loadDefects();
+      
+      // Update selected defect
+      setSelectedDefect({ ...selectedDefect, status: newStatus as any });
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      showToast('Fehler beim Aktualisieren', 'error');
     }
   };
 
@@ -731,17 +842,79 @@ export function ProjectDefects() {
             setDefectImages([]);
             setDefectDocumentation([]);
             setActiveTab('info');
+            setIsEditMode(false);
           }}
-          title={selectedDefect.title}
+          title={isEditMode ? 'Mangel bearbeiten' : selectedDefect.title}
           maxWidth={900}
         >
-          {/* Header with Status Badges */}
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, paddingHorizontal: 20 }}>
-            <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(selectedDefect.priority) }]}>
-              <Text style={styles.priorityBadgeText}>{getPriorityLabel(selectedDefect.priority)}</Text>
+          {/* Header with Status Badges and Action Buttons */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(selectedDefect.priority) }]}>
+                <Text style={styles.priorityBadgeText}>{getPriorityLabel(selectedDefect.priority)}</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedDefect.status) }]}>
+                <Text style={styles.statusBadgeText}>{getStatusLabel(selectedDefect.status)}</Text>
+              </View>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedDefect.status) }]}>
-              <Text style={styles.statusBadgeText}>{getStatusLabel(selectedDefect.status)}</Text>
+            
+            {/* Action Buttons */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {isEditMode ? (
+                <>
+                  <TouchableOpacity
+                    onPress={handleSaveEdit}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      backgroundColor: colors.primary,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                    }}
+                  >
+                    <Check size={20} color="#ffffff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleToggleEditMode}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      backgroundColor: '#F8FAFC',
+                    }}
+                  >
+                    <X size={20} color="#64748b" />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    onPress={handleToggleEditMode}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      backgroundColor: '#F8FAFC',
+                    }}
+                  >
+                    <Edit2 size={20} color="#64748b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleDeleteDefect}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#fee2e2',
+                      backgroundColor: '#fef2f2',
+                    }}
+                  >
+                    <Trash2 size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
 
@@ -771,33 +944,142 @@ export function ProjectDefects() {
             {/* Info Tab */}
             {activeTab === 'info' && (
               <View style={{ padding: 20 }}>
-                {selectedDefect.description && (
+                {/* Title (Edit Mode) */}
+                {isEditMode && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Beschreibung</Text>
-                    <Text style={styles.detailText}>{selectedDefect.description}</Text>
+                    <Text style={styles.detailLabel}>Titel</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      value={editFormData.title}
+                      onChangeText={(value) => setEditFormData({ ...editFormData, title: value })}
+                      placeholder="Titel"
+                    />
                   </View>
                 )}
 
+                {/* Description */}
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Status</Text>
-                  <Text style={styles.detailText}>{getStatusLabel(selectedDefect.status)}</Text>
+                  <Text style={styles.detailLabel}>Beschreibung</Text>
+                  {isEditMode ? (
+                    <TextInput
+                      style={[styles.modalInput, { minHeight: 100, textAlignVertical: 'top' }]}
+                      value={editFormData.description}
+                      onChangeText={(value) => setEditFormData({ ...editFormData, description: value })}
+                      placeholder="Beschreibung"
+                      multiline
+                      numberOfLines={4}
+                    />
+                  ) : (
+                    <Text style={styles.detailText}>{selectedDefect.description || 'Keine Beschreibung'}</Text>
+                  )}
                 </View>
 
-                {selectedDefect.due_date && (
+                {/* Priority (Edit Mode) */}
+                {isEditMode && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Frist</Text>
-                    <Text style={styles.detailText}>
-                      {new Date(selectedDefect.due_date).toLocaleDateString('de-DE')}
-                    </Text>
+                    <Text style={styles.detailLabel}>Priorität</Text>
+                    <View style={styles.priorityGrid}>
+                      {(['low', 'medium', 'high', 'critical'] as const).map(p => (
+                        <TouchableOpacity
+                          key={p}
+                          style={[
+                            styles.priorityOption,
+                            editFormData.priority === p && { 
+                              backgroundColor: getPriorityColor(p),
+                              borderColor: getPriorityColor(p)
+                            }
+                          ]}
+                          onPress={() => setEditFormData({ ...editFormData, priority: p })}
+                        >
+                          <Text style={[
+                            styles.priorityOptionText,
+                            editFormData.priority === p && { color: '#ffffff' }
+                          ]}>
+                            {getPriorityLabel(p)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                 )}
 
-                {selectedDefect.assigned_to && (
+                {/* Status Change (Not in Edit Mode) */}
+                {!isEditMode && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Zugewiesen an</Text>
-                    <Text style={styles.detailText}>{getUserName(selectedDefect.assigned_to)}</Text>
+                    <Text style={styles.detailLabel}>Status ändern</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {[
+                        { value: 'open', label: 'Offen', color: '#94a3b8' },
+                        { value: 'in_progress', label: 'In Bearbeitung', color: '#f59e0b' },
+                        { value: 'done', label: 'Erledigt', color: '#10b981' },
+                        { value: 'blocked', label: 'Blockiert', color: '#ef4444' }
+                      ].map(status => (
+                        <TouchableOpacity
+                          key={status.value}
+                          style={{
+                            flex: 1,
+                            minWidth: '45%',
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            borderRadius: 8,
+                            borderWidth: 2,
+                            borderColor: status.color,
+                            backgroundColor: selectedDefect.status === status.value ? status.color : 'transparent',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => handleStatusChange(status.value)}
+                        >
+                          <Text style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            color: selectedDefect.status === status.value ? '#ffffff' : status.color,
+                          }}>
+                            {status.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                 )}
+
+                {/* Due Date */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Frist</Text>
+                  {isEditMode ? (
+                    <DatePicker
+                      value={editFormData.due_date}
+                      onChange={(value) => setEditFormData({ ...editFormData, due_date: value })}
+                      placeholder="TT.MM.JJJJ"
+                    />
+                  ) : (
+                    <Text style={styles.detailText}>
+                      {selectedDefect.due_date ? new Date(selectedDefect.due_date).toLocaleDateString('de-DE') : 'Keine Frist'}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Assigned To */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Zugewiesen an</Text>
+                  {isEditMode ? (
+                    <Select
+                      value={editFormData.assigned_to}
+                      options={[
+                        { label: 'Nicht zugewiesen', value: '' },
+                        ...projectMembers.map((member) => ({
+                          label: member.profiles.email,
+                          value: member.user_id
+                        }))
+                      ]}
+                      onChange={(value) => setEditFormData({ ...editFormData, assigned_to: String(value) })}
+                      placeholder="Mitglied auswählen"
+                    />
+                  ) : (
+                    <Text style={styles.detailText}>
+                      {selectedDefect.assigned_to ? getUserName(selectedDefect.assigned_to) : 'Nicht zugewiesen'}
+                    </Text>
+                  )}
+                </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>Erfasst am</Text>
