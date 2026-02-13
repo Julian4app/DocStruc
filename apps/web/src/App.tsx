@@ -20,7 +20,7 @@ import { ProjectTasks } from './pages/project/ProjectTasks';
 import { ProjectGeneralInfo } from './pages/project/ProjectGeneralInfo';
 import { ProjectDefects } from './pages/project/ProjectDefects';
 import { ProjectSchedule } from './pages/project/ProjectSchedule';
-import { ProjectTimeTracking } from './pages/project/ProjectTimeTracking';
+import { ProjectObjektplan } from './pages/project/ProjectObjektplan';
 import { ProjectDocumentation } from './pages/project/ProjectDocumentation';
 import { ProjectFiles } from './pages/project/ProjectFiles';
 import { ProjectDiary } from './pages/project/ProjectDiary';
@@ -132,7 +132,7 @@ function App() {
                 <Route path="tasks" element={<ProjectTasks />} />
                 <Route path="defects" element={<ProjectDefects />} />
                 <Route path="schedule" element={<ProjectSchedule />} />
-                <Route path="time-tracking" element={<ProjectTimeTracking />} />
+                <Route path="objektplan" element={<ProjectObjektplan />} />
                 <Route path="documentation" element={<ProjectDocumentation />} />
                 <Route path="files" element={<ProjectFiles />} />
                 <Route path="diary" element={<ProjectDiary />} />

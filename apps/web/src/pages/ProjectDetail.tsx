@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Project } from '@docstruc/logic';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLayout } from '../layouts/LayoutContext';
-import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Clock, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity, Settings } from 'lucide-react';
+import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Building2, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity, Settings } from 'lucide-react';
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -48,7 +48,7 @@ export function ProjectDetail() {
           {label:'Aufgaben',path:`/project/${id}/tasks`,icon:CheckSquare},
           {label:'Mängel',path:`/project/${id}/defects`,icon:AlertCircle},
           {label:'Termine & Ablauf',path:`/project/${id}/schedule`,icon:Calendar},
-          {label:'Zeiten & Dauer',path:`/project/${id}/time-tracking`,icon:Clock},
+          {label:'Objektplan',path:`/project/${id}/objektplan`,icon:Building2},
           {label:'Dokumentation',path:`/project/${id}/documentation`,icon:FileText},
           {label:'Dokumente',path:`/project/${id}/files`,icon:FolderOpen},
           {label:'Bautagebuch',path:`/project/${id}/diary`,icon:BookOpen},
