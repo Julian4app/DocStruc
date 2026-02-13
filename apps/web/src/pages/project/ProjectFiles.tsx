@@ -67,6 +67,23 @@ interface FileShare {
   created_at: string;
 }
 
+interface UnifiedDocument {
+  id: string;
+  name: string;
+  type: 'task-attachment' | 'task-documentation' | 'project-file' | 'general-info';
+  source: string;
+  storage_path: string;
+  file_size?: number;
+  mime_type?: string;
+  uploaded_by?: string;
+  uploader_name?: string;
+  created_at: string;
+  folder_id?: string | null;
+  task_id?: string;
+  task_title?: string;
+  linked_folder_name?: string;
+}
+
 export function ProjectFiles() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
@@ -84,6 +101,16 @@ export function ProjectFiles() {
   const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isUploadingToFolder, setIsUploadingToFolder] = useState<string | null>(null);
+  const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<ProjectFolder | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'folders' | 'all-documents'>('folders');
+  const [allDocuments, setAllDocuments] = useState<any[]>([]);
+  const [selectedDocForLink, setSelectedDocForLink] = useState<any | null>(null);
+  const [isLinkToFolderModalOpen, setIsLinkToFolderModalOpen] = useState(false);
+  const [selectedFolderForLink, setSelectedFolderForLink] = useState<string | null>(null);
   
   // Form data
   const [folderFormData, setFolderFormData] = useState({ name: '', description: '', parent_folder_id: null as string | null });
@@ -121,7 +148,8 @@ export function ProjectFiles() {
       await Promise.all([
         loadFolders(),
         loadFiles(),
-        loadProjectMembers()
+        loadProjectMembers(),
+        loadAllDocuments()
       ]);
     } finally {
       setLoading(false);
@@ -188,6 +216,78 @@ export function ProjectFiles() {
     setProjectMembers(data || []);
   };
 
+  const loadAllDocuments = async () => {
+    if (!id) return;
+
+    try {
+      const allDocs: UnifiedDocument[] = [];
+
+      // 1. Load task documentation (images, videos, documents)
+      const { data: taskDocs } = await supabase
+        .from('task_documentation')
+        .select('*, tasks(title), profiles(email, first_name, last_name)')
+        .eq('project_id', id)
+        .not('storage_path', 'is', null)
+        .order('created_at', { ascending: false });
+
+      if (taskDocs) {
+        taskDocs.forEach((doc: any) => {
+          const profile = doc.profiles;
+          const userName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email : 'Unbekannt';
+          
+          allDocs.push({
+            id: doc.id,
+            name: doc.file_name || `${doc.documentation_type}-${doc.id}`,
+            type: 'task-documentation',
+            source: `Aufgabe: ${doc.tasks?.title || 'Unbekannt'}`,
+            storage_path: doc.storage_path,
+            file_size: doc.file_size,
+            mime_type: doc.mime_type,
+            uploaded_by: doc.user_id,
+            uploader_name: userName,
+            created_at: doc.created_at,
+            task_id: doc.task_id,
+            task_title: doc.tasks?.title,
+            folder_id: null
+          });
+        });
+      }
+
+      // 2. Load project files
+      const { data: projectFiles } = await supabase
+        .from('project_files')
+        .select('*, profiles(email, first_name, last_name), project_folders(name)')
+        .eq('project_id', id)
+        .order('uploaded_at', { ascending: false });
+
+      if (projectFiles) {
+        projectFiles.forEach((file: any) => {
+          const profile = file.profiles;
+          const userName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email : 'Unbekannt';
+          
+          allDocs.push({
+            id: file.id,
+            name: file.name,
+            type: 'project-file',
+            source: file.folder_id ? `Ordner: ${file.project_folders?.name || 'Unbekannt'}` : 'Root',
+            storage_path: file.storage_path,
+            file_size: file.file_size,
+            mime_type: file.mime_type,
+            uploaded_by: file.uploaded_by,
+            uploader_name: userName,
+            created_at: file.uploaded_at,
+            folder_id: file.folder_id,
+            linked_folder_name: file.project_folders?.name
+          });
+        });
+      }
+
+      setAllDocuments(allDocs);
+    } catch (error) {
+      console.error('Error loading all documents:', error);
+    }
+  };
+
   const handleCreateFolder = async () => {
     if (!id || !folderFormData.name.trim()) {
       showToast('Bitte geben Sie einen Ordnernamen ein', 'error');
@@ -243,15 +343,24 @@ export function ProjectFiles() {
     loadFolders();
   };
 
-  const handleDeleteFolder = async (folderId: string) => {
-    if (!confirm('Möchten Sie diesen Ordner wirklich löschen? Alle Dateien im Ordner werden ebenfalls gelöscht.')) {
+  const handleDeleteFolder = async (folder: ProjectFolder) => {
+    setFolderToDelete(folder);
+    setDeleteConfirmText('');
+    setIsDeleteConfirmModalOpen(true);
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!folderToDelete) return;
+
+    if (deleteConfirmText !== folderToDelete.name) {
+      showToast('Der eingegebene Name stimmt nicht überein', 'error');
       return;
     }
 
     const { error } = await supabase
       .from('project_folders')
       .delete()
-      .eq('id', folderId);
+      .eq('id', folderToDelete.id);
 
     if (error) {
       console.error('Error deleting folder:', error);
@@ -260,8 +369,12 @@ export function ProjectFiles() {
     }
 
     showToast('Ordner erfolgreich gelöscht', 'success');
+    setIsDeleteConfirmModalOpen(false);
+    setFolderToDelete(null);
+    setDeleteConfirmText('');
     loadFolders();
     loadFiles();
+    loadAllDocuments();
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -269,19 +382,33 @@ export function ProjectFiles() {
     if (!file || !id) return;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      showToast('Sie müssen angemeldet sein', 'error');
+      return;
+    }
 
     try {
       // Upload to storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${id}/${isUploadingToFolder || 'root'}/${fileName}`;
+      const folderPath = isUploadingToFolder || 'root';
+      const filePath = `${id}/${folderPath}/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      console.log('Uploading file to:', filePath);
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('project-files')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
+      }
+
+      console.log('File uploaded successfully:', uploadData);
 
       // Create file record
       const { error: insertError } = await supabase
@@ -296,14 +423,20 @@ export function ProjectFiles() {
           uploaded_by: user.id
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        // Try to clean up uploaded file
+        await supabase.storage.from('project-files').remove([filePath]);
+        throw new Error(`Datenbankfehler: ${insertError.message}`);
+      }
 
       showToast('Datei erfolgreich hochgeladen', 'success');
       setIsUploadingToFolder(null);
       loadFiles();
+      loadAllDocuments();
     } catch (error: any) {
       console.error('Error uploading file:', error);
-      showToast('Fehler beim Hochladen der Datei', 'error');
+      showToast(error.message || 'Fehler beim Hochladen der Datei', 'error');
     }
 
     // Reset input
@@ -535,6 +668,54 @@ export function ProjectFiles() {
     }
   };
 
+  const handleLinkDocumentToFolder = async () => {
+    if (!selectedDocForLink || !selectedFolderForLink) return;
+
+    try {
+      // Only project-files can be linked to folders in the current schema
+      if (selectedDocForLink.type === 'project-file') {
+        const { error } = await supabase
+          .from('project_files')
+          .update({ folder_id: selectedFolderForLink })
+          .eq('id', selectedDocForLink.id);
+
+        if (error) throw error;
+
+        showToast('Dokument erfolgreich verknüpft', 'success');
+      } else {
+        // For task documentation, we create a reference in project_files
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { error } = await supabase
+          .from('project_files')
+          .insert({
+            project_id: id!,
+            folder_id: selectedFolderForLink,
+            name: selectedDocForLink.name,
+            storage_path: selectedDocForLink.storage_path,
+            file_size: selectedDocForLink.file_size || 0,
+            mime_type: selectedDocForLink.mime_type || 'application/octet-stream',
+            uploaded_by: user.id,
+            description: `Verknüpft von: ${selectedDocForLink.source}`
+          });
+
+        if (error) throw error;
+
+        showToast('Dokument als Kopie im Ordner verknüpft', 'success');
+      }
+
+      setIsLinkToFolderModalOpen(false);
+      setSelectedDocForLink(null);
+      setSelectedFolderForLink(null);
+      loadFiles();
+      loadAllDocuments();
+    } catch (error: any) {
+      console.error('Error linking document:', error);
+      showToast('Fehler beim Verknüpfen', 'error');
+    }
+  };
+
   const toggleFolder = (folderId: string) => {
     const newExpanded = new Set(expandedFolders);
     if (newExpanded.has(folderId)) {
@@ -628,7 +809,7 @@ export function ProjectFiles() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconButton}
-                onPress={() => handleDeleteFolder(folder.id)}
+                onPress={() => handleDeleteFolder(folder)}
               >
                 <Trash2 size={16} color="#DC2626" />
               </TouchableOpacity>
@@ -765,6 +946,28 @@ export function ProjectFiles() {
         </View>
       </View>
 
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'folders' && styles.tabActive]}
+          onPress={() => setActiveTab('folders')}
+        >
+          <FolderOpen size={18} color={activeTab === 'folders' ? colors.primary : '#64748b'} />
+          <Text style={[styles.tabText, activeTab === 'folders' && styles.tabTextActive]}>
+            Ordner-Ansicht
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'all-documents' && styles.tabActive]}
+          onPress={() => setActiveTab('all-documents')}
+        >
+          <File size={18} color={activeTab === 'all-documents' ? colors.primary : '#64748b'} />
+          <Text style={[styles.tabText, activeTab === 'all-documents' && styles.tabTextActive]}>
+            Alle Dokumente ({allDocuments.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Stats Row */}
       <View style={styles.statsRow}>
         <Card style={styles.statCard}>
@@ -785,9 +988,12 @@ export function ProjectFiles() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Root files */}
-        {rootFiles.length > 0 && (
-          <Card style={styles.folderCard}>
+        {/* FOLDERS TAB */}
+        {activeTab === 'folders' && (
+          <View>
+            {/* Root files */}
+            {rootFiles.length > 0 && (
+              <Card style={styles.folderCard}>
             <View style={styles.folderHeader}>
               <View style={styles.folderTitleRow}>
                 <Folder size={24} color="#94a3b8" />
@@ -816,6 +1022,88 @@ export function ProjectFiles() {
               Erstellen Sie einen Ordner oder laden Sie eine Datei hoch
             </Text>
           </Card>
+        )}
+          </View>
+        )}
+
+        {/* ALL DOCUMENTS TAB */}
+        {activeTab === 'all-documents' && (
+          <View style={{ gap: 12 }}>
+            {allDocuments.length === 0 ? (
+              <Card style={{ padding: 40, alignItems: 'center' }}>
+                <File size={48} color="#cbd5e1" style={{ marginBottom: 16 }} />
+                <Text style={{ fontSize: 16, color: '#64748b', textAlign: 'center' }}>
+                  Keine Dokumente vorhanden
+                </Text>
+              </Card>
+            ) : (
+              allDocuments.map((doc) => (
+                <Card key={`${doc.type}-${doc.id}`} style={styles.documentCard}>
+                  <View style={styles.documentHeader}>
+                    <View style={styles.documentIcon}>
+                      {doc.mime_type?.startsWith('image/') ? (
+                        <Image size={20} color="#3B82F6" />
+                      ) : doc.mime_type?.startsWith('video/') ? (
+                        <Video size={20} color="#8B5CF6" />
+                      ) : (
+                        <FileText size={20} color="#64748b" />
+                      )}
+                    </View>
+                    <View style={styles.documentInfo}>
+                      <Text style={styles.documentName}>{doc.name}</Text>
+                      <View style={styles.documentMeta}>
+                        <Text style={styles.documentMetaText}>{doc.source}</Text>
+                        <Text style={styles.documentMetaText}>•</Text>
+                        <Text style={styles.documentMetaText}>
+                          {new Date(doc.created_at).toLocaleDateString('de-DE')}
+                        </Text>
+                        {doc.uploader_name && (
+                          <>
+                            <Text style={styles.documentMetaText}>•</Text>
+                            <Text style={styles.documentMetaText}>{doc.uploader_name}</Text>
+                          </>
+                        )}
+                        {doc.file_size && (
+                          <>
+                            <Text style={styles.documentMetaText}>•</Text>
+                            <Text style={styles.documentMetaText}>{formatFileSize(doc.file_size)}</Text>
+                          </>
+                        )}
+                      </View>
+                      {doc.linked_folder_name && (
+                        <View style={styles.linkedFolderBadge}>
+                          <Folder size={12} color="#3B82F6" />
+                          <Text style={styles.linkedFolderText}>{doc.linked_folder_name}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.documentActions}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedDocForLink(doc);
+                        setIsLinkToFolderModalOpen(true);
+                      }}
+                    >
+                      <Folder size={14} /> Zu Ordner hinzufügen
+                    </Button>
+                    {doc.type === 'project-file' && (
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={() => {
+                          const file = files.find(f => f.id === doc.id);
+                          if (file) handleFileDownload(file);
+                        }}
+                      >
+                        <Download size={16} color="#3B82F6" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </Card>
+              ))
+            )}
+          </View>
         )}
       </ScrollView>
 
@@ -1123,6 +1411,149 @@ export function ProjectFiles() {
           )}
         </View>
       </ModernModal>
+
+      {/* Delete Confirmation Modal */}
+      <ModernModal
+        visible={isDeleteConfirmModalOpen}
+        onClose={() => {
+          setIsDeleteConfirmModalOpen(false);
+          setFolderToDelete(null);
+          setDeleteConfirmText('');
+        }}
+        title="Ordner löschen"
+      >
+        <View style={styles.modalBody}>
+          <View style={{ backgroundColor: '#FEF2F2', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+            <Text style={{ color: '#DC2626', fontWeight: '600', marginBottom: 8 }}>
+              ⚠️ Warnung: Diese Aktion kann nicht rückgängig gemacht werden
+            </Text>
+            <Text style={{ color: '#991B1B', fontSize: 14 }}>
+              Alle Dateien in diesem Ordner werden ebenfalls gelöscht.
+            </Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>
+              Bitte geben Sie den Ordnernamen ein um zu bestätigen:
+            </Text>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 8 }}>
+              {folderToDelete?.name}
+            </Text>
+            <TextInput
+              style={styles.textInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="Ordnername eingeben"
+              autoFocus
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteConfirmModalOpen(false);
+                setFolderToDelete(null);
+                setDeleteConfirmText('');
+              }}
+              style={{ flex: 1 }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={confirmDeleteFolder}
+              disabled={deleteConfirmText !== folderToDelete?.name}
+              style={{
+                flex: 1,
+                backgroundColor: deleteConfirmText === folderToDelete?.name ? '#DC2626' : '#cbd5e1'
+              }}
+            >
+              <Trash2 size={16} /> Endgültig löschen
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* Link to Folder Modal */}
+      <ModernModal
+        visible={isLinkToFolderModalOpen}
+        onClose={() => {
+          setIsLinkToFolderModalOpen(false);
+          setSelectedDocForLink(null);
+          setSelectedFolderForLink(null);
+        }}
+        title="Zu Ordner hinzufügen"
+      >
+        <View style={styles.modalBody}>
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Dokument</Text>
+            <View style={{ 
+              padding: 12, 
+              backgroundColor: '#F8FAFC', 
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: '#E2E8F0'
+            }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 4 }}>
+                {selectedDocForLink?.name}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#64748b' }}>
+                {selectedDocForLink?.source}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Zielordner auswählen</Text>
+            <select
+              value={selectedFolderForLink || ''}
+              onChange={(e) => setSelectedFolderForLink(e.target.value)}
+              style={{
+                padding: 12,
+                fontSize: 14,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+                backgroundColor: '#ffffff'
+              }}
+            >
+              <option value="">-- Ordner auswählen --</option>
+              {folders.map(folder => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </View>
+
+          <View style={{ backgroundColor: '#EFF6FF', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, color: '#1e40af' }}>
+              💡 Das Dokument wird mit dem ausgewählten Ordner verknüpft und dort angezeigt.
+            </Text>
+          </View>
+
+          <View style={styles.modalActions}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsLinkToFolderModalOpen(false);
+                setSelectedDocForLink(null);
+                setSelectedFolderForLink(null);
+              }}
+              style={{ flex: 1 }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleLinkDocumentToFolder}
+              disabled={!selectedFolderForLink}
+              style={{ flex: 1 }}
+            >
+              <Folder size={16} /> Verknüpfen
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
     </View>
   );
 }
@@ -1396,7 +1827,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flex: '0 0 45%',
   },
   permissionLabel: {
     fontSize: 14,
@@ -1434,5 +1864,94 @@ const styles = StyleSheet.create({
   sharePermissions: {
     flexDirection: 'row',
     gap: 6,
+  },
+  documentCard: {
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  documentHeader: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  documentIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  documentInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  documentName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  documentMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  documentMetaText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  linkedFolderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  linkedFolderText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  documentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 24,
+    borderBottomWidth: 2,
+    borderBottomColor: '#E2E8F0',
+  },
+  tab: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginBottom: -2,
+    cursor: 'pointer',
+  },
+  tabActive: {
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tabTextActive: {
+    color: colors.primary,
   },
 });
