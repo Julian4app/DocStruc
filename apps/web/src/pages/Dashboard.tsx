@@ -214,12 +214,12 @@ export function Dashboard() {
         </View>
 
         {/* Upcoming Milestones Section */}
-        {upcomingMilestones.length > 0 && (
-          <View style={styles.milestonesSection}>
-            <View style={styles.milestonesSectionHeader}>
-              <Flag size={20} color={colors.primary} />
-              <Text style={styles.milestonesSectionTitle}>Anstehende Meilensteine</Text>
-            </View>
+        <View style={styles.milestonesSection}>
+          <View style={styles.milestonesSectionHeader}>
+            <Flag size={20} color={colors.primary} />
+            <Text style={styles.milestonesSectionTitle}>Anstehende Meilensteine</Text>
+          </View>
+          {upcomingMilestones.length > 0 ? (
             <View style={styles.milestonesTimeline}>
               {upcomingMilestones.map((milestone, index) => {
                 const daysUntil = getDaysUntil(milestone.start_date);
@@ -268,8 +268,13 @@ export function Dashboard() {
                 );
               })}
             </View>
-          </View>
-        )}
+          ) : (
+            <View style={styles.emptyMilestones}>
+              <Flag size={32} color="#cbd5e1" />
+              <Text style={styles.emptyMilestonesText}>Keine anstehenden Meilensteine</Text>
+            </View>
+          )}
+        </View>
 
         {/* Project Section */}
         <View style={styles.sectionHeader}>
@@ -570,5 +575,17 @@ const styles = StyleSheet.create({
   },
   milestoneDaysUntilToday: {
     color: '#F59E0B',
+  },
+  emptyMilestones: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  emptyMilestonesText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
   },
 });

@@ -355,6 +355,17 @@ export function ProjectSchedule() {
     setEndDate(selectedMilestone.end_date || '');
     setColor(selectedMilestone.color || '#3B82F6');
     setEventType(selectedMilestone.event_type as any);
+    
+    // Load linked items for editing
+    const linkedItems: LinkedItem[] = selectedMilestoneLinkedItems.map(item => ({
+      id: item.id,
+      title: item.title,
+      type: (item.task_type === 'defect' ? 'defect' : 'task') as 'defect' | 'task',
+      status: item.status,
+      priority: item.priority
+    }));
+    setSelectedItems(linkedItems);
+    
     // Use setTimeout to ensure state updates in correct order
     setTimeout(() => {
       setIsEditMilestoneMode(true);
@@ -386,6 +397,27 @@ export function ProjectSchedule() {
         .eq('id', selectedMilestone.id);
 
       if (error) throw error;
+
+      // Update linked items
+      // First, delete all existing links
+      await supabase
+        .from('milestone_tasks')
+        .delete()
+        .eq('milestone_id', selectedMilestone.id);
+
+      // Then add new links
+      if (selectedItems.length > 0) {
+        const milestoneTasksInserts = selectedItems.map(item => ({
+          milestone_id: selectedMilestone.id,
+          task_id: item.id
+        }));
+
+        const { error: linkError } = await supabase
+          .from('milestone_tasks')
+          .insert(milestoneTasksInserts);
+
+        if (linkError) throw linkError;
+      }
 
       showToast('Meilenstein erfolgreich aktualisiert', 'success');
       setSelectedMilestone(null);
@@ -1560,10 +1592,11 @@ export function ProjectSchedule() {
             resetForm();
           }}
           title="Meilenstein bearbeiten"
-          maxWidth={600}
+          maxWidth={700}
           zIndex={15000}
         >
-          <View style={styles.formContent}>
+          <View style={styles.modalContent}>
+            {/* Title */}
             <Input
               label="Titel *"
               value={title}
@@ -1571,28 +1604,268 @@ export function ProjectSchedule() {
               placeholder="z.B. Rohbau abgeschlossen"
             />
 
-            <Input
-              label="Beschreibung"
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Weitere Details..."
-              multiline
-              numberOfLines={3}
-            />
+            {/* Description */}
+            <View>
+              <Text style={styles.inputLabel}>Beschreibung</Text>
+              <RNTextInput
+                style={styles.textArea}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Optionale Beschreibung..."
+                multiline
+                numberOfLines={3}
+              />
+            </View>
 
+            {/* Start Date */}
             <DatePicker
               label="Startdatum *"
               value={eventDate}
               onChange={setEventDate}
+              placeholder="TT.MM.JJJJ"
             />
 
+            {/* End Date */}
             <DatePicker
               label="Enddatum (optional)"
               value={endDate}
               onChange={setEndDate}
+              placeholder="TT.MM.JJJJ"
             />
 
-            <View style={styles.formActions}>
+            {/* Type Selection */}
+            <View>
+              <Text style={styles.inputLabel}>Typ</Text>
+              <View style={styles.typeGrid}>
+                {(['milestone', 'deadline', 'phase'] as const).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.typeOption,
+                      eventType === type && {
+                        backgroundColor: getEventTypeColor(type),
+                        borderColor: getEventTypeColor(type)
+                      }
+                    ]}
+                    onPress={() => setEventType(type)}
+                  >
+                    <Text style={[
+                      styles.typeOptionText,
+                      eventType === type && { color: '#ffffff' }
+                    ]}>
+                      {getEventTypeLabel(type)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Color Picker */}
+            <View>
+              <Text style={styles.inputLabel}>Farbe</Text>
+              <View style={styles.colorGrid}>
+                {['#3B82F6', '#EF4444', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#14B8A6', '#6366F1'].map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.colorOption,
+                      { backgroundColor: c },
+                      color === c && styles.colorOptionSelected
+                    ]}
+                    onPress={() => setColor(c)}
+                  />
+                ))}
+              </View>
+            </View>
+
+            {/* Task/Defect Linking */}
+            <View>
+              <Text style={styles.inputLabel}>Aufgaben & Mängel verknüpfen</Text>
+              
+              {/* Selected Items Display */}
+              {selectedItems.length > 0 && (
+                <View style={styles.selectedItemsContainer}>
+                  {selectedItems.map(item => (
+                    <View key={item.id} style={styles.selectedItemChip}>
+                      {item.type === 'task' ? (
+                        <CheckSquare size={14} color={colors.primary} />
+                      ) : (
+                        <AlertCircle size={14} color="#EF4444" />
+                      )}
+                      <Text style={styles.selectedItemText}>{item.title}</Text>
+                      <TouchableOpacity onPress={() => handleRemoveSelectedItem(item.id)}>
+                        <X size={14} color="#64748b" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Dropdown Trigger */}
+              <TouchableOpacity
+                style={styles.dropdownTrigger}
+                onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+              >
+                <Link2 size={16} color="#64748b" />
+                <Text style={styles.dropdownTriggerText}>
+                  {selectedItems.length > 0 
+                    ? `${selectedItems.length} ausgewählt` 
+                    : 'Aufgaben/Mängel auswählen'}
+                </Text>
+                <ChevronDown size={16} color="#64748b" />
+              </TouchableOpacity>
+
+              {/* Dropdown Content */}
+              {isDropdownOpen && (
+                <View style={styles.dropdownContent}>
+                  {/* Search */}
+                  <View style={styles.searchContainer}>
+                    <RNTextInput
+                      style={styles.searchInput}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      placeholder="Suchen..."
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+
+                  <View style={styles.dropdownMainContent}>
+                    {/* Left side - Scrollable list */}
+                    <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
+                      {/* Tasks Section */}
+                      {filteredTasks.length > 0 && (
+                        <View style={styles.dropdownSection}>
+                          <Text style={styles.dropdownSectionTitle}>Aufgaben</Text>
+                          {filteredTasks.map(task => {
+                            const isSelected = selectedItems.some(i => i.id === task.id);
+                            const isPreviewed = previewItem?.id === task.id;
+                            return (
+                              <View key={task.id} style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected, isPreviewed && styles.dropdownItemPreviewed]}>
+                                <TouchableOpacity
+                                  style={styles.dropdownItemMain}
+                                  onPress={() => handleToggleItemSelection(task, 'task')}
+                                >
+                                  <View style={styles.dropdownItemLeft}>
+                                    <CheckSquare size={16} color={isSelected ? colors.primary : '#94a3b8'} />
+                                    <Text style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleSelected]}>
+                                      {task.title}
+                                    </Text>
+                                  </View>
+                                  <Text style={[styles.dropdownItemStatus, { color: getPriorityColor(task.priority) }]}>
+                                    {getStatusLabel(task.status)}
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.infoButton}
+                                  onPress={() => setPreviewItem(isPreviewed ? null : {
+                                    id: task.id,
+                                    type: 'task',
+                                    title: task.title,
+                                    status: task.status,
+                                    priority: task.priority,
+                                    description: task.description || undefined
+                                  })}
+                                >
+                                  <Info size={16} color={isPreviewed ? colors.primary : '#94a3b8'} />
+                                </TouchableOpacity>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {/* Defects Section */}
+                      {filteredDefects.length > 0 && (
+                        <View style={styles.dropdownSection}>
+                          <Text style={styles.dropdownSectionTitle}>Mängel</Text>
+                          {filteredDefects.map(defect => {
+                            const isSelected = selectedItems.some(i => i.id === defect.id);
+                            const isPreviewed = previewItem?.id === defect.id;
+                            return (
+                              <View key={defect.id} style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected, isPreviewed && styles.dropdownItemPreviewed]}>
+                                <TouchableOpacity
+                                  style={styles.dropdownItemMain}
+                                  onPress={() => handleToggleItemSelection(defect, 'defect')}
+                                >
+                                  <View style={styles.dropdownItemLeft}>
+                                    <AlertCircle size={16} color={isSelected ? '#EF4444' : '#94a3b8'} />
+                                    <Text style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleSelected]}>
+                                      {defect.title}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.dropdownItemRight}>
+                                    <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(defect.priority) }]}>
+                                      <Text style={styles.priorityBadgeText}>{getPriorityLabel(defect.priority)}</Text>
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.infoButton}
+                                  onPress={() => setPreviewItem(isPreviewed ? null : {
+                                    id: defect.id,
+                                    type: 'defect',
+                                    title: defect.title,
+                                    status: defect.status,
+                                    priority: defect.priority,
+                                    description: defect.description || undefined
+                                  })}
+                                >
+                                  <Info size={16} color={isPreviewed ? colors.primary : '#94a3b8'} />
+                                </TouchableOpacity>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {filteredTasks.length === 0 && filteredDefects.length === 0 && (
+                        <Text style={styles.emptyDropdownText}>Keine Ergebnisse gefunden</Text>
+                      )}
+                    </ScrollView>
+
+                    {/* Right side - Preview Panel */}
+                    {previewItem && (
+                      <View style={styles.previewPanel}>
+                        <View style={styles.previewHeader}>
+                          <View style={styles.previewTypeIndicator}>
+                            {previewItem.type === 'task' ? (
+                              <CheckSquare size={16} color={colors.primary} />
+                            ) : (
+                              <AlertCircle size={16} color="#EF4444" />
+                            )}
+                            <Text style={styles.previewType}>
+                              {previewItem.type === 'task' ? 'Aufgabe' : 'Mangel'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setPreviewItem(null)}>
+                            <X size={16} color="#64748b" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.previewTitle}>{previewItem.title}</Text>
+                        {previewItem.priority && (
+                          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(previewItem.priority), alignSelf: 'flex-start' }]}>
+                            <Text style={styles.priorityBadgeText}>{getPriorityLabel(previewItem.priority)}</Text>
+                          </View>
+                        )}
+                        {previewItem.description && (
+                          <ScrollView style={styles.previewDescriptionScroll}>
+                            <Text style={styles.previewDescription}>
+                              {previewItem.description}
+                            </Text>
+                          </ScrollView>
+                        )}
+                        <Text style={styles.previewStatus}>
+                          Status: {getStatusLabel(previewItem.status)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
               <Button
                 variant="outline"
                 onClick={() => {
