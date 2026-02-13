@@ -1129,7 +1129,7 @@ export const TaskDetailModal: React.FC<{
 const styles = StyleSheet.create({
   // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 600, maxHeight: '90%' },
+  modalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 600, maxHeight: '90%', overflow: 'hidden' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
   modalCloseButton: { padding: 4 },
@@ -1149,7 +1149,7 @@ const styles = StyleSheet.create({
   modalButtonPrimaryText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
   
   // Detail Modal Styles
-  detailModalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 900, maxHeight: '90%' },
+  detailModalContent: { backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 900, maxHeight: '90%', overflow: 'hidden' },
   detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   detailHeaderLeft: { flex: 1 },
   detailTitle: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginBottom: 8 },

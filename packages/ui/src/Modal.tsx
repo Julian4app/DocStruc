@@ -70,7 +70,8 @@ const styles = StyleSheet.create({
     elevation: 8,
     maxHeight: '85%',
     borderWidth: 1,
-    borderColor: '#e2e8f0'
+    borderColor: '#e2e8f0',
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',

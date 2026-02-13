@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
         flexDirection: 'column' as any,
         // @ts-ignore
         boxShadow: '0 20px 40px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(15, 23, 42, 0.05)',
-        overflow: 'visible' as any,
+        overflow: 'hidden' as any,
     },
     header: {
         flexDirection: 'row',
@@ -137,6 +137,8 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#F1F5F9',
         backgroundColor: '#ffffff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
     },
     title: {
         fontSize: 20,

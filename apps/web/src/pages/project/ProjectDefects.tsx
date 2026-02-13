@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { Select } from '../../components/Select';
+import { DatePicker } from '../../components/DatePicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import DOMPurify from 'dompurify';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
-  Upload, User, Calendar as CalendarIcon, X, Trash2
+  Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2
 } from 'lucide-react';
 
 interface Defect {
@@ -47,14 +49,27 @@ interface DefectDocumentation {
   created_at: string;
 }
 
+interface ProjectMember {
+  user_id: string;
+  role?: string;
+  profiles: {
+    id: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+  };
+}
+
 export function ProjectDefects() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [defects, setDefects] = useState<Defect[]>([]);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDefect, setSelectedDefect] = useState<Defect | null>(null);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'info' | 'docs'>('info');
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -62,10 +77,14 @@ export function ProjectDefects() {
   const [dueDate, setDueDate] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
 
+  // Create modal - image upload with drag & drop
+  const [createImages, setCreateImages] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+
   // Detail state
   const [defectImages, setDefectImages] = useState<DefectImage[]>([]);
   const [defectDocumentation, setDefectDocumentation] = useState<DefectDocumentation[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
   
   // Documentation form
   const [docFormData, setDocFormData] = useState({
@@ -74,11 +93,13 @@ export function ProjectDefects() {
   });
 
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const createImageInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDefects();
+    loadProjectMembers();
   }, [id]);
 
   const loadDefects = async () => {
@@ -103,6 +124,25 @@ export function ProjectDefects() {
     }
   };
 
+  const loadProjectMembers = async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select(`
+          user_id,
+          role,
+          profiles:user_id(id, email, first_name, last_name)
+        `)
+        .eq('project_id', id);
+
+      if (error) throw error;
+      setProjectMembers((data || []) as any);
+    } catch (error: any) {
+      console.error('Error loading members:', error);
+    }
+  };
+
   const handleCreateDefect = async () => {
     if (!title.trim()) {
       showToast('Bitte geben Sie einen Titel ein', 'error');
@@ -112,7 +152,7 @@ export function ProjectDefects() {
     try {
       const { data: userData } = await supabase.auth.getUser();
       
-      const { error } = await supabase.from('tasks').insert({
+      const { data: newDefect, error } = await supabase.from('tasks').insert({
         project_id: id,
         title: title.trim(),
         description: description.trim(),
@@ -122,9 +162,33 @@ export function ProjectDefects() {
         due_date: dueDate || null,
         assigned_to: assignedTo || null,
         creator_id: userData.user?.id
-      });
+      }).select().single();
 
       if (error) throw error;
+
+      // Upload images if any
+      if (createImages.length > 0 && newDefect) {
+        for (let i = 0; i < createImages.length; i++) {
+          const file = createImages[i];
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Math.random()}.${fileExt}`;
+          const filePath = `${id}/defects/${newDefect.id}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('task-images')
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+
+          await supabase.from('task_images').insert({
+            task_id: newDefect.id,
+            project_id: id,
+            storage_path: filePath,
+            file_name: file.name,
+            display_order: i
+          });
+        }
+      }
 
       showToast('Mangel erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
@@ -133,11 +197,43 @@ export function ProjectDefects() {
       setPriority('medium');
       setDueDate('');
       setAssignedTo('');
+      setCreateImages([]);
       loadDefects();
     } catch (error: any) {
       console.error('Error creating defect:', error);
       showToast('Fehler beim Erstellen des Mangels', 'error');
     }
+  };
+
+  // Drag & Drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('image/')
+    );
+    
+    setCreateImages(prev => [...prev, ...files]);
+  };
+
+  const handleAddCreateImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    setCreateImages(prev => [...prev, ...files]);
+  };
+
+  const handleRemoveCreateImage = (index: number) => {
+    setCreateImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const loadDefectDetails = async (defectId: string) => {
@@ -250,7 +346,11 @@ export function ProjectDefects() {
   };
 
   const getUserName = (userId: string) => {
-    return 'Benutzer';
+    const member = projectMembers.find(m => m.user_id === userId);
+    if (member?.profiles?.first_name && member?.profiles?.last_name) {
+      return `${member.profiles.first_name} ${member.profiles.last_name}`;
+    }
+    return member?.profiles?.email || 'Unbekannt';
   };
 
   const formatDateTime = (dateString: string) => {
@@ -291,6 +391,16 @@ export function ProjectDefects() {
       case 'resolved': return 'Behoben';
       case 'rejected': return 'Abgelehnt';
       default: return status;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'open': return '#3B82F6';
+      case 'in_progress': return '#F59E0B';
+      case 'resolved': return '#10B981';
+      case 'rejected': return '#94a3b8';
+      default: return '#94a3b8';
     }
   };
 
@@ -423,41 +533,38 @@ export function ProjectDefects() {
           setPriority('medium');
           setDueDate('');
           setAssignedTo('');
+          setCreateImages([]);
         }}
         title="Mangel erfassen"
       >
-        <View style={styles.modalContent}>
-          <Input
-            label="Titel *"
-            value={title}
-            onChangeText={setTitle}
-            placeholder="z.B. Riss in Wand"
-          />
-          <Input
-            label="Beschreibung"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Details zum Mangel..."
-            multiline
-            numberOfLines={4}
-          />
+        <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          {/* Title */}
+          <View style={styles.modalSection}>
+            <Text style={styles.modalLabel}>Titel *</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="z.B. Riss in Wand"
+            />
+          </View>
 
-          <Input
-            label="Frist"
-            value={dueDate}
-            onChangeText={setDueDate}
-            placeholder="TT.MM.JJJJ"
-          />
+          {/* Description */}
+          <View style={styles.modalSection}>
+            <Text style={styles.modalLabel}>Beschreibung</Text>
+            <TextInput
+              style={styles.modalTextarea}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Details zum Mangel..."
+              multiline
+              numberOfLines={4}
+            />
+          </View>
 
-          <Input
-            label="Zugewiesen an"
-            value={assignedTo}
-            onChangeText={setAssignedTo}
-            placeholder="Benutzername oder E-Mail"
-          />
-          
-          <View>
-            <Text style={styles.inputLabel}>Priorität</Text>
+          {/* Priority */}
+          <View style={styles.modalSection}>
+            <Text style={styles.modalLabel}>Priorität</Text>
             <View style={styles.priorityGrid}>
               {(['low', 'medium', 'high', 'critical'] as const).map(p => (
                 <TouchableOpacity
@@ -482,39 +589,111 @@ export function ProjectDefects() {
             </View>
           </View>
 
-          <input
-            ref={imageFileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            style={{ display: 'none' }}
+          {/* Assigned To - Select Dropdown */}
+          <Select
+            label="Zugewiesen an"
+            value={assignedTo}
+            options={[
+              { label: 'Nicht zugewiesen', value: '' },
+              ...projectMembers.map((member) => ({
+                label: member.profiles.email,
+                value: member.user_id
+              }))
+            ]}
+            onChange={(value) => setAssignedTo(String(value))}
+            placeholder="Mitglied auswählen"
           />
-          <TouchableOpacity
-            onPress={() => imageFileInputRef.current?.click()}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              backgroundColor: '#F8FAFC',
-              borderRadius: 8,
-              borderWidth: 2,
-              borderStyle: 'dashed',
-              borderColor: '#E2E8F0',
-            }}
-          >
-            <ImageIcon size={18} color={colors.primary} />
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
-              📸 Fotos hinzufügen (optional)
-            </Text>
-          </TouchableOpacity>
+
+          {/* Due Date - DatePicker */}
+          <DatePicker
+            label="Frist"
+            value={dueDate}
+            onChange={setDueDate}
+            placeholder="TT.MM.JJJJ"
+          />
+
+          {/* Image Upload with Drag & Drop */}
+          <View style={styles.modalSection}>
+            <Text style={styles.modalLabel}>Bilder hinzufügen (optional)</Text>
+            
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              style={{
+                border: `2px dashed ${isDragging ? colors.primary : '#cbd5e1'}`,
+                borderRadius: 8,
+                padding: 24,
+                textAlign: 'center',
+                backgroundColor: isDragging ? '#f1f5f9' : '#f8fafc',
+                cursor: 'pointer',
+                marginBottom: 12,
+              }}
+              onClick={() => createImageInputRef.current?.click()}
+            >
+              <ImageIcon size={32} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+              <Text style={{ color: '#64748b', fontSize: 14 }}>
+                Bilder per Drag & Drop ablegen oder klicken zum Auswählen
+              </Text>
+              <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>
+                PNG, JPG, GIF bis 10MB
+              </Text>
+            </div>
+
+            <input
+              ref={createImageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleAddCreateImage}
+              style={{ display: 'none' }}
+            />
+
+            {createImages.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                {createImages.map((file, index) => (
+                  <View
+                    key={index}
+                    style={{
+                      position: 'relative',
+                      width: 80,
+                      height: 80,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      backgroundColor: '#f1f5f9',
+                    }}
+                  >
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => handleRemoveCreateImage(index)}
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        right: 4,
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        borderRadius: 12,
+                        padding: 4,
+                      }}
+                    >
+                      <X size={12} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
 
           <View style={styles.modalActions}>
             <Button
               variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                setCreateImages([]);
+              }}
               style={{ flex: 1 }}
             >
               Abbrechen
@@ -523,10 +702,10 @@ export function ProjectDefects() {
               Erfassen
             </Button>
           </View>
-        </View>
+        </ScrollView>
       </ModernModal>
 
-      {/* Defect Detail Modal */}
+      {/* Defect Detail Modal with Tabs */}
       {selectedDefect && (
         <ModernModal
           visible={!!selectedDefect}
@@ -535,100 +714,127 @@ export function ProjectDefects() {
             setDocFormData({ type: '', content: '' });
             setDefectImages([]);
             setDefectDocumentation([]);
+            setActiveTab('info');
           }}
           title={selectedDefect.title}
+          maxWidth={900}
         >
+          {/* Header with Status Badges */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, paddingHorizontal: 20 }}>
+            <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(selectedDefect.priority) }]}>
+              <Text style={styles.priorityBadgeText}>{getPriorityLabel(selectedDefect.priority)}</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedDefect.status) }]}>
+              <Text style={styles.statusBadgeText}>{getStatusLabel(selectedDefect.status)}</Text>
+            </View>
+          </View>
+
+          {/* Tabs */}
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'info' && styles.tabActive]}
+              onPress={() => setActiveTab('info')}
+            >
+              <FileText size={18} color={activeTab === 'info' ? colors.primary : '#94a3b8'} />
+              <Text style={[styles.tabText, activeTab === 'info' && styles.tabTextActive]}>
+                Allgemeine Informationen
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'docs' && styles.tabActive]}
+              onPress={() => setActiveTab('docs')}
+            >
+              <FileText size={18} color={activeTab === 'docs' ? colors.primary : '#94a3b8'} />
+              <Text style={[styles.tabText, activeTab === 'docs' && styles.tabTextActive]}>
+                Dokumentation ({defectDocumentation.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView style={{ maxHeight: 600 }} showsVerticalScrollIndicator={false}>
-            <View style={styles.modalContent}>
-              <View style={[styles.priorityBadge, { 
-                backgroundColor: getPriorityColor(selectedDefect.priority),
-                alignSelf: 'flex-start'
-              }]}>
-                <Text style={styles.priorityBadgeText}>
-                  {getPriorityLabel(selectedDefect.priority)}
-                </Text>
-              </View>
-              
-              {selectedDefect.description && (
+            {/* Info Tab */}
+            {activeTab === 'info' && (
+              <View style={{ padding: 20 }}>
+                {selectedDefect.description && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Beschreibung</Text>
+                    <Text style={styles.detailText}>{selectedDefect.description}</Text>
+                  </View>
+                )}
+
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Beschreibung</Text>
-                  <Text style={styles.detailText}>{selectedDefect.description}</Text>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailText}>{getStatusLabel(selectedDefect.status)}</Text>
                 </View>
-              )}
 
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Status</Text>
-                <Text style={styles.detailText}>{getStatusLabel(selectedDefect.status)}</Text>
-              </View>
+                {selectedDefect.due_date && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Frist</Text>
+                    <Text style={styles.detailText}>
+                      {new Date(selectedDefect.due_date).toLocaleDateString('de-DE')}
+                    </Text>
+                  </View>
+                )}
 
-              {selectedDefect.due_date && (
+                {selectedDefect.assigned_to && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Zugewiesen an</Text>
+                    <Text style={styles.detailText}>{getUserName(selectedDefect.assigned_to)}</Text>
+                  </View>
+                )}
+
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Frist</Text>
+                  <Text style={styles.detailLabel}>Erfasst am</Text>
                   <Text style={styles.detailText}>
-                    {new Date(selectedDefect.due_date).toLocaleDateString('de-DE')}
+                    {new Date(selectedDefect.created_at).toLocaleString('de-DE')}
                   </Text>
                 </View>
-              )}
 
-              {selectedDefect.assigned_to && (
+                {/* Images Section */}
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Zugewiesen an</Text>
-                  <Text style={styles.detailText}>{getUserName(selectedDefect.assigned_to)}</Text>
-                </View>
-              )}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={styles.detailLabel}>📸 Fotos ({defectImages.length})</Text>
+                    <input
+                      ref={imageFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      style={{ display: 'none' }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => imageFileInputRef.current?.click()}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        backgroundColor: colors.primary,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Upload size={14} color="#ffffff" />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#ffffff' }}>
+                        Hochladen
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Erfasst am</Text>
-                <Text style={styles.detailText}>
-                  {new Date(selectedDefect.created_at).toLocaleString('de-DE')}
-                </Text>
-              </View>
+                  {defectImages.length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                      {defectImages.map((image) => {
+                        const { data: { publicUrl } } = supabase.storage
+                          .from('task-images')
+                          .getPublicUrl(image.storage_path);
 
-              {/* Images Section */}
-              <View style={styles.detailSection}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={styles.detailLabel}>📸 Fotos ({defectImages.length})</Text>
-                  <input
-                    ref={imageFileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => imageFileInputRef.current?.click()}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingVertical: 6,
-                      paddingHorizontal: 12,
-                      backgroundColor: colors.primary,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Upload size={14} color="#ffffff" />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#ffffff' }}>
-                      Hochladen
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {defectImages.length > 0 ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                    {defectImages.map((image) => {
-                      const { data: { publicUrl } } = supabase.storage
-                        .from('task-images')
-                        .getPublicUrl(image.storage_path);
-
-                      return (
-                        <View key={image.id} style={styles.imageContainer}>
-                          <img
-                            src={publicUrl}
-                            alt={image.file_name || 'Defect image'}
-                            style={{
-                              width: '100%',
+                        return (
+                          <View key={image.id} style={styles.imageContainer}>
+                            <img
+                              src={publicUrl}
+                              alt={image.file_name || 'Defect image'}
+                              style={{
+                                width: '100%',
                               height: 120,
                               objectFit: 'cover',
                               borderRadius: 8,
@@ -653,210 +859,277 @@ export function ProjectDefects() {
                   </View>
                 )}
               </View>
+            </View>
+          )}
 
-              {/* Documentation Section */}
-              <View style={styles.detailSection}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <Text style={styles.detailLabel}>📝 Dokumentation ({defectDocumentation.length})</Text>
-                </View>
+          {/* Documentation Tab */}
+          {activeTab === 'docs' && (
+            <View style={{ padding: 20 }}>
+              {/* Documentation History */}
+              {defectDocumentation.length > 0 && (
+                <View style={{ gap: 16, marginBottom: 24 }}>
+                  {defectDocumentation.map((doc) => {
+                    const docIcons = {
+                      text: FileText,
+                      voice: Mic,
+                      image: ImageIcon,
+                      video: Video,
+                    };
+                    const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
 
-                {/* Documentation History */}
-                {defectDocumentation.length > 0 && (
-                  <View style={{ gap: 16, marginBottom: 24 }}>
-                    {defectDocumentation.map((doc) => {
-                      const docIcons = {
-                        text: FileText,
-                        voice: Mic,
-                        image: ImageIcon,
-                        video: Video,
-                      };
-                      const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
-
-                      return (
-                        <View key={doc.id} style={{
-                          backgroundColor: '#ffffff',
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: '#E2E8F0',
-                          overflow: 'hidden',
+                    return (
+                      <View key={doc.id} style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        overflow: 'hidden',
+                      }}>
+                        {/* Doc Header */}
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          padding: 12,
+                          backgroundColor: '#F8FAFC',
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#E2E8F0',
                         }}>
-                          {/* Doc Header */}
                           <View style={{
-                            flexDirection: 'row',
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: colors.primary,
                             alignItems: 'center',
-                            padding: 12,
-                            backgroundColor: '#F8FAFC',
-                            borderBottomWidth: 1,
-                            borderBottomColor: '#E2E8F0',
+                            justifyContent: 'center',
+                            marginRight: 10,
                           }}>
-                            <View style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: 16,
-                              backgroundColor: colors.primary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              marginRight: 10,
-                            }}>
-                              <User size={16} color="#ffffff" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
-                                {getUserName(doc.user_id)}
-                              </Text>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <CalendarIcon size={11} color="#94a3b8" />
-                                <Text style={{ fontSize: 11, color: '#64748b' }}>{formatDateTime(doc.created_at)}</Text>
-                              </View>
-                            </View>
-                            <View style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 6,
-                              backgroundColor: doc.documentation_type === 'text' ? '#DBEAFE' : '#FEF3C7',
-                            }}>
-                              <DocIcon size={14} color={doc.documentation_type === 'text' ? colors.primary : '#F59E0B'} />
+                            <User size={16} color="#ffffff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                              {getUserName(doc.user_id)}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <CalendarIcon size={11} color="#94a3b8" />
+                              <Text style={{ fontSize: 11, color: '#64748b' }}>{formatDateTime(doc.created_at)}</Text>
                             </View>
                           </View>
-                          
-                          {/* Doc Content */}
-                          {doc.documentation_type === 'text' && doc.content && (
-                            <View style={{ padding: 14 }}>
-                              <div 
-                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content) }} 
-                                style={{ 
-                                  fontSize: 13, 
-                                  lineHeight: '20px', 
-                                  color: '#334155',
-                                }} 
-                              />
-                            </View>
-                          )}
+                          <View style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: doc.documentation_type === 'text' ? '#DBEAFE' : '#FEF3C7',
+                          }}>
+                            <DocIcon size={14} color={doc.documentation_type === 'text' ? colors.primary : '#F59E0B'} />
+                          </View>
                         </View>
-                      );
-                    })}
+                        
+                        {/* Doc Content */}
+                        {doc.documentation_type === 'text' && doc.content && (
+                          <View style={{ padding: 14 }}>
+                            <div 
+                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content) }} 
+                              style={{ 
+                                fontSize: 13, 
+                                lineHeight: '20px', 
+                                color: '#334155',
+                              }} 
+                            />
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Add New Documentation */}
+              <View style={{ marginTop: 16, gap: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>
+                  Neue Dokumentation hinzufügen
+                </Text>
+
+                {/* Documentation Type Buttons - Always Visible */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'text' ? '' : 'text' })}
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: docFormData.type === 'text' ? '#EFF6FF' : '#ffffff',
+                      borderWidth: docFormData.type === 'text' ? 2 : 1,
+                      borderColor: docFormData.type === 'text' ? colors.primary : '#E2E8F0',
+                      gap: 8,
+                    }}
+                  >
+                    <FileText size={18} color={docFormData.type === 'text' ? colors.primary : '#64748b'} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: docFormData.type === 'text' ? colors.primary : '#64748b' }}>
+                      Text
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'voice' ? '' : 'voice' })}
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: docFormData.type === 'voice' ? '#EFF6FF' : '#ffffff',
+                      borderWidth: docFormData.type === 'voice' ? 2 : 1,
+                      borderColor: docFormData.type === 'voice' ? colors.primary : '#E2E8F0',
+                      gap: 8,
+                    }}
+                  >
+                    <Mic size={18} color={docFormData.type === 'voice' ? colors.primary : '#64748b'} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: docFormData.type === 'voice' ? colors.primary : '#64748b' }}>
+                      Sprache
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'video' ? '' : 'video' })}
+                    style={{
+                      flex: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 12,
+                      borderRadius: 10,
+                      backgroundColor: docFormData.type === 'video' ? '#EFF6FF' : '#ffffff',
+                      borderWidth: docFormData.type === 'video' ? 2 : 1,
+                      borderColor: docFormData.type === 'video' ? colors.primary : '#E2E8F0',
+                      gap: 8,
+                    }}
+                  >
+                    <Video size={18} color={docFormData.type === 'video' ? colors.primary : '#64748b'} />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: docFormData.type === 'video' ? colors.primary : '#64748b' }}>
+                      Video
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Content Input for Selected Type */}
+                {docFormData.type === 'text' && (
+                  <View style={{ marginTop: 8 }}>
+                    <RichTextEditor
+                      value={docFormData.content}
+                      onChange={(content) => setDocFormData({ ...docFormData, content })}
+                      placeholder="Dokumentation eingeben..."
+                    />
                   </View>
                 )}
 
-                {/* Add New Documentation */}
-                <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 14 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation</Text>
-                  
-                  {/* Type Selector - Always visible */}
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                    <TouchableOpacity
-                      style={[styles.docTypeButton, docFormData.type === 'text' && styles.docTypeButtonActive]}
-                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'text' ? '' : 'text' })}
-                    >
-                      <FileText size={18} color={docFormData.type === 'text' ? '#ffffff' : colors.primary} />
-                      <Text style={[styles.docTypeButtonText, docFormData.type === 'text' && { color: '#ffffff' }]}>
-                        Text
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.docTypeButton, docFormData.type === 'voice' && styles.docTypeButtonActive]}
-                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'voice' ? '' : 'voice' })}
-                    >
-                      <Mic size={18} color={docFormData.type === 'voice' ? '#ffffff' : colors.primary} />
-                      <Text style={[styles.docTypeButtonText, docFormData.type === 'voice' && { color: '#ffffff' }]}>
-                        Sprache
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.docTypeButton, docFormData.type === 'video' && styles.docTypeButtonActive]}
-                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'video' ? '' : 'video' })}
-                    >
-                      <Video size={18} color={docFormData.type === 'video' ? '#ffffff' : colors.primary} />
-                      <Text style={[styles.docTypeButtonText, docFormData.type === 'video' && { color: '#ffffff' }]}>
-                        Video
-                      </Text>
-                    </TouchableOpacity>
+                {docFormData.type === 'voice' && (
+                  <View style={{
+                    padding: 20,
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}>
+                    <View style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 32,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Mic size={28} color="#ffffff" />
+                    </View>
+                    <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
+                      Sprachaufnahme wird bald verfügbar sein
+                    </Text>
                   </View>
+                )}
 
-                  {/* Text Editor */}
-                  {docFormData.type === 'text' && (
-                    <>
-                      <View style={{ marginBottom: 12 }}>
-                        <RichTextEditor
-                          value={docFormData.content || ''}
-                          onChange={(value) => setDocFormData({ ...docFormData, content: value })}
-                        />
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity
-                          style={[styles.docActionButton, { backgroundColor: '#F1F5F9' }]}
-                          onPress={() => setDocFormData({ type: '', content: '' })}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>Abbrechen</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.docActionButton, { backgroundColor: colors.primary }]}
-                          onPress={() => handleAddDocumentation('text')}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#ffffff' }}>Speichern</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-
-                  {/* Voice Recorder */}
-                  {docFormData.type === 'voice' && (
-                    <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0' }}>
-                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                        <Mic size={40} color="#cbd5e1" style={{ marginBottom: 10 }} />
-                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
-                          Sprachaufnahme oder Audiodatei hochladen
-                        </Text>
-                      </View>
-                      <input
-                        ref={audioFileInputRef}
-                        type="file"
-                        accept="audio/*"
-                        style={{
-                          width: '100%',
-                          padding: 10,
-                          borderRadius: 8,
-                          border: '2px solid #E2E8F0',
-                          backgroundColor: '#ffffff',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                        }}
-                      />
+                {docFormData.type === 'video' && (
+                  <View style={{
+                    padding: 20,
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}>
+                    <View style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 32,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Video size={28} color="#ffffff" />
                     </View>
-                  )}
+                    <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
+                      Videoaufnahme wird bald verfügbar sein
+                    </Text>
+                  </View>
+                )}
 
-                  {/* Video Upload */}
-                  {docFormData.type === 'video' && (
-                    <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0' }}>
-                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                        <Video size={40} color="#cbd5e1" style={{ marginBottom: 10 }} />
-                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
-                          Videodatei hochladen
-                        </Text>
-                      </View>
-                      <input
-                        ref={videoFileInputRef}
-                        type="file"
-                        accept="video/*"
-                        style={{
-                          width: '100%',
-                          padding: 10,
-                          borderRadius: 8,
-                          border: '2px solid #E2E8F0',
-                          backgroundColor: '#ffffff',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                        }}
-                      />
-                    </View>
-                  )}
-                </View>
+                {docFormData.type && (
+                  <TouchableOpacity
+                    onPress={() => handleAddDocumentation(docFormData.type as 'text' | 'voice' | 'image' | 'video')}
+                    style={{
+                      padding: 14,
+                      backgroundColor: colors.primary,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      marginTop: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>
+                      Dokumentation hinzufügen
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
-          </ScrollView>
-        </ModernModal>
+          )}
+        </ScrollView>
+
+        {/* Modal Footer */}
+        <View style={{
+          flexDirection: 'row',
+          padding: 20,
+          borderTopWidth: 1,
+          borderTopColor: '#E2E8F0',
+          backgroundColor: '#ffffff',
+          gap: 12,
+        }}>
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedDefect(null);
+              setDefectImages([]);
+              setActiveTab('info');
+            }}
+            style={{
+              flex: 1,
+              padding: 14,
+              borderRadius: 10,
+              backgroundColor: '#F8FAFC',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748b' }}>
+              Schließen
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ModernModal>
       )}
     </>
   );
@@ -1129,5 +1402,74 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  tabTextActive: {
+    color: colors.primary,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  modalSection: {
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 8,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+  },
+  modalTextarea: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
 });

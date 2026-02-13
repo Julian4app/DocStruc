@@ -236,6 +236,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+    // @ts-ignore
+    zIndex: 20000,
   },
   calendarModal: {
     backgroundColor: '#ffffff',
@@ -248,6 +250,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+    // @ts-ignore
+    zIndex: 20001,
   },
   calendarHeader: {
     flexDirection: 'row',
