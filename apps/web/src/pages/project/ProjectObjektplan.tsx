@@ -108,19 +108,22 @@ const snapToAngle = (start: { x: number; y: number }, end: { x: number; y: numbe
 
 // ─── Dimension Label Drawing ─────────────────────────────────────────────────
 
-function drawDimensionLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, labelColor: string, bold?: boolean) {
+function drawDimensionLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, labelColor: string, scale: number, bold?: boolean) {
   ctx.save();
-  ctx.font = `${bold ? 'bold ' : ''}16px Inter, sans-serif`;
+  // Scale font size inversely with zoom so it stays readable at constant screen size
+  const fontSize = Math.max(24, 32 / scale);
+  ctx.font = `${bold ? 'bold ' : ''}${fontSize}px Inter, sans-serif`;
   ctx.textAlign = 'center';
   const tw = ctx.measureText(text).width;
-  const px = 8, py = 4, rr = 6, bh = 24;
+  const px = 12 / scale, py = 6 / scale, rr = 8 / scale;
+  const bh = fontSize * 1.2;
   const bx = x - tw / 2 - px;
   const by = y - bh / 2 - py;
   const bw = tw + px * 2;
   const bhh = bh + py * 2;
   ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0,0,0,0.08)';
-  ctx.shadowBlur = 4;
+  ctx.shadowColor = 'rgba(0,0,0,0.12)';
+  ctx.shadowBlur = 6 / scale;
   ctx.beginPath();
   ctx.moveTo(bx + rr, by);
   ctx.lineTo(bx + bw - rr, by);
@@ -135,10 +138,10 @@ function drawDimensionLabel(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.strokeStyle = labelColor;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2 / scale;
   ctx.stroke();
   ctx.fillStyle = labelColor;
-  ctx.fillText(text, x, y + 5);
+  ctx.fillText(text, x, y + fontSize * 0.35);
   ctx.restore();
 }
 
@@ -177,6 +180,10 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
   const [dragMode, setDragMode] = useState<DragMode>('none');
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragElementSnapshot, setDragElementSnapshot] = useState<CanvasElement | null>(null);
+  const [textFontSize, setTextFontSize] = useState(20);
+  const [showStrokeWidthMenu, setShowStrokeWidthMenu] = useState(false);
+  const [showWallThicknessMenu, setShowWallThicknessMenu] = useState(false);
+  const [showTextSizeMenu, setShowTextSizeMenu] = useState(false);
   const animFrameRef = useRef<number>(0);
 
   // ─── Element bounding ────────────────────────────────────────────────────
@@ -281,7 +288,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.stroke();
           if (showDimensions && el.length) {
             const mx = (el.x + (el.x2 ?? el.x)) / 2, my = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, mx, my - 18, formatLength(el.length, displayUnit), el.color);
+            drawDimensionLabel(ctx, mx, my - 30 / scale, formatLength(el.length, displayUnit), el.color, scale);
           }
           break;
         case 'rect':
@@ -327,7 +334,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           }
           if (showDimensions && el.length) {
             const mx = (el.x + (el.x2 ?? el.x)) / 2, my = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, mx, my - Math.abs(ny) * 2 - 20, formatLength(el.length, displayUnit), '#3B82F6');
+            drawDimensionLabel(ctx, mx, my - Math.abs(ny) * 2 - 30 / scale, formatLength(el.length, displayUnit), '#3B82F6', scale);
           }
           break;
         }
@@ -338,7 +345,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.beginPath(); ctx.setLineDash([4, 4]);
           ctx.arc(el.x, el.y, dw, 0, -Math.PI / 2, true);
           ctx.stroke(); ctx.setLineDash([]);
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + dw / 2, el.y - 20, formatLength(el.length, displayUnit), '#F59E0B');
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + dw / 2, el.y - 30 / scale, formatLength(el.length, displayUnit), '#F59E0B', scale);
           break;
         }
         case 'window': {
@@ -350,7 +357,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.moveTo(el.x + 4, el.y - 4); ctx.lineTo(el.x + ww - 4, el.y - 4);
           ctx.moveTo(el.x + 4, el.y + 4); ctx.lineTo(el.x + ww - 4, el.y + 4);
           ctx.stroke();
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + ww / 2, el.y - 22, formatLength(el.length, displayUnit), '#3B82F6');
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + ww / 2, el.y - 32 / scale, formatLength(el.length, displayUnit), '#3B82F6', scale);
           break;
         }
         case 'terrace': {
@@ -371,7 +378,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.beginPath(); ctx.moveTo(el.x + pdw * 0.25, el.y - 6); ctx.lineTo(el.x + pdw * 0.75, el.y - 6); ctx.stroke();
           ctx.setLineDash([]);
           ctx.beginPath(); ctx.moveTo(el.x + pdw * 0.4, el.y - 9); ctx.lineTo(el.x + pdw * 0.6, el.y - 9); ctx.stroke();
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + pdw / 2, el.y - 24, formatLength(el.length, displayUnit), '#8B5CF6');
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + pdw / 2, el.y - 34 / scale, formatLength(el.length, displayUnit), '#8B5CF6', scale);
           break;
         }
         case 'dimension': {
@@ -389,7 +396,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           }
           if (el.length) {
             const dmx = (el.x + (el.x2 ?? el.x)) / 2, dmy = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, dmx, dmy - 16, formatLength(el.length, displayUnit), '#EF4444', true);
+            drawDimensionLabel(ctx, dmx, dmy - 26 / scale, formatLength(el.length, displayUnit), '#EF4444', scale, true);
           }
           break;
         }
@@ -631,7 +638,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
   const addTextElement = () => {
     if (!textPosition || !textInput.trim()) return;
     pushUndo();
-    onElementsChange([...elements, { id: generateId(), type: 'text', x: textPosition.x, y: textPosition.y, text: textInput, fontSize: 20, color: strokeColor, strokeWidth: 1 }]);
+    onElementsChange([...elements, { id: generateId(), type: 'text', x: textPosition.x, y: textPosition.y, text: textInput, fontSize: textFontSize, color: strokeColor, strokeWidth: 1 }]);
     setTextInput(''); setTextPosition(null);
   };
 
@@ -648,6 +655,19 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
     if (!el || el.type !== 'wall') return;
     pushUndo();
     onElementsChange(elements.map(e => e.id === selectedElement ? { ...e, wallThickness: v } : e));
+  };
+
+  const updateSelectedElementSize = (newWidth: number) => {
+    if (!selectedElement) return;
+    pushUndo();
+    onElementsChange(elements.map(el => {
+      if (el.id !== selectedElement) return el;
+      const updated = { ...el, width: newWidth };
+      if (el.type === 'door' || el.type === 'window' || el.type === 'patio_door') {
+        updated.length = Math.round(newWidth * 2);
+      }
+      return updated;
+    }));
   };
 
   const freeTools: { tool: CanvasTool; icon: any; label: string }[] = [
@@ -709,22 +729,66 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           <button key={c} onClick={() => setStrokeColor(c)}
             style={{ width: 22, height: 22, borderRadius: 6, border: strokeColor === c ? `2px solid ${colors.primary}` : '2px solid #e2e8f0', backgroundColor: c, cursor: 'pointer', padding: 0 }} />
         ))}
+        {tool === 'text' && (
+          <>
+            <div style={{ width: 1, height: 28, backgroundColor: '#e2e8f0', margin: '0 4px' }} />
+            <div style={{ position: 'relative', zIndex: showTextSizeMenu ? 9999 : 1 }}>
+              <button onClick={() => { setShowTextSizeMenu(!showTextSizeMenu); setShowStrokeWidthMenu(false); setShowWallThicknessMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer', minWidth: 80, justifyContent: 'space-between' }}>
+                <span>{textFontSize}px</span><ChevronDown size={12} color="#94a3b8" />
+              </button>
+              {showTextSizeMenu && (
+                <><div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }} onClick={() => setShowTextSizeMenu(false)} />
+                <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 9999, marginTop: 4, backgroundColor: '#fff', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', minWidth: 100, maxHeight: 300, overflowY: 'auto' }}>
+                  {[9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 50].map(s => (
+                    <button key={s} onClick={() => { setTextFontSize(s); setShowTextSizeMenu(false); }}
+                      style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', backgroundColor: textFontSize === s ? '#eff6ff' : 'transparent', color: textFontSize === s ? colors.primary : '#334155', fontSize: 13, textAlign: 'left', cursor: 'pointer', fontWeight: textFontSize === s ? 600 : 400 }}>
+                      {s}px
+                    </button>
+                  ))}
+                </div></>
+              )}
+            </div>
+          </>
+        )}
         <div style={{ width: 1, height: 28, backgroundColor: '#e2e8f0', margin: '0 4px' }} />
-        <select value={strokeWidth} onChange={e => setStrokeWidth(Number(e.target.value))}
-          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
-          <option value={1}>1px</option><option value={2}>2px</option><option value={3}>3px</option><option value={5}>5px</option><option value={8}>8px</option>
-        </select>
+        <div style={{ position: 'relative', zIndex: showStrokeWidthMenu ? 9999 : 1 }}>
+          <button onClick={() => { setShowStrokeWidthMenu(!showStrokeWidthMenu); setShowWallThicknessMenu(false); setShowTextSizeMenu(false); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer', minWidth: 70, justifyContent: 'space-between' }}>
+            <span>{strokeWidth}px</span><ChevronDown size={12} color="#94a3b8" />
+          </button>
+          {showStrokeWidthMenu && (
+            <><div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }} onClick={() => setShowStrokeWidthMenu(false)} />
+            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 9999, marginTop: 4, backgroundColor: '#fff', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', minWidth: 90, maxHeight: 200, overflowY: 'auto' }}>
+              {[1, 2, 3, 5, 8].map(w => (
+                <button key={w} onClick={() => { setStrokeWidth(w); setShowStrokeWidthMenu(false); }}
+                  style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', backgroundColor: strokeWidth === w ? '#eff6ff' : 'transparent', color: strokeWidth === w ? colors.primary : '#334155', fontSize: 13, textAlign: 'left', cursor: 'pointer', fontWeight: strokeWidth === w ? 600 : 400 }}>
+                  {w}px
+                </button>
+              ))}
+            </div></>
+          )}
+        </div>
         {mode === 'technical' && (
           <>
             <div style={{ width: 1, height: 28, backgroundColor: '#e2e8f0', margin: '0 4px' }} />
-            <select value={selectedEl?.type === 'wall' ? (selectedEl.wallThickness ?? wallThickness) : wallThickness}
-              onChange={e => { const v = Number(e.target.value); setWallThickness(v); if (selectedEl?.type === 'wall') changeSelectedWallThickness(v); }}
-              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
-              <option value={6}>Wand 6cm</option><option value={8}>Wand 8cm</option><option value={10}>Wand 10cm</option>
-              <option value={12}>Wand 12cm</option><option value={15}>Wand 15cm</option><option value={17.5}>Wand 17,5cm</option>
-              <option value={20}>Wand 20cm</option><option value={24}>Wand 24cm</option><option value={30}>Wand 30cm</option>
-              <option value={36.5}>Wand 36,5cm</option><option value={40}>Wand 40cm</option>
-            </select>
+            <div style={{ position: 'relative', zIndex: showWallThicknessMenu ? 9999 : 1 }}>
+              <button onClick={() => { setShowWallThicknessMenu(!showWallThicknessMenu); setShowStrokeWidthMenu(false); setShowTextSizeMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer', minWidth: 110, justifyContent: 'space-between' }}>
+                <span>Wand {selectedEl?.type === 'wall' ? (selectedEl.wallThickness ?? wallThickness) : wallThickness}cm</span><ChevronDown size={12} color="#94a3b8" />
+              </button>
+              {showWallThicknessMenu && (
+                <><div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9998 }} onClick={() => setShowWallThicknessMenu(false)} />
+                <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 9999, marginTop: 4, backgroundColor: '#fff', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', minWidth: 130, maxHeight: 280, overflowY: 'auto' }}>
+                  {[6, 8, 10, 12, 15, 17.5, 20, 24, 30, 36.5, 40].map(w => (
+                    <button key={w} onClick={() => { setWallThickness(w); if (selectedEl?.type === 'wall') changeSelectedWallThickness(w); setShowWallThicknessMenu(false); }}
+                      style={{ display: 'block', width: '100%', padding: '8px 12px', border: 'none', backgroundColor: (selectedEl?.type === 'wall' ? (selectedEl.wallThickness ?? wallThickness) : wallThickness) === w ? '#eff6ff' : 'transparent', color: (selectedEl?.type === 'wall' ? (selectedEl.wallThickness ?? wallThickness) : wallThickness) === w ? colors.primary : '#334155', fontSize: 13, textAlign: 'left', cursor: 'pointer', fontWeight: (selectedEl?.type === 'wall' ? (selectedEl.wallThickness ?? wallThickness) : wallThickness) === w ? 600 : 400 }}>
+                      Wand {w}cm
+                    </button>
+                  ))}
+                </div></>
+              )}
+            </div>
             <button onClick={() => setDisplayUnit(u => u === 'cm' ? 'm' : 'cm')}
               style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               {displayUnit}
@@ -758,9 +822,46 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
         </button>
       </div>
       {/* Hint bar */}
-      {tool === 'select' && (
+      {tool === 'select' && !selectedEl && (
         <div style={{ padding: '4px 16px', backgroundColor: '#fffbeb', borderBottom: '1px solid #fde68a', fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'center', gap: 8 }}>
           <Move size={12} /> <strong>Auswahl-Modus:</strong> Klicken = Auswählen, Ziehen = Verschieben. Anfasspunkte (●/□) ziehen = Größe ändern.
+        </div>
+      )}
+      {/* Properties panel for selected element */}
+      {selectedEl && (selectedEl.type === 'door' || selectedEl.type === 'window' || selectedEl.type === 'patio_door' || selectedEl.type === 'terrace' || selectedEl.type === 'rect' || selectedEl.type === 'circle') && (
+        <div style={{ padding: '8px 16px', backgroundColor: '#f0f9ff', borderBottom: '1px solid #bae6fd', fontSize: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: colors.primary }}>
+            <Edit2 size={14} /> Eigenschaften:
+          </div>
+          {(selectedEl.type === 'door' || selectedEl.type === 'window' || selectedEl.type === 'patio_door') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: '#64748b' }}>Breite:</span>
+              <input type="number" value={Math.round((selectedEl.width ?? 60) * 2)} onChange={e => updateSelectedElementSize(Number(e.target.value) / 2)}
+                style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12, outline: 'none' }} />
+              <span style={{ color: '#64748b', fontSize: 11 }}>cm</span>
+            </div>
+          )}
+          {(selectedEl.type === 'terrace' || selectedEl.type === 'rect' || selectedEl.type === 'circle') && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#64748b' }}>Breite:</span>
+                <input type="number" value={Math.round((selectedEl.width ?? 200) * 2)} onChange={e => { pushUndo(); onElementsChange(elements.map(el => el.id === selectedEl.id ? { ...el, width: Number(e.target.value) / 2 } : el)); }}
+                  style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12, outline: 'none' }} />
+                <span style={{ color: '#64748b', fontSize: 11 }}>cm</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#64748b' }}>Höhe:</span>
+                <input type="number" value={Math.round((selectedEl.height ?? 120) * 2)} onChange={e => { pushUndo(); onElementsChange(elements.map(el => el.id === selectedEl.id ? { ...el, height: Number(e.target.value) / 2 } : el)); }}
+                  style={{ width: 70, padding: '3px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 12, outline: 'none' }} />
+                <span style={{ color: '#64748b', fontSize: 11 }}>cm</span>
+              </div>
+            </>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={deleteSelected} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, border: 'none', backgroundColor: '#fee2e2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <Trash2 size={12} /> Löschen
+            </button>
+          </div>
         </div>
       )}
       {/* Canvas */}
