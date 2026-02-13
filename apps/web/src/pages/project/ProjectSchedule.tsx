@@ -71,6 +71,10 @@ export function ProjectSchedule() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [previewItem, setPreviewItem] = useState<LinkedItem | null>(null);
+  
+  // Calendar states
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedMilestone, setSelectedMilestone] = useState<TimelineEvent | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -634,15 +638,248 @@ export function ProjectSchedule() {
   );
 
   // Render Calendar View (Placeholder)
-  const renderCalendarView = () => (
-    <Card style={styles.emptyStateCard}>
-      <Calendar size={48} color="#CBD5E1" />
-      <Text style={styles.emptyStateTitle}>Kalenderansicht</Text>
-      <Text style={styles.emptyStateText}>
-        Die Kalenderansicht wird in Kürze verfügbar sein
-      </Text>
-    </Card>
-  );
+  const renderCalendarView = () => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // Get first day of month and number of days
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7; // Adjust so Monday is 0
+    
+    // Get milestones for current month
+    const monthMilestones = milestones.filter(m => {
+      const milestoneDate = new Date(m.event_date);
+      return milestoneDate.getMonth() === month && milestoneDate.getFullYear() === year;
+    });
+    
+    // Group milestones by day
+    const milestonesByDay: { [key: number]: TimelineEvent[] } = {};
+    monthMilestones.forEach(m => {
+      const day = new Date(m.event_date).getDate();
+      if (!milestonesByDay[day]) {
+        milestonesByDay[day] = [];
+      }
+      milestonesByDay[day].push(m);
+    });
+    
+    // Generate calendar days
+    const calendarDays: (number | null)[] = [];
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      calendarDays.push(null);
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      calendarDays.push(day);
+    }
+    
+    const monthNames = [
+      'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+      'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'
+    ];
+    
+    const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    
+    const goToPreviousMonth = () => {
+      setCurrentDate(new Date(year, month - 1, 1));
+    };
+    
+    const goToNextMonth = () => {
+      setCurrentDate(new Date(year, month + 1, 1));
+    };
+    
+    const goToToday = () => {
+      setCurrentDate(new Date());
+    };
+    
+    return (
+      <>
+        <Card style={styles.calendarCard}>
+          {/* Calendar Header */}
+          <View style={styles.calendarHeader}>
+            <View style={styles.calendarHeaderLeft}>
+              <Text style={styles.calendarMonthTitle}>
+                {monthNames[month]} {year}
+              </Text>
+              <TouchableOpacity style={styles.todayButton} onPress={goToToday}>
+                <Text style={styles.todayButtonText}>Heute</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.calendarNavigation}>
+              <TouchableOpacity style={styles.navButton} onPress={goToPreviousMonth}>
+                <Text style={styles.navButtonText}>‹</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.navButton} onPress={goToNextMonth}>
+                <Text style={styles.navButtonText}>›</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {/* Week Days */}
+          <View style={styles.weekDaysRow}>
+            {weekDays.map(day => (
+              <View key={day} style={styles.weekDayCell}>
+                <Text style={styles.weekDayText}>{day}</Text>
+              </View>
+            ))}
+          </View>
+          
+          {/* Calendar Grid */}
+          <View style={styles.calendarGrid}>
+            {calendarDays.map((day, index) => {
+              const today = new Date();
+              const isToday = day !== null && 
+                day === today.getDate() && 
+                month === today.getMonth() && 
+                year === today.getFullYear();
+              
+              const dayMilestones = day !== null ? milestonesByDay[day] || [] : [];
+              
+              return (
+                <View key={index} style={styles.calendarDayCell}>
+                  {day !== null && (
+                    <>
+                      <View style={[styles.dayNumber, isToday && styles.dayNumberToday]}>
+                        <Text style={[styles.dayNumberText, isToday && styles.dayNumberTextToday]}>
+                          {day}
+                        </Text>
+                      </View>
+                      
+                      {/* Milestone Dots */}
+                      {dayMilestones.length > 0 && (
+                        <View style={styles.milestoneDots}>
+                          {dayMilestones.slice(0, 3).map((milestone) => (
+                            <TouchableOpacity
+                              key={milestone.id}
+                              style={[
+                                styles.milestoneDot,
+                                { backgroundColor: milestone.color || getEventTypeColor(milestone.eventType) }
+                              ]}
+                              onPress={() => setSelectedMilestone(milestone)}
+                            />
+                          ))}
+                          {dayMilestones.length > 3 && (
+                            <Text style={styles.moreMilestonesText}>+{dayMilestones.length - 3}</Text>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+        
+        {/* Calendar Legend */}
+        <Card style={styles.legendCard}>
+          <Text style={styles.legendTitle}>Legende</Text>
+          <View style={styles.legendItems}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: getEventTypeColor('milestone') }]} />
+              <Text style={styles.legendText}>Meilenstein</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: getEventTypeColor('deadline') }]} />
+              <Text style={styles.legendText}>Deadline</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: getEventTypeColor('phase') }]} />
+              <Text style={styles.legendText}>Bauphase</Text>
+            </View>
+          </View>
+        </Card>
+        
+        {/* Milestone Detail Modal */}
+        {selectedMilestone && (
+          <ModernModal
+            visible={true}
+            onClose={() => setSelectedMilestone(null)}
+            title={selectedMilestone.title}
+            maxWidth={600}
+          >
+            <View style={styles.milestoneDetailContent}>
+              {/* Type Badge */}
+              <View style={[
+                styles.eventTypeBadge,
+                { 
+                  backgroundColor: selectedMilestone.color || getEventTypeColor(selectedMilestone.eventType),
+                  alignSelf: 'flex-start'
+                }
+              ]}>
+                <Text style={styles.eventTypeBadgeText}>
+                  {getEventTypeLabel(selectedMilestone.eventType)}
+                </Text>
+              </View>
+              
+              {/* Date */}
+              <View style={styles.detailRow}>
+                <Calendar size={16} color="#64748b" />
+                <Text style={styles.detailLabel}>Datum:</Text>
+                <Text style={styles.detailValue}>{formatDate(selectedMilestone.event_date)}</Text>
+              </View>
+              
+              {selectedMilestone.end_date && (
+                <View style={styles.detailRow}>
+                  <Calendar size={16} color="#64748b" />
+                  <Text style={styles.detailLabel}>Enddatum:</Text>
+                  <Text style={styles.detailValue}>{formatDate(selectedMilestone.end_date)}</Text>
+                </View>
+              )}
+              
+              {/* Description */}
+              {selectedMilestone.description && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Beschreibung</Text>
+                  <Text style={styles.detailDescription}>{selectedMilestone.description}</Text>
+                </View>
+              )}
+              
+              {/* Status */}
+              <View style={styles.detailRow}>
+                {selectedMilestone.completed ? (
+                  <>
+                    <CheckCircle size={16} color="#22c55e" />
+                    <Text style={[styles.detailLabel, { color: '#22c55e' }]}>Abgeschlossen</Text>
+                  </>
+                ) : (
+                  <>
+                    <Clock size={16} color="#F59E0B" />
+                    <Text style={styles.detailLabel}>
+                      {getDaysUntil(selectedMilestone.event_date) === 0 ? 'Heute fällig' :
+                       getDaysUntil(selectedMilestone.event_date) < 0 ? 
+                         `${Math.abs(getDaysUntil(selectedMilestone.event_date))} Tag(e) überfällig` :
+                         `Fällig in ${getDaysUntil(selectedMilestone.event_date)} Tag(en)`}
+                    </Text>
+                  </>
+                )}
+              </View>
+              
+              {/* Actions */}
+              <View style={styles.milestoneDetailActions}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedMilestone(null);
+                    setActiveTab('timeline');
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  In Timeline anzeigen
+                </Button>
+                <Button
+                  onClick={() => setSelectedMilestone(null)}
+                  style={{ flex: 1 }}
+                >
+                  Schließen
+                </Button>
+              </View>
+            </View>
+          </ModernModal>
+        )}
+      </>
+    );
+  };
 
   if (loading) {
     return (
@@ -1600,5 +1837,209 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#3B82F6',
+  },
+  // Calendar View
+  calendarCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 20,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  calendarHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  calendarMonthTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  todayButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  todayButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  calendarNavigation: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  navButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  weekDaysRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 2,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 12,
+    marginBottom: 8,
+  },
+  weekDayCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weekDayText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarDayCell: {
+    width: '14.285%', // 100% / 7 days
+    aspectRatio: 1,
+    padding: 4,
+    borderWidth: 0.5,
+    borderColor: '#F1F5F9',
+    position: 'relative',
+  },
+  dayNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  dayNumberToday: {
+    backgroundColor: colors.primary,
+  },
+  dayNumberText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  dayNumberTextToday: {
+    color: '#ffffff',
+  },
+  milestoneDots: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 3,
+    paddingHorizontal: 2,
+  },
+  milestoneDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  moreMilestonesText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  legendCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 20,
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 12,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    gap: 20,
+    flexWrap: 'wrap',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  legendText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  milestoneDetailContent: {
+    gap: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '500',
+  },
+  detailSection: {
+    gap: 8,
+    paddingTop: 8,
+  },
+  detailSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  detailDescription: {
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 20,
+  },
+  milestoneDetailActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
   },
 });
