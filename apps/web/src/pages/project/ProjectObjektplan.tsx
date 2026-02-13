@@ -110,20 +110,20 @@ const snapToAngle = (start: { x: number; y: number }, end: { x: number; y: numbe
 
 function drawDimensionLabel(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, labelColor: string, scale: number, bold?: boolean) {
   ctx.save();
-  // Scale font size inversely with zoom so it stays readable at constant screen size
-  const fontSize = Math.max(24, 32 / scale);
+  // Font size scales with zoom but maintains readability (16-24px range in canvas units)
+  const fontSize = Math.max(16, Math.min(24, 20 / Math.sqrt(scale)));
   ctx.font = `${bold ? 'bold ' : ''}${fontSize}px Inter, sans-serif`;
   ctx.textAlign = 'center';
   const tw = ctx.measureText(text).width;
-  const px = 12 / scale, py = 6 / scale, rr = 8 / scale;
-  const bh = fontSize * 1.2;
+  const px = 10, py = 5, rr = 6;
+  const bh = fontSize * 1.1;
   const bx = x - tw / 2 - px;
   const by = y - bh / 2 - py;
   const bw = tw + px * 2;
   const bhh = bh + py * 2;
   ctx.fillStyle = '#ffffff';
   ctx.shadowColor = 'rgba(0,0,0,0.12)';
-  ctx.shadowBlur = 6 / scale;
+  ctx.shadowBlur = 4;
   ctx.beginPath();
   ctx.moveTo(bx + rr, by);
   ctx.lineTo(bx + bw - rr, by);
@@ -138,7 +138,7 @@ function drawDimensionLabel(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.fill();
   ctx.shadowBlur = 0;
   ctx.strokeStyle = labelColor;
-  ctx.lineWidth = 2 / scale;
+  ctx.lineWidth = 1.8;
   ctx.stroke();
   ctx.fillStyle = labelColor;
   ctx.fillText(text, x, y + fontSize * 0.35);
@@ -288,7 +288,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.stroke();
           if (showDimensions && el.length) {
             const mx = (el.x + (el.x2 ?? el.x)) / 2, my = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, mx, my - 30 / scale, formatLength(el.length, displayUnit), el.color, scale);
+            drawDimensionLabel(ctx, mx, my - 20, formatLength(el.length, displayUnit), el.color, scale);
           }
           break;
         case 'rect':
@@ -334,7 +334,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           }
           if (showDimensions && el.length) {
             const mx = (el.x + (el.x2 ?? el.x)) / 2, my = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, mx, my - Math.abs(ny) * 2 - 30 / scale, formatLength(el.length, displayUnit), '#3B82F6', scale);
+            drawDimensionLabel(ctx, mx, my - Math.abs(ny) * 2 - 25, formatLength(el.length, displayUnit), '#3B82F6', scale);
           }
           break;
         }
@@ -345,7 +345,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.beginPath(); ctx.setLineDash([4, 4]);
           ctx.arc(el.x, el.y, dw, 0, -Math.PI / 2, true);
           ctx.stroke(); ctx.setLineDash([]);
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + dw / 2, el.y - 30 / scale, formatLength(el.length, displayUnit), '#F59E0B', scale);
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + dw / 2, el.y - 25, formatLength(el.length, displayUnit), '#F59E0B', scale);
           break;
         }
         case 'window': {
@@ -357,7 +357,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.moveTo(el.x + 4, el.y - 4); ctx.lineTo(el.x + ww - 4, el.y - 4);
           ctx.moveTo(el.x + 4, el.y + 4); ctx.lineTo(el.x + ww - 4, el.y + 4);
           ctx.stroke();
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + ww / 2, el.y - 32 / scale, formatLength(el.length, displayUnit), '#3B82F6', scale);
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + ww / 2, el.y - 28, formatLength(el.length, displayUnit), '#3B82F6', scale);
           break;
         }
         case 'terrace': {
@@ -378,7 +378,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           ctx.beginPath(); ctx.moveTo(el.x + pdw * 0.25, el.y - 6); ctx.lineTo(el.x + pdw * 0.75, el.y - 6); ctx.stroke();
           ctx.setLineDash([]);
           ctx.beginPath(); ctx.moveTo(el.x + pdw * 0.4, el.y - 9); ctx.lineTo(el.x + pdw * 0.6, el.y - 9); ctx.stroke();
-          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + pdw / 2, el.y - 34 / scale, formatLength(el.length, displayUnit), '#8B5CF6', scale);
+          if (showDimensions && el.length) drawDimensionLabel(ctx, el.x + pdw / 2, el.y - 30, formatLength(el.length, displayUnit), '#8B5CF6', scale);
           break;
         }
         case 'dimension': {
@@ -396,7 +396,7 @@ function FloorPlanCanvas({ mode, elements, onElementsChange, onSave }: FloorPlan
           }
           if (el.length) {
             const dmx = (el.x + (el.x2 ?? el.x)) / 2, dmy = (el.y + (el.y2 ?? el.y)) / 2;
-            drawDimensionLabel(ctx, dmx, dmy - 26 / scale, formatLength(el.length, displayUnit), '#EF4444', scale, true);
+            drawDimensionLabel(ctx, dmx, dmy - 22, formatLength(el.length, displayUnit), '#EF4444', scale, true);
           }
           break;
         }
