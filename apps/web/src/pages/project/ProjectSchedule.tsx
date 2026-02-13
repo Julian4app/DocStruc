@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
-import { Calendar, Clock, CheckCircle, Plus, Flag } from 'lucide-react';
+import { DatePicker } from '../../components/DatePicker';
+import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare } from 'lucide-react';
 
 interface TimelineEvent {
   id: string;
   title: string;
   event_date: string;
+  end_date?: string | null;
+  description?: string | null;
+  color?: string | null;
   eventType: string;
   completed: boolean;
   created_at: string;
@@ -22,6 +26,26 @@ interface Task {
   title: string;
   due_date: string | null;
   status: string;
+  description?: string | null;
+  priority?: string;
+}
+
+interface Defect {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'in_progress' | 'resolved' | 'rejected';
+  due_date: string | null;
+}
+
+interface LinkedItem {
+  id: string;
+  type: 'task' | 'defect';
+  title: string;
+  status: string;
+  priority?: string;
+  description?: string;
 }
 
 export function ProjectSchedule() {
@@ -32,12 +56,24 @@ export function ProjectSchedule() {
   const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [color, setColor] = useState('#3B82F6');
   const [eventType, setEventType] = useState<'milestone' | 'deadline' | 'phase'>('milestone');
+  
+  // Task/Defect linking states
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [allDefects, setAllDefects] = useState<Defect[]>([]);
+  const [selectedItems, setSelectedItems] = useState<LinkedItem[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [previewItem, setPreviewItem] = useState<LinkedItem | null>(null);
 
   useEffect(() => {
     if (id) {
       loadScheduleData();
+      loadTasksAndDefects();
     }
   }, [id]);
 
@@ -76,33 +112,126 @@ export function ProjectSchedule() {
     }
   };
 
+  const loadTasksAndDefects = async () => {
+    if (!id) return;
+
+    try {
+      // Load all tasks
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('tasks')
+        .select('id, title, status, description, priority, due_date')
+        .eq('project_id', id)
+        .order('created_at', { ascending: false });
+
+      if (tasksError) throw tasksError;
+      setAllTasks(tasksData || []);
+
+      // Load all defects
+      const { data: defectsData, error: defectsError } = await supabase
+        .from('tasks')
+        .select('id, title, description, priority, status, due_date')
+        .eq('project_id', id)
+        .eq('task_type', 'defect')
+        .order('created_at', { ascending: false });
+
+      if (defectsError) throw defectsError;
+      setAllDefects(defectsData || []);
+    } catch (error: any) {
+      console.error('Error loading tasks and defects:', error);
+    }
+  };
+
   const handleCreateMilestone = async () => {
     if (!title.trim() || !eventDate) {
-      showToast('Bitte alle Felder ausfüllen', 'error');
+      showToast('Bitte Titel und Startdatum ausfüllen', 'error');
+      return;
+    }
+
+    // Validate end date is after start date if provided
+    if (endDate && new Date(endDate) < new Date(eventDate)) {
+      showToast('Enddatum muss nach dem Startdatum liegen', 'error');
       return;
     }
 
     try {
-      const { error } = await supabase.from('timeline_events').insert({
-        project_id: id,
-        title: title.trim(),
-        event_date: eventDate,
-        eventType: eventType,
-        completed: false
-      });
+      // Create milestone
+      const { data: milestoneData, error: milestoneError } = await supabase
+        .from('timeline_events')
+        .insert({
+          project_id: id,
+          title: title.trim(),
+          description: description.trim() || null,
+          event_date: eventDate,
+          end_date: endDate || null,
+          color: color,
+          eventType: eventType,
+          completed: false
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (milestoneError) throw milestoneError;
+
+      // Link selected tasks and defects
+      if (selectedItems.length > 0) {
+        const milestoneTasksInserts = selectedItems.map(item => ({
+          milestone_id: milestoneData.id,
+          task_id: item.id
+        }));
+
+        const { error: linkError } = await supabase
+          .from('milestone_tasks')
+          .insert(milestoneTasksInserts);
+
+        if (linkError) throw linkError;
+      }
 
       showToast('Meilenstein erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
-      setTitle('');
-      setEventDate('');
-      setEventType('milestone');
+      resetForm();
       loadScheduleData();
     } catch (error: any) {
       console.error('Error creating milestone:', error);
       showToast('Fehler beim Erstellen des Meilensteins', 'error');
     }
+  };
+
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setEventDate('');
+    setEndDate('');
+    setColor('#3B82F6');
+    setEventType('milestone');
+    setSelectedItems([]);
+    setSearchQuery('');
+    setPreviewItem(null);
+  };
+
+  const handleToggleItemSelection = (item: Task | Defect, type: 'task' | 'defect') => {
+    const linkedItem: LinkedItem = {
+      id: item.id,
+      type,
+      title: item.title,
+      status: item.status,
+      priority: item.priority,
+      description: item.description || undefined
+    };
+
+    const isSelected = selectedItems.some(i => i.id === item.id);
+    if (isSelected) {
+      setSelectedItems(selectedItems.filter(i => i.id !== item.id));
+      // Clear preview if unselecting the previewed item
+      if (previewItem?.id === item.id) {
+        setPreviewItem(null);
+      }
+    } else {
+      setSelectedItems([...selectedItems, linkedItem]);
+    }
+  };
+
+  const handleRemoveSelectedItem = (itemId: string) => {
+    setSelectedItems(selectedItems.filter(i => i.id !== itemId));
   };
 
   const handleToggleMilestone = async (milestoneId: string, currentStatus: boolean) => {
@@ -154,6 +283,47 @@ export function ProjectSchedule() {
       default: return '#94a3b8';
     }
   };
+
+  const getPriorityColor = (priority?: string) => {
+    switch (priority) {
+      case 'critical': return '#EF4444';
+      case 'high': return '#F59E0B';
+      case 'medium': return '#3B82F6';
+      case 'low': return '#10B981';
+      default: return '#94a3b8';
+    }
+  };
+
+  const getPriorityLabel = (priority?: string) => {
+    switch (priority) {
+      case 'critical': return 'Kritisch';
+      case 'high': return 'Hoch';
+      case 'medium': return 'Mittel';
+      case 'low': return 'Niedrig';
+      default: return priority;
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'open': return 'Offen';
+      case 'in_progress': return 'In Bearbeitung';
+      case 'done': return 'Erledigt';
+      case 'resolved': return 'Behoben';
+      case 'blocked': return 'Blockiert';
+      case 'rejected': return 'Abgelehnt';
+      default: return status;
+    }
+  };
+
+  // Filter items based on search
+  const filteredTasks = allTasks.filter(task =>
+    task.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredDefects = allDefects.filter(defect =>
+    defect.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -311,25 +481,50 @@ export function ProjectSchedule() {
         visible={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
-          setTitle('');
-          setEventDate('');
-          setEventType('milestone');
+          resetForm();
         }}
         title="Neuer Meilenstein"
+        maxWidth={700}
       >
         <View style={styles.modalContent}>
+          {/* Title */}
           <Input
             label="Titel *"
             value={title}
             onChangeText={setTitle}
             placeholder="z.B. Rohbau abgeschlossen"
           />
-          <Input
-            label="Datum *"
+
+          {/* Description */}
+          <View>
+            <Text style={styles.inputLabel}>Beschreibung</Text>
+            <RNTextInput
+              style={styles.textArea}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Optionale Beschreibung..."
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          {/* Start Date */}
+          <DatePicker
+            label="Startdatum *"
             value={eventDate}
-            onChangeText={setEventDate}
-            placeholder="YYYY-MM-DD"
+            onChange={setEventDate}
+            placeholder="TT.MM.JJJJ"
           />
+
+          {/* End Date */}
+          <DatePicker
+            label="Enddatum (optional)"
+            value={endDate}
+            onChange={setEndDate}
+            placeholder="TT.MM.JJJJ"
+          />
+
+          {/* Type Selection */}
           <View>
             <Text style={styles.inputLabel}>Typ</Text>
             <View style={styles.typeGrid}>
@@ -355,10 +550,197 @@ export function ProjectSchedule() {
               ))}
             </View>
           </View>
+
+          {/* Color Picker */}
+          <View>
+            <Text style={styles.inputLabel}>Farbe</Text>
+            <View style={styles.colorGrid}>
+              {['#3B82F6', '#EF4444', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#14B8A6', '#6366F1'].map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: c },
+                    color === c && styles.colorOptionSelected
+                  ]}
+                  onPress={() => setColor(c)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Task/Defect Linking */}
+          <View>
+            <Text style={styles.inputLabel}>Aufgaben & Mängel verknüpfen</Text>
+            
+            {/* Selected Items Display */}
+            {selectedItems.length > 0 && (
+              <View style={styles.selectedItemsContainer}>
+                {selectedItems.map(item => (
+                  <View key={item.id} style={styles.selectedItemChip}>
+                    {item.type === 'task' ? (
+                      <CheckSquare size={14} color={colors.primary} />
+                    ) : (
+                      <AlertCircle size={14} color="#EF4444" />
+                    )}
+                    <Text style={styles.selectedItemText}>{item.title}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveSelectedItem(item.id)}>
+                      <X size={14} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Dropdown Trigger */}
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+            >
+              <Link2 size={16} color="#64748b" />
+              <Text style={styles.dropdownTriggerText}>
+                {selectedItems.length > 0 
+                  ? `${selectedItems.length} ausgewählt` 
+                  : 'Aufgaben/Mängel auswählen'}
+              </Text>
+              <ChevronDown size={16} color="#64748b" />
+            </TouchableOpacity>
+
+            {/* Dropdown Content */}
+            {isDropdownOpen && (
+              <View style={styles.dropdownContent}>
+                {/* Search */}
+                <View style={styles.searchContainer}>
+                  <RNTextInput
+                    style={styles.searchInput}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Suchen..."
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+
+                <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
+                  {/* Tasks Section */}
+                  {filteredTasks.length > 0 && (
+                    <View style={styles.dropdownSection}>
+                      <Text style={styles.dropdownSectionTitle}>Aufgaben</Text>
+                      {filteredTasks.map(task => {
+                        const isSelected = selectedItems.some(i => i.id === task.id);
+                        return (
+                          <TouchableOpacity
+                            key={task.id}
+                            style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                            onPress={() => handleToggleItemSelection(task, 'task')}
+                            onLongPress={() => setPreviewItem({
+                              id: task.id,
+                              type: 'task',
+                              title: task.title,
+                              status: task.status,
+                              priority: task.priority,
+                              description: task.description || undefined
+                            })}
+                          >
+                            <View style={styles.dropdownItemLeft}>
+                              <CheckSquare size={16} color={isSelected ? colors.primary : '#94a3b8'} />
+                              <Text style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleSelected]}>
+                                {task.title}
+                              </Text>
+                            </View>
+                            <Text style={[styles.dropdownItemStatus, { color: getPriorityColor(task.priority) }]}>
+                              {getStatusLabel(task.status)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Defects Section */}
+                  {filteredDefects.length > 0 && (
+                    <View style={styles.dropdownSection}>
+                      <Text style={styles.dropdownSectionTitle}>Mängel</Text>
+                      {filteredDefects.map(defect => {
+                        const isSelected = selectedItems.some(i => i.id === defect.id);
+                        return (
+                          <TouchableOpacity
+                            key={defect.id}
+                            style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                            onPress={() => handleToggleItemSelection(defect, 'defect')}
+                            onLongPress={() => setPreviewItem({
+                              id: defect.id,
+                              type: 'defect',
+                              title: defect.title,
+                              status: defect.status,
+                              priority: defect.priority,
+                              description: defect.description || undefined
+                            })}
+                          >
+                            <View style={styles.dropdownItemLeft}>
+                              <AlertCircle size={16} color={isSelected ? '#EF4444' : '#94a3b8'} />
+                              <Text style={[styles.dropdownItemTitle, isSelected && styles.dropdownItemTitleSelected]}>
+                                {defect.title}
+                              </Text>
+                            </View>
+                            <View style={styles.dropdownItemRight}>
+                              <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(defect.priority) }]}>
+                                <Text style={styles.priorityBadgeText}>{getPriorityLabel(defect.priority)}</Text>
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {filteredTasks.length === 0 && filteredDefects.length === 0 && (
+                    <Text style={styles.emptyDropdownText}>Keine Ergebnisse gefunden</Text>
+                  )}
+                </ScrollView>
+
+                {/* Preview Panel */}
+                {previewItem && (
+                  <View style={styles.previewPanel}>
+                    <View style={styles.previewHeader}>
+                      <View style={styles.previewTypeIndicator}>
+                        {previewItem.type === 'task' ? (
+                          <CheckSquare size={16} color={colors.primary} />
+                        ) : (
+                          <AlertCircle size={16} color="#EF4444" />
+                        )}
+                        <Text style={styles.previewType}>
+                          {previewItem.type === 'task' ? 'Aufgabe' : 'Mangel'}
+                        </Text>
+                      </View>
+                      {previewItem.priority && (
+                        <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(previewItem.priority) }]}>
+                          <Text style={styles.priorityBadgeText}>{getPriorityLabel(previewItem.priority)}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.previewTitle}>{previewItem.title}</Text>
+                    {previewItem.description && (
+                      <Text style={styles.previewDescription} numberOfLines={3}>
+                        {previewItem.description}
+                      </Text>
+                    )}
+                    <Text style={styles.previewStatus}>
+                      Status: {getStatusLabel(previewItem.status)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Actions */}
           <View style={styles.modalActions}>
             <Button
               variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                resetForm();
+              }}
               style={{ flex: 1 }}
             >
               Abbrechen
@@ -554,6 +936,17 @@ const styles = StyleSheet.create({
     color: '#475569',
     marginBottom: 8,
   },
+  textArea: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
   typeGrid: {
     flexDirection: 'row',
     gap: 8,
@@ -572,6 +965,194 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#475569',
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  colorOption: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  colorOptionSelected: {
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  selectedItemsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  selectedItemChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  selectedItemText: {
+    fontSize: 13,
+    color: '#0f172a',
+    fontWeight: '500',
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  dropdownTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#64748b',
+  },
+  dropdownContent: {
+    marginTop: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    maxHeight: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  searchContainer: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  searchInput: {
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  dropdownScroll: {
+    maxHeight: 250,
+  },
+  dropdownSection: {
+    padding: 12,
+  },
+  dropdownSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#F1F5F9',
+  },
+  dropdownItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  dropdownItemTitle: {
+    fontSize: 14,
+    color: '#475569',
+    flex: 1,
+  },
+  dropdownItemTitleSelected: {
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  dropdownItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropdownItemStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  priorityBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  emptyDropdownText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+    padding: 20,
+  },
+  previewPanel: {
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  previewTypeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  previewType: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  previewTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  previewDescription: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  previewStatus: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
   },
   modalActions: {
     flexDirection: 'row',
