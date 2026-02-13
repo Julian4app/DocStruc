@@ -1022,11 +1022,19 @@ export function ProjectSchedule() {
             </View>
           </View>
         </Card>
-      </>
-    );
-  };
-
-  if (loading) {
+        
+        {/* Milestone Detail Modal */}
+        {selectedMilestone && !isEditMilestoneMode && (
+          <ModernModal
+            visible={true}
+            onClose={() => {
+              setSelectedMilestone(null);
+              setSelectedMilestoneLinkedItems([]);
+            }}
+            title={selectedMilestone.title}
+            maxWidth={700}
+          >
+            <View style={styles.milestoneDetailContent}>
               {/* Action Buttons Row */}
               <View style={styles.modalActionButtons}>
                 <TouchableOpacity 
@@ -1174,8 +1182,72 @@ export function ProjectSchedule() {
                 </Button>
               </View>
             </View>
-          </View>
-        </Card>
+          </ModernModal>
+        )}
+
+        {/* Edit Milestone Modal */}
+        {selectedMilestone && isEditMilestoneMode && (
+          <ModernModal
+            visible={true}
+            onClose={() => {
+              setIsEditMilestoneMode(false);
+              setSelectedMilestone(null);
+              resetForm();
+            }}
+            title="Meilenstein bearbeiten"
+            maxWidth={600}
+          >
+            <View style={styles.formContent}>
+              <Input
+                label="Titel *"
+                value={title}
+                onChangeText={setTitle}
+                placeholder="z.B. Rohbau abgeschlossen"
+              />
+
+              <Input
+                label="Beschreibung"
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Weitere Details..."
+                multiline
+                numberOfLines={3}
+              />
+
+              <DatePicker
+                label="Startdatum *"
+                value={eventDate}
+                onChange={setEventDate}
+              />
+
+              <DatePicker
+                label="Enddatum (optional)"
+                value={endDate}
+                onChange={setEndDate}
+              />
+
+              <View style={styles.formActions}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditMilestoneMode(false);
+                    resetForm();
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  Abbrechen
+                </Button>
+                <Button
+                  onClick={handleUpdateMilestone}
+                  disabled={!title.trim() || !eventDate}
+                  style={{ flex: 1 }}
+                >
+                  Speichern
+                </Button>
+              </View>
+            </View>
+          </ModernModal>
+        )}
       </>
     );
   };
@@ -1538,291 +1610,6 @@ export function ProjectSchedule() {
           </View>
         </View>
       </ModernModal>
-
-      {/* Milestone Detail Modal */}
-      {selectedMilestone && !isEditMilestoneMode && (
-        <ModernModal
-          visible={true}
-          onClose={() => {
-            setSelectedMilestone(null);
-            setSelectedMilestoneLinkedItems([]);
-          }}
-          title={selectedMilestone.title}
-          maxWidth={700}
-        >
-          <View style={styles.milestoneDetailContent}>
-            {/* Action Buttons Row */}
-            <View style={styles.modalActionButtons}>
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={handleEditMilestone}
-              >
-                <Edit2 size={16} color={colors.primary} />
-                <Text style={styles.editButtonText}>Bearbeiten</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.deleteButton}
-                onPress={handleDeleteMilestone}
-              >
-                <Trash2 size={16} color="#EF4444" />
-                <Text style={styles.deleteButtonText}>Löschen</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Type Badge */}
-            <View style={[
-              styles.eventTypeBadge,
-              { 
-                backgroundColor: selectedMilestone.color || getEventTypeColor(selectedMilestone.event_type),
-                alignSelf: 'flex-start'
-              }
-            ]}>
-              <Text style={styles.eventTypeBadgeText}>
-                {getEventTypeLabel(selectedMilestone.event_type)}
-              </Text>
-            </View>
-            
-            {/* Date */}
-            <View style={styles.detailRow}>
-              <Calendar size={16} color="#64748b" />
-              <Text style={styles.detailLabel}>Datum:</Text>
-              <Text style={styles.detailValue}>{formatDate(selectedMilestone.start_date)}</Text>
-            </View>
-            
-            {selectedMilestone.end_date && (
-              <View style={styles.detailRow}>
-                <Calendar size={16} color="#64748b" />
-                <Text style={styles.detailLabel}>Enddatum:</Text>
-                <Text style={styles.detailValue}>{formatDate(selectedMilestone.end_date)}</Text>
-              </View>
-            )}
-            
-            {/* Description */}
-            {selectedMilestone.description && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailSectionTitle}>Beschreibung</Text>
-                <Text style={styles.detailDescription}>{selectedMilestone.description}</Text>
-              </View>
-            )}
-            
-            {/* Status */}
-            <View style={styles.detailRow}>
-              {selectedMilestone.status === 'completed' ? (
-                <>
-                  <CheckCircle size={16} color="#22c55e" />
-                  <Text style={[styles.detailLabel, { color: '#22c55e' }]}>Abgeschlossen</Text>
-                </>
-              ) : (
-                <>
-                  <Clock size={16} color="#F59E0B" />
-                  <Text style={styles.detailLabel}>
-                    {getDaysUntil(selectedMilestone.start_date) === 0 ? 'Heute fällig' :
-                     getDaysUntil(selectedMilestone.start_date) < 0 ? 
-                       `${Math.abs(getDaysUntil(selectedMilestone.start_date))} Tag(e) überfällig` :
-                       `Fällig in ${getDaysUntil(selectedMilestone.start_date)} Tag(en)`}
-                  </Text>
-                </>
-              )}
-            </View>
-
-            {/* Linked Items */}
-            {selectedMilestoneLinkedItems.length > 0 && (
-              <View style={styles.detailSection}>
-                <View style={styles.linkedItemsHeader}>
-                  <Link2 size={16} color="#64748b" />
-                  <Text style={styles.detailSectionTitle}>
-                    Verknüpfte Aufgaben & Mängel ({selectedMilestoneLinkedItems.length})
-                  </Text>
-                </View>
-                <View style={styles.linkedItemsList}>
-                  {selectedMilestoneLinkedItems.map((item: any) => (
-                    <TouchableOpacity 
-                      key={item.id} 
-                      style={styles.linkedItemCard}
-                      onPress={() => handleTaskClick(item)}
-                    >
-                      {item.task_type === 'defect' ? (
-                        <AlertCircle size={16} color="#EF4444" />
-                      ) : (
-                        <CheckSquare size={16} color={colors.primary} />
-                      )}
-                      <Text style={styles.linkedItemTitle}>{item.title}</Text>
-                      {item.priority && (
-                        <View style={[
-                          styles.linkedItemPriority,
-                          { backgroundColor: getPriorityColor(item.priority) }
-                        ]}>
-                          <Text style={styles.linkedItemPriorityText}>
-                            {getPriorityLabel(item.priority)}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={[
-                        styles.linkedItemStatusBadge,
-                        { backgroundColor: item.status === 'done' || item.status === 'resolved' ? '#22c55e20' : '#94a3b820' }
-                      ]}>
-                        <Text style={[
-                          styles.linkedItemStatusText,
-                          { color: item.status === 'done' || item.status === 'resolved' ? '#22c55e' : '#64748b' }
-                        ]}>
-                          {getStatusLabel(item.status)}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-            
-            {/* Actions */}
-            <View style={styles.milestoneDetailActions}>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedMilestone(null);
-                  setSelectedMilestoneLinkedItems([]);
-                  setActiveTab('timeline');
-                }}
-                style={{ flex: 1 }}
-              >
-                In Timeline anzeigen
-              </Button>
-              <Button
-                onClick={() => {
-                  setSelectedMilestone(null);
-                  setSelectedMilestoneLinkedItems([]);
-                }}
-                style={{ flex: 1 }}
-              >
-                Schließen
-              </Button>
-            </View>
-          </View>
-        </ModernModal>
-      )}
-
-      {/* Edit Milestone Modal */}
-      {selectedMilestone && isEditMilestoneMode && (
-        <ModernModal
-          visible={true}
-          onClose={() => {
-            setIsEditMilestoneMode(false);
-            setSelectedMilestone(null);
-            resetForm();
-          }}
-          title="Meilenstein bearbeiten"
-          maxWidth={600}
-        >
-          <View style={styles.formContent}>
-            <View style={styles.formRow}>
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Titel *</Text>
-                <Input
-                  value={title}
-                  onChangeText={setTitle}
-                  placeholder="z.B. Projektzwischenstand"
-                />
-              </View>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Beschreibung</Text>
-                <Input
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Beschreibung des Meilensteins"
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Typ *</Text>
-                <View style={styles.eventTypeButtons}>
-                  {['milestone', 'deadline', 'phase'].map(type => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[
-                        styles.eventTypeButton,
-                        eventType === type && [
-                          styles.eventTypeButtonActive,
-                          { backgroundColor: getEventTypeColor(type) }
-                        ]
-                      ]}
-                      onPress={() => setEventType(type as any)}
-                    >
-                      <Text style={[
-                        styles.eventTypeButtonText,
-                        eventType === type && styles.eventTypeButtonTextActive
-                      ]}>
-                        {getEventTypeLabel(type)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Startdatum *</Text>
-                <DatePicker
-                  value={eventDate}
-                  onChange={setEventDate}
-                  placeholder="Startdatum wählen"
-                />
-              </View>
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Enddatum</Text>
-                <DatePicker
-                  value={endDate}
-                  onChange={setEndDate}
-                  placeholder="Enddatum wählen (optional)"
-                />
-              </View>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Farbe</Text>
-                <View style={styles.colorPicker}>
-                  {['#3B82F6', '#F59E0B', '#8B5CF6', '#10b981', '#ef4444', '#6366f1'].map(c => (
-                    <TouchableOpacity
-                      key={c}
-                      style={[
-                        styles.colorOption,
-                        { backgroundColor: c },
-                        color === c && styles.colorOptionSelected
-                      ]}
-                      onPress={() => setColor(c)}
-                    />
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsEditMilestoneMode(false);
-                  setSelectedMilestone(null);
-                  resetForm();
-                }}
-                style={{ flex: 1 }}
-              >
-                Abbrechen
-              </Button>
-              <Button onClick={handleUpdateMilestone} style={{ flex: 1 }}>
-                Speichern
-              </Button>
-            </View>
-          </View>
-        </ModernModal>
-      )}
 
       {/* Task Detail Modal */}
       {selectedTaskForDetail && (
