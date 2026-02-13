@@ -8,8 +8,19 @@ import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
 import { useLayout } from '../layouts/LayoutContext';
 import { useToast } from '../components/ToastProvider';
-import { Folder, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Folder, TrendingUp, Clock, CheckCircle, AlertCircle, Flag, Calendar as CalendarIcon } from 'lucide-react';
 import { colors } from '@docstruc/theme';
+
+interface TimelineEvent {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date: string | null;
+  event_type: 'milestone' | 'deadline' | 'phase';
+  status: 'pending' | 'completed';
+  color: string;
+  project_id: string;
+}
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -20,6 +31,7 @@ export function Dashboard() {
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [upcomingMilestones, setUpcomingMilestones] = useState<TimelineEvent[]>([]);
   
   useEffect(() => {
     setTitle('Meine Projekte');
@@ -28,6 +40,7 @@ export function Dashboard() {
       setSession(session);
       if (session) {
           fetchProjects();
+          fetchMilestones();
           checkSuperuser(session.user.id);
       }
     });
@@ -75,6 +88,23 @@ export function Dashboard() {
     }
   };
 
+  const fetchMilestones = async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const { data, error } = await supabase
+      .from('timeline_events')
+      .select('*')
+      .gte('start_date', today.toISOString())
+      .eq('status', 'pending')
+      .order('start_date', { ascending: true })
+      .limit(5);
+    
+    if (!error && data) {
+      setUpcomingMilestones(data);
+    }
+  };
+
   const stats = useMemo(() => {
     const total = projects.length;
     // Active projects: In Planung, Genehmigt, In Ausf\u00fchrung
@@ -102,6 +132,39 @@ export function Dashboard() {
     }
     return projects;
   }, [projects, statusFilter]);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' });
+  };
+
+  const getDaysUntil = (dateString: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const targetDate = new Date(dateString);
+    targetDate.setHours(0, 0, 0, 0);
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const getEventTypeColor = (type: string) => {
+    switch (type) {
+      case 'milestone': return '#3B82F6';
+      case 'deadline': return '#F59E0B';
+      case 'phase': return '#8B5CF6';
+      default: return '#94a3b8';
+    }
+  };
+
+  const getEventTypeLabel = (type: string) => {
+    switch (type) {
+      case 'milestone': return 'Meilenstein';
+      case 'deadline': return 'Deadline';
+      case 'phase': return 'Bauphase';
+      default: return type;
+    }
+  };
 
   if (!session) return null;
 
@@ -149,6 +212,64 @@ export function Dashboard() {
             );
           })}
         </View>
+
+        {/* Upcoming Milestones Section */}
+        {upcomingMilestones.length > 0 && (
+          <View style={styles.milestonesSection}>
+            <View style={styles.milestonesSectionHeader}>
+              <Flag size={20} color={colors.primary} />
+              <Text style={styles.milestonesSectionTitle}>Anstehende Meilensteine</Text>
+            </View>
+            <View style={styles.milestonesTimeline}>
+              {upcomingMilestones.map((milestone, index) => {
+                const daysUntil = getDaysUntil(milestone.start_date);
+                const isToday = daysUntil === 0;
+                return (
+                  <View key={milestone.id} style={styles.milestoneTimelineItem}>
+                    {/* Date Circle */}
+                    <View style={styles.milestoneCircleWrapper}>
+                      <View style={[
+                        styles.milestoneCircle,
+                        { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
+                      ]}>
+                        <CalendarIcon size={16} color="#ffffff" />
+                      </View>
+                      {index < upcomingMilestones.length - 1 && (
+                        <View style={styles.milestoneConnector} />
+                      )}
+                    </View>
+                    
+                    {/* Content */}
+                    <View style={styles.milestoneContent}>
+                      <View style={styles.milestoneHeader}>
+                        <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+                        <View style={[
+                          styles.milestoneTypeBadge,
+                          { backgroundColor: milestone.color || getEventTypeColor(milestone.event_type) }
+                        ]}>
+                          <Text style={styles.milestoneTypeBadgeText}>
+                            {getEventTypeLabel(milestone.event_type)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.milestoneFooter}>
+                        <Text style={styles.milestoneDate}>
+                          {formatDate(milestone.start_date)}
+                        </Text>
+                        <Text style={[
+                          styles.milestoneDaysUntil,
+                          isToday && styles.milestoneDaysUntilToday
+                        ]}>
+                          {isToday ? '⚡ Heute!' : `📅 in ${daysUntil} Tag${daysUntil !== 1 ? 'en' : ''}`}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Project Section */}
         <View style={styles.sectionHeader}>
@@ -347,5 +468,107 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 320,
     lineHeight: 22,
+  },
+  milestonesSection: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  milestonesSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  milestonesSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  milestonesTimeline: {
+    gap: 0,
+  },
+  milestoneTimelineItem: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  milestoneCircleWrapper: {
+    alignItems: 'center',
+    width: 40,
+  },
+  milestoneCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  milestoneConnector: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 8,
+  },
+  milestoneContent: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingBottom: 24,
+  },
+  milestoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  milestoneTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+    flex: 1,
+  },
+  milestoneTypeBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  milestoneTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  milestoneFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  milestoneDate: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  milestoneDaysUntil: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  milestoneDaysUntilToday: {
+    color: '#F59E0B',
   },
 });
