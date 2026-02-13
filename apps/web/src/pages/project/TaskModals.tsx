@@ -909,40 +909,38 @@ export const TaskDetailModal: React.FC<{
                 <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 16 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
                   
-                  {/* Type Selector - Only show buttons initially */}
-                  {!docFormData.type && (
-                    <View style={styles.docAddButtons}>
-                      <TouchableOpacity
-                        style={styles.docAddButton}
-                        onPress={() => onChangeDocFormData('type', 'text')}
-                      >
-                        <FileText size={20} color={colors.primary} />
-                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
-                          Text
-                        </Text>
-                      </TouchableOpacity>
+                  {/* Type Selector - Always visible at the top */}
+                  <View style={styles.docAddButtons}>
+                    <TouchableOpacity
+                      style={[styles.docAddButton, docFormData.type === 'text' && { backgroundColor: '#EFF6FF', borderColor: colors.primary, borderWidth: 2 }]}
+                      onPress={() => onChangeDocFormData('type', docFormData.type === 'text' ? '' : 'text')}
+                    >
+                      <FileText size={20} color={colors.primary} />
+                      <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                        Text
+                      </Text>
+                    </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.docAddButton}
-                        onPress={() => onChangeDocFormData('type', 'voice')}
-                      >
-                        <Mic size={20} color={colors.primary} />
-                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
-                          Sprache
-                        </Text>
-                      </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.docAddButton, docFormData.type === 'voice' && { backgroundColor: '#EFF6FF', borderColor: colors.primary, borderWidth: 2 }]}
+                      onPress={() => onChangeDocFormData('type', docFormData.type === 'voice' ? '' : 'voice')}
+                    >
+                      <Mic size={20} color={colors.primary} />
+                      <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                        Sprache
+                      </Text>
+                    </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.docAddButton}
-                        onPress={() => onChangeDocFormData('type', 'video')}
-                      >
-                        <Video size={20} color={colors.primary} />
-                        <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
-                          Video
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                    <TouchableOpacity
+                      style={[styles.docAddButton, docFormData.type === 'video' && { backgroundColor: '#EFF6FF', borderColor: colors.primary, borderWidth: 2 }]}
+                      onPress={() => onChangeDocFormData('type', docFormData.type === 'video' ? '' : 'video')}
+                    >
+                      <Video size={20} color={colors.primary} />
+                      <Text style={[styles.docAddButtonText, { color: colors.primary }]}>
+                        Video
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* Content based on type - Only show when type is selected */}
                   {docFormData.type === 'text' && (

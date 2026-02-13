@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
@@ -6,7 +6,12 @@ import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
-import { Plus, AlertCircle, Calendar } from 'lucide-react';
+import { RichTextEditor } from '../../components/RichTextEditor';
+import DOMPurify from 'dompurify';
+import { 
+  Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
+  Upload, User, Calendar as CalendarIcon, X, Trash2
+} from 'lucide-react';
 
 interface Defect {
   id: string;
@@ -15,6 +20,30 @@ interface Defect {
   priority: 'low' | 'medium' | 'high' | 'critical';
   status: 'open' | 'in_progress' | 'resolved' | 'rejected';
   due_date: string | null;
+  assigned_to: string | null;
+  created_at: string;
+  creator_id?: string;
+}
+
+interface DefectImage {
+  id: string;
+  task_id: string;
+  storage_path: string;
+  file_name: string | null;
+  caption?: string | null;
+  display_order: number;
+  created_at: string;
+}
+
+interface DefectDocumentation {
+  id: string;
+  task_id: string;
+  content?: string | null;
+  documentation_type: 'text' | 'voice' | 'image' | 'video';
+  storage_path?: string | null;
+  file_name?: string | null;
+  duration_seconds?: number | null;
+  user_id: string;
   created_at: string;
 }
 
@@ -30,6 +59,23 @@ export function ProjectDefects() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [dueDate, setDueDate] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+
+  // Detail state
+  const [defectImages, setDefectImages] = useState<DefectImage[]>([]);
+  const [defectDocumentation, setDefectDocumentation] = useState<DefectDocumentation[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  
+  // Documentation form
+  const [docFormData, setDocFormData] = useState({
+    type: '',
+    content: ''
+  });
+
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDefects();
@@ -73,6 +119,8 @@ export function ProjectDefects() {
         task_type: 'defect',
         priority,
         status: 'open',
+        due_date: dueDate || null,
+        assigned_to: assignedTo || null,
         creator_id: userData.user?.id
       });
 
@@ -83,11 +131,137 @@ export function ProjectDefects() {
       setTitle('');
       setDescription('');
       setPriority('medium');
+      setDueDate('');
+      setAssignedTo('');
       loadDefects();
     } catch (error: any) {
       console.error('Error creating defect:', error);
       showToast('Fehler beim Erstellen des Mangels', 'error');
     }
+  };
+
+  const loadDefectDetails = async (defectId: string) => {
+    try {
+      // Load images
+      const { data: images, error: imagesError } = await supabase
+        .from('task_images')
+        .select('*')
+        .eq('task_id', defectId)
+        .order('display_order', { ascending: true });
+
+      if (imagesError) throw imagesError;
+      setDefectImages(images || []);
+
+      // Load documentation
+      const { data: docs, error: docsError } = await supabase
+        .from('task_documentation')
+        .select('*')
+        .eq('task_id', defectId)
+        .order('created_at', { ascending: false });
+
+      if (docsError) throw docsError;
+      setDefectDocumentation(docs || []);
+    } catch (error: any) {
+      console.error('Error loading defect details:', error);
+    }
+  };
+
+  const handleImageUpload = async (event: any) => {
+    if (!selectedDefect) return;
+    
+    const files = event.target?.files ? Array.from(event.target.files) as File[] : [];
+    if (files.length === 0) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `${id}/defects/${selectedDefect.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('task-images')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { error: dbError } = await supabase.from('task_images').insert({
+          task_id: selectedDefect.id,
+          project_id: id,
+          storage_path: filePath,
+          file_name: file.name,
+          display_order: defectImages.length + i
+        });
+
+        if (dbError) throw dbError;
+      }
+
+      showToast(`${files.length} Bild(er) hochgeladen`, 'success');
+      loadDefectDetails(selectedDefect.id);
+    } catch (error: any) {
+      console.error('Error uploading images:', error);
+      showToast('Fehler beim Hochladen', 'error');
+    }
+  };
+
+  const handleAddDocumentation = async (type: 'text' | 'voice' | 'image' | 'video') => {
+    if (!selectedDefect) return;
+
+    if (type === 'text' && !docFormData.content.trim()) {
+      showToast('Bitte Text eingeben', 'error');
+      return;
+    }
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      const { error } = await supabase.from('task_documentation').insert({
+        task_id: selectedDefect.id,
+        project_id: id,
+        user_id: userData.user?.id,
+        content: type === 'text' ? docFormData.content.trim() : null,
+        documentation_type: type
+      });
+
+      if (error) throw error;
+
+      showToast('Dokumentation hinzugefügt', 'success');
+      setDocFormData({ type: '', content: '' });
+      loadDefectDetails(selectedDefect.id);
+    } catch (error: any) {
+      console.error('Error adding documentation:', error);
+      showToast('Fehler beim Hinzufügen', 'error');
+    }
+  };
+
+  const handleDeleteImage = async (imageId: string, storagePath: string) => {
+    try {
+      await supabase.storage.from('task-images').remove([storagePath]);
+      await supabase.from('task_images').delete().eq('id', imageId);
+      
+      showToast('Bild gelöscht', 'success');
+      if (selectedDefect) loadDefectDetails(selectedDefect.id);
+    } catch (error: any) {
+      console.error('Error deleting image:', error);
+      showToast('Fehler beim Löschen', 'error');
+    }
+  };
+
+  const getUserName = (userId: string) => {
+    return 'Benutzer';
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const getPriorityLabel = (priority: string) => {
@@ -208,7 +382,10 @@ export function ProjectDefects() {
                   styles.defectCard,
                   { borderLeftColor: getPriorityColor(defect.priority), borderLeftWidth: 4 }
                 ]}
-                onPress={() => setSelectedDefect(defect)}
+                onPress={() => {
+                  setSelectedDefect(defect);
+                  loadDefectDetails(defect.id);
+                }}
               >
                 <View style={styles.defectHeader}>
                   <View style={styles.defectTitleRow}>
@@ -244,6 +421,8 @@ export function ProjectDefects() {
           setTitle('');
           setDescription('');
           setPriority('medium');
+          setDueDate('');
+          setAssignedTo('');
         }}
         title="Mangel erfassen"
       >
@@ -261,6 +440,20 @@ export function ProjectDefects() {
             placeholder="Details zum Mangel..."
             multiline
             numberOfLines={4}
+          />
+
+          <Input
+            label="Frist"
+            value={dueDate}
+            onChangeText={setDueDate}
+            placeholder="TT.MM.JJJJ"
+          />
+
+          <Input
+            label="Zugewiesen an"
+            value={assignedTo}
+            onChangeText={setAssignedTo}
+            placeholder="Benutzername oder E-Mail"
           />
           
           <View>
@@ -289,6 +482,35 @@ export function ProjectDefects() {
             </View>
           </View>
 
+          <input
+            ref={imageFileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+          />
+          <TouchableOpacity
+            onPress={() => imageFileInputRef.current?.click()}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              paddingVertical: 12,
+              paddingHorizontal: 16,
+              backgroundColor: '#F8FAFC',
+              borderRadius: 8,
+              borderWidth: 2,
+              borderStyle: 'dashed',
+              borderColor: '#E2E8F0',
+            }}
+          >
+            <ImageIcon size={18} color={colors.primary} />
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.primary }}>
+              📸 Fotos hinzufügen (optional)
+            </Text>
+          </TouchableOpacity>
+
           <View style={styles.modalActions}>
             <Button
               variant="outline"
@@ -308,42 +530,332 @@ export function ProjectDefects() {
       {selectedDefect && (
         <ModernModal
           visible={!!selectedDefect}
-          onClose={() => setSelectedDefect(null)}
+          onClose={() => {
+            setSelectedDefect(null);
+            setDocFormData({ type: '', content: '' });
+            setDefectImages([]);
+            setDefectDocumentation([]);
+          }}
           title={selectedDefect.title}
         >
-          <View style={styles.modalContent}>
-            <View style={[styles.priorityBadge, { 
-              backgroundColor: getPriorityColor(selectedDefect.priority),
-              alignSelf: 'flex-start'
-            }]}>
-              <Text style={styles.priorityBadgeText}>
-                {getPriorityLabel(selectedDefect.priority)}
-              </Text>
-            </View>
-            
-            {selectedDefect.description && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Beschreibung</Text>
-                <Text style={styles.detailText}>{selectedDefect.description}</Text>
+          <ScrollView style={{ maxHeight: 600 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContent}>
+              <View style={[styles.priorityBadge, { 
+                backgroundColor: getPriorityColor(selectedDefect.priority),
+                alignSelf: 'flex-start'
+              }]}>
+                <Text style={styles.priorityBadgeText}>
+                  {getPriorityLabel(selectedDefect.priority)}
+                </Text>
               </View>
-            )}
+              
+              {selectedDefect.description && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Beschreibung</Text>
+                  <Text style={styles.detailText}>{selectedDefect.description}</Text>
+                </View>
+              )}
 
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Status</Text>
-              <Text style={styles.detailText}>{getStatusLabel(selectedDefect.status)}</Text>
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Status</Text>
+                <Text style={styles.detailText}>{getStatusLabel(selectedDefect.status)}</Text>
+              </View>
+
+              {selectedDefect.due_date && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Frist</Text>
+                  <Text style={styles.detailText}>
+                    {new Date(selectedDefect.due_date).toLocaleDateString('de-DE')}
+                  </Text>
+                </View>
+              )}
+
+              {selectedDefect.assigned_to && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Zugewiesen an</Text>
+                  <Text style={styles.detailText}>{getUserName(selectedDefect.assigned_to)}</Text>
+                </View>
+              )}
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Erfasst am</Text>
+                <Text style={styles.detailText}>
+                  {new Date(selectedDefect.created_at).toLocaleString('de-DE')}
+                </Text>
+              </View>
+
+              {/* Images Section */}
+              <View style={styles.detailSection}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={styles.detailLabel}>📸 Fotos ({defectImages.length})</Text>
+                  <input
+                    ref={imageFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => imageFileInputRef.current?.click()}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                      backgroundColor: colors.primary,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Upload size={14} color="#ffffff" />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#ffffff' }}>
+                      Hochladen
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {defectImages.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                    {defectImages.map((image) => {
+                      const { data: { publicUrl } } = supabase.storage
+                        .from('task-images')
+                        .getPublicUrl(image.storage_path);
+
+                      return (
+                        <View key={image.id} style={styles.imageContainer}>
+                          <img
+                            src={publicUrl}
+                            alt={image.file_name || 'Defect image'}
+                            style={{
+                              width: '100%',
+                              height: 120,
+                              objectFit: 'cover',
+                              borderRadius: 8,
+                            }}
+                          />
+                          <TouchableOpacity
+                            onPress={() => handleDeleteImage(image.id, image.storage_path)}
+                            style={styles.imageDeleteButton}
+                          >
+                            <Trash2 size={14} color="#ffffff" />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={{ padding: 20, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', borderColor: '#E2E8F0', alignItems: 'center' }}>
+                    <ImageIcon size={32} color="#cbd5e1" style={{ marginBottom: 8 }} />
+                    <Text style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center' }}>
+                      Noch keine Fotos hochgeladen
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Documentation Section */}
+              <View style={styles.detailSection}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={styles.detailLabel}>📝 Dokumentation ({defectDocumentation.length})</Text>
+                </View>
+
+                {/* Documentation History */}
+                {defectDocumentation.length > 0 && (
+                  <View style={{ gap: 16, marginBottom: 24 }}>
+                    {defectDocumentation.map((doc) => {
+                      const docIcons = {
+                        text: FileText,
+                        voice: Mic,
+                        image: ImageIcon,
+                        video: Video,
+                      };
+                      const DocIcon = docIcons[doc.documentation_type as keyof typeof docIcons] || FileText;
+
+                      return (
+                        <View key={doc.id} style={{
+                          backgroundColor: '#ffffff',
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          overflow: 'hidden',
+                        }}>
+                          {/* Doc Header */}
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 12,
+                            backgroundColor: '#F8FAFC',
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#E2E8F0',
+                          }}>
+                            <View style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: colors.primary,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginRight: 10,
+                            }}>
+                              <User size={16} color="#ffffff" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#0f172a' }}>
+                                {getUserName(doc.user_id)}
+                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <CalendarIcon size={11} color="#94a3b8" />
+                                <Text style={{ fontSize: 11, color: '#64748b' }}>{formatDateTime(doc.created_at)}</Text>
+                              </View>
+                            </View>
+                            <View style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                              backgroundColor: doc.documentation_type === 'text' ? '#DBEAFE' : '#FEF3C7',
+                            }}>
+                              <DocIcon size={14} color={doc.documentation_type === 'text' ? colors.primary : '#F59E0B'} />
+                            </View>
+                          </View>
+                          
+                          {/* Doc Content */}
+                          {doc.documentation_type === 'text' && doc.content && (
+                            <View style={{ padding: 14 }}>
+                              <div 
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content) }} 
+                                style={{ 
+                                  fontSize: 13, 
+                                  lineHeight: '20px', 
+                                  color: '#334155',
+                                }} 
+                              />
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Add New Documentation */}
+                <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 14 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation</Text>
+                  
+                  {/* Type Selector - Always visible */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <TouchableOpacity
+                      style={[styles.docTypeButton, docFormData.type === 'text' && styles.docTypeButtonActive]}
+                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'text' ? '' : 'text' })}
+                    >
+                      <FileText size={18} color={docFormData.type === 'text' ? '#ffffff' : colors.primary} />
+                      <Text style={[styles.docTypeButtonText, docFormData.type === 'text' && { color: '#ffffff' }]}>
+                        Text
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docTypeButton, docFormData.type === 'voice' && styles.docTypeButtonActive]}
+                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'voice' ? '' : 'voice' })}
+                    >
+                      <Mic size={18} color={docFormData.type === 'voice' ? '#ffffff' : colors.primary} />
+                      <Text style={[styles.docTypeButtonText, docFormData.type === 'voice' && { color: '#ffffff' }]}>
+                        Sprache
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docTypeButton, docFormData.type === 'video' && styles.docTypeButtonActive]}
+                      onPress={() => setDocFormData({ ...docFormData, type: docFormData.type === 'video' ? '' : 'video' })}
+                    >
+                      <Video size={18} color={docFormData.type === 'video' ? '#ffffff' : colors.primary} />
+                      <Text style={[styles.docTypeButtonText, docFormData.type === 'video' && { color: '#ffffff' }]}>
+                        Video
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Text Editor */}
+                  {docFormData.type === 'text' && (
+                    <>
+                      <View style={{ marginBottom: 12 }}>
+                        <RichTextEditor
+                          value={docFormData.content || ''}
+                          onChange={(value) => setDocFormData({ ...docFormData, content: value })}
+                        />
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={[styles.docActionButton, { backgroundColor: '#F1F5F9' }]}
+                          onPress={() => setDocFormData({ type: '', content: '' })}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>Abbrechen</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.docActionButton, { backgroundColor: colors.primary }]}
+                          onPress={() => handleAddDocumentation('text')}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#ffffff' }}>Speichern</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+
+                  {/* Voice Recorder */}
+                  {docFormData.type === 'voice' && (
+                    <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0' }}>
+                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                        <Mic size={40} color="#cbd5e1" style={{ marginBottom: 10 }} />
+                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
+                          Sprachaufnahme oder Audiodatei hochladen
+                        </Text>
+                      </View>
+                      <input
+                        ref={audioFileInputRef}
+                        type="file"
+                        accept="audio/*"
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: '2px solid #E2E8F0',
+                          backgroundColor: '#ffffff',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                        }}
+                      />
+                    </View>
+                  )}
+
+                  {/* Video Upload */}
+                  {docFormData.type === 'video' && (
+                    <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 2, borderColor: '#E2E8F0' }}>
+                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                        <Video size={40} color="#cbd5e1" style={{ marginBottom: 10 }} />
+                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
+                          Videodatei hochladen
+                        </Text>
+                      </View>
+                      <input
+                        ref={videoFileInputRef}
+                        type="file"
+                        accept="video/*"
+                        style={{
+                          width: '100%',
+                          padding: 10,
+                          borderRadius: 8,
+                          border: '2px solid #E2E8F0',
+                          backgroundColor: '#ffffff',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                        }}
+                      />
+                    </View>
+                  )}
+                </View>
+              </View>
             </View>
-
-            <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Erfasst am</Text>
-              <Text style={styles.detailText}>
-                {new Date(selectedDefect.created_at).toLocaleString('de-DE')}
-              </Text>
-            </View>
-
-            <Text style={styles.infoBox}>
-              📸 Mängelbearbeitung mit Fotos, Zuweisung, Fristen, Abnahme und revisionssicherer Historie folgt in der nächsten Version.
-            </Text>
-          </View>
+          </ScrollView>
         </ModernModal>
       )}
     </>
@@ -564,5 +1076,58 @@ const styles = StyleSheet.create({
     color: '#1e40af',
     lineHeight: 20,
     marginTop: 16,
+  },
+  imageContainer: {
+    position: 'relative',
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F8FAFC',
+  },
+  imageDeleteButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  docTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: '#ffffff',
+  },
+  docTypeButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  docTypeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  docActionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
