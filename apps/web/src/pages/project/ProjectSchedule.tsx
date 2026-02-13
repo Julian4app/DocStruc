@@ -1022,9 +1022,331 @@ export function ProjectSchedule() {
             </View>
           </View>
         </Card>
-        
-        {/* Milestone Detail Modal */}
-        {selectedMilestone && !isEditMilestoneMode && (
+      </>
+    );
+  };
+
+  // Render the main component
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.pageTitle}>Termine & Ablauf</Text>
+            <Text style={styles.pageSubtitle}>
+              Terminplanung, Bauphasen und Meilensteine
+            </Text>
+          </View>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <Plus size={18} /> Meilenstein
+          </Button>
+        </View>
+
+        {/* Tab Navigation */}
+        <View style={styles.tabsContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'list' && styles.tabActive]}
+            onPress={() => setActiveTab('list')}
+          >
+            <Flag size={18} color={activeTab === 'list' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'list' && styles.tabTextActive]}>
+              Liste
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'timeline' && styles.tabActive]}
+            onPress={() => setActiveTab('timeline')}
+          >
+            <Clock size={18} color={activeTab === 'timeline' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'timeline' && styles.tabTextActive]}>
+              Timeline
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'calendar' && styles.tabActive]}
+            onPress={() => setActiveTab('calendar')}
+          >
+            <Calendar size={18} color={activeTab === 'calendar' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'calendar' && styles.tabTextActive]}>
+              Kalender
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {activeTab === 'list' && renderListView()}
+          {activeTab === 'timeline' && renderTimelineView()}
+          {activeTab === 'calendar' && renderCalendarView()}
+        </ScrollView>
+      </View>
+
+      {/* Create Milestone Modal */}
+      <ModernModal
+        visible={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          resetForm();
+        }}
+        title="Neuer Meilenstein"
+        maxWidth={800}
+      >
+        <View style={styles.formContent}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Titel *</Text>
+            <Input
+              value={title}
+              onChangeText={setTitle}
+              placeholder="z.B. Projektzwischenstand"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Beschreibung</Text>
+            <Input
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Beschreibung des Meilensteins"
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Typ *</Text>
+            <View style={styles.typeButtons}>
+              {['milestone', 'deadline', 'phase'].map(type => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    eventType === type && [
+                      styles.typeButtonActive,
+                      { backgroundColor: getEventTypeColor(type) }
+                    ]
+                  ]}
+                  onPress={() => setEventType(type as any)}
+                >
+                  <Text style={[
+                    styles.typeButtonText,
+                    eventType === type && styles.typeButtonTextActive
+                  ]}>
+                    {getEventTypeLabel(type)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.dateRow}>
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>Startdatum *</Text>
+              <DatePicker
+                value={eventDate}
+                onChange={setEventDate}
+                placeholder="Startdatum wählen"
+              />
+            </View>
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>Enddatum</Text>
+              <DatePicker
+                value={endDate}
+                onChange={setEndDate}
+                placeholder="Enddatum wählen (optional)"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Farbe</Text>
+            <View style={styles.colorOptions}>
+              {['#3B82F6', '#F59E0B', '#8B5CF6', '#10b981', '#ef4444', '#6366f1'].map(c => (
+                <TouchableOpacity
+                  key={c}
+                  style={[
+                    styles.colorOption,
+                    { backgroundColor: c },
+                    color === c && styles.colorOptionSelected
+                  ]}
+                  onPress={() => setColor(c)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Task/Defect Linking */}
+          <View>
+            <Text style={styles.inputLabel}>Aufgaben & Mängel verknüpfen</Text>
+            
+            {/* Selected Items Display */}
+            {selectedItems.length > 0 && (
+              <View style={styles.selectedItemsContainer}>
+                {selectedItems.map(item => (
+                  <View key={item.id} style={styles.selectedItemChip}>
+                    {item.type === 'task' ? (
+                      <CheckSquare size={14} color={colors.primary} />
+                    ) : (
+                      <AlertCircle size={14} color="#EF4444" />
+                    )}
+                    <Text style={styles.selectedItemText}>{item.title}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveSelectedItem(item.id)}>
+                      <X size={14} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Dropdown Trigger */}
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+            >
+              <Link2 size={16} color="#64748b" />
+              <Text style={styles.dropdownTriggerText}>
+                {selectedItems.length > 0 
+                  ? `${selectedItems.length} ausgewählt` 
+                  : 'Aufgaben/Mängel auswählen'}
+              </Text>
+              <ChevronDown size={16} color="#64748b" />
+            </TouchableOpacity>
+
+            {/* Dropdown Content */}
+            {isDropdownOpen && (
+              <View style={styles.dropdownContent}>
+                {/* Search */}
+                <View style={styles.searchContainer}>
+                  <RNTextInput
+                    style={styles.searchInput}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Suchen..."
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+
+                <View style={styles.dropdownMainContent}>
+                  {/* Left side - Scrollable list */}
+                  <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
+                    {/* Tasks Section */}
+                    {filteredTasks.length > 0 && (
+                      <View style={styles.dropdownSection}>
+                        <Text style={styles.dropdownSectionTitle}>Aufgaben</Text>
+                        {filteredTasks.map(task => {
+                          const isSelected = selectedItems.some(i => i.id === task.id);
+                          const isPreviewed = previewItem?.id === task.id;
+                          return (
+                            <TouchableOpacity
+                              key={task.id}
+                              style={[
+                                styles.dropdownItem,
+                                isSelected && styles.dropdownItemSelected,
+                                isPreviewed && styles.dropdownItemPreviewed
+                              ]}
+                              onPress={() => handleToggleItem({ id: task.id, title: task.title, type: 'task' })}
+                              onMouseEnter={() => setPreviewItem({ id: task.id, title: task.title, description: task.description, type: 'task' })}
+                            >
+                              <View style={styles.dropdownItemLeft}>
+                                {isSelected ? (
+                                  <CheckSquare size={16} color={colors.primary} />
+                                ) : (
+                                  <Square size={16} color="#94a3b8" />
+                                )}
+                                <Text style={styles.dropdownItemText}>{task.title}</Text>
+                              </View>
+                              <ChevronRight size={14} color="#94a3b8" />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {/* Defects Section */}
+                    {filteredDefects.length > 0 && (
+                      <View style={styles.dropdownSection}>
+                        <Text style={styles.dropdownSectionTitle}>Mängel</Text>
+                        {filteredDefects.map(defect => {
+                          const isSelected = selectedItems.some(i => i.id === defect.id);
+                          const isPreviewed = previewItem?.id === defect.id;
+                          return (
+                            <TouchableOpacity
+                              key={defect.id}
+                              style={[
+                                styles.dropdownItem,
+                                isSelected && styles.dropdownItemSelected,
+                                isPreviewed && styles.dropdownItemPreviewed
+                              ]}
+                              onPress={() => handleToggleItem({ id: defect.id, title: defect.title, type: 'defect' })}
+                              onMouseEnter={() => setPreviewItem({ id: defect.id, title: defect.title, description: defect.description, type: 'defect' })}
+                            >
+                              <View style={styles.dropdownItemLeft}>
+                                {isSelected ? (
+                                  <CheckSquare size={16} color="#EF4444" />
+                                ) : (
+                                  <Square size={16} color="#94a3b8" />
+                                )}
+                                <Text style={styles.dropdownItemText}>{defect.title}</Text>
+                              </View>
+                              <ChevronRight size={14} color="#94a3b8" />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </ScrollView>
+
+                  {/* Right side - Preview */}
+                  {previewItem && (
+                    <View style={styles.dropdownPreview}>
+                      <Text style={styles.previewTitle}>{previewItem.title}</Text>
+                      {previewItem.description && (
+                        <Text style={styles.previewDescription}>{previewItem.description}</Text>
+                      )}
+                      <View style={styles.previewBadge}>
+                        {previewItem.type === 'task' ? (
+                          <CheckSquare size={12} color={colors.primary} />
+                        ) : (
+                          <AlertCircle size={12} color="#EF4444" />
+                        )}
+                        <Text style={styles.previewBadgeText}>
+                          {previewItem.type === 'task' ? 'Aufgabe' : 'Mangel'}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Actions */}
+          <View style={styles.modalActions}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                resetForm();
+              }}
+              style={{ flex: 1 }}
+            >
+              Abbrechen
+            </Button>
+            <Button onClick={handleCreateMilestone} style={{ flex: 1 }}>
+              Erstellen
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* Milestone Detail Modal */}
+      {selectedMilestone && !isEditMilestoneMode && (
           <ModernModal
             visible={true}
             onClose={() => {
