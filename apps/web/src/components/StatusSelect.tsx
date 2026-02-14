@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 
 export interface StatusOption {
@@ -29,12 +30,46 @@ interface StatusSelectProps {
 export function StatusSelect({ label, value, onChange }: StatusSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<any>(null);
+    const triggerRef = useRef<any>(null);
+    const portalRef = useRef<HTMLDivElement | null>(null);
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
     const selectedStatus = STATUS_OPTIONS.find(s => s.value === value) || STATUS_OPTIONS[0];
 
     useEffect(() => {
+        if (typeof document === 'undefined') return;
+        
+        if (!portalRef.current) {
+            portalRef.current = document.createElement('div');
+            portalRef.current.id = 'status-select-portal';
+        }
+        
+        if (isOpen) {
+            document.body.appendChild(portalRef.current);
+        }
+        
+        return () => {
+            if (portalRef.current && document.body.contains(portalRef.current)) {
+                document.body.removeChild(portalRef.current);
+            }
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY + 4,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
         const handleClickOutside = (event: any) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+                triggerRef.current && !triggerRef.current.contains(event.target)) {
                 setIsOpen(false);
             }
         };
@@ -50,11 +85,49 @@ export function StatusSelect({ label, value, onChange }: StatusSelectProps) {
         setIsOpen(false);
     };
 
+    const dropdownContent = isOpen && portalRef.current ? createPortal(
+        <View 
+            ref={dropdownRef as any}
+            style={[
+                styles.dropdown,
+                {
+                    position: 'fixed' as any,
+                    top: dropdownPosition.top,
+                    left: dropdownPosition.left,
+                    width: dropdownPosition.width,
+                    zIndex: 999999
+                }
+            ]}
+        >
+            <ScrollView style={styles.list} nestedScrollEnabled>
+                {STATUS_OPTIONS.map(status => (
+                    <TouchableOpacity
+                        key={status.value}
+                        style={[
+                            styles.option,
+                            status.value === value && styles.optionSelected
+                        ]}
+                        onPress={() => handleSelect(status.value)}
+                    >
+                        <View style={[styles.statusPill, { backgroundColor: status.bgColor }]}>
+                            <Text style={[styles.statusText, { color: status.color }]}>
+                                {status.label}
+                            </Text>
+                        </View>
+                        {status.value === value && <Check size={16} color={status.color} />}
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>,
+        portalRef.current
+    ) : null;
+
     return (
         <View style={styles.container}>
             {label && <Text style={styles.label}>{label}</Text>}
-            <View ref={dropdownRef as any} style={styles.dropdownContainer}>
+            <View style={styles.dropdownContainer}>
                 <TouchableOpacity 
+                    ref={triggerRef as any}
                     style={styles.trigger} 
                     onPress={() => setIsOpen(!isOpen)}
                     activeOpacity={0.7}
@@ -66,30 +139,7 @@ export function StatusSelect({ label, value, onChange }: StatusSelectProps) {
                     </View>
                     <ChevronDown size={18} color="#94a3b8" />
                 </TouchableOpacity>
-
-                {isOpen && (
-                    <View style={styles.dropdown}>
-                        <ScrollView style={styles.list} nestedScrollEnabled>
-                            {STATUS_OPTIONS.map(status => (
-                                <TouchableOpacity
-                                    key={status.value}
-                                    style={[
-                                        styles.option,
-                                        status.value === value && styles.optionSelected
-                                    ]}
-                                    onPress={() => handleSelect(status.value)}
-                                >
-                                    <View style={[styles.statusPill, { backgroundColor: status.bgColor }]}>
-                                        <Text style={[styles.statusText, { color: status.color }]}>
-                                            {status.label}
-                                        </Text>
-                                    </View>
-                                    {status.value === value && <Check size={16} color={status.color} />}
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    </View>
-                )}
+                {dropdownContent}
             </View>
         </View>
     );
@@ -101,7 +151,6 @@ const styles = StyleSheet.create({
     },
     dropdownContainer: {
         position: 'relative' as any,
-        zIndex: 10001,
     },
     label: {
         fontSize: 13,
@@ -134,12 +183,6 @@ const styles = StyleSheet.create({
         letterSpacing: 0.3,
     },
     dropdown: {
-        // @ts-ignore
-        position: 'absolute',
-        top: '100%',
-        left: 0,
-        right: 0,
-        marginTop: 4,
         backgroundColor: '#ffffff',
         borderRadius: 12,
         borderWidth: 1,
@@ -148,12 +191,8 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.1,
         shadowRadius: 16,
-        // @ts-ignore
-        boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
-        zIndex: 10001,
         maxHeight: 320,
         overflow: 'hidden',
-        opacity: 1,
     },
     list: {
         maxHeight: 320,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Check, X } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 
@@ -22,10 +23,44 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
     const dropdownRef = useRef<any>(null);
+    const triggerRef = useRef<any>(null);
+    const portalRef = useRef<HTMLDivElement | null>(null);
+    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        
+        if (!portalRef.current) {
+            portalRef.current = document.createElement('div');
+            portalRef.current.id = 'searchable-select-portal';
+        }
+        
+        if (isOpen) {
+            document.body.appendChild(portalRef.current);
+        }
+        
+        return () => {
+            if (portalRef.current && document.body.contains(portalRef.current)) {
+                document.body.removeChild(portalRef.current);
+            }
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setDropdownPosition({
+                top: rect.bottom + window.scrollY + 4,
+                left: rect.left + window.scrollX,
+                width: rect.width
+            });
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         const handleClickOutside = (event: any) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+                triggerRef.current && !triggerRef.current.contains(event.target)) {
                 setIsOpen(false);
             }
         };
@@ -57,11 +92,59 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
 
     const selectedOptions = options.filter(o => values.includes(o.value));
 
+    const dropdownContent = isOpen && portalRef.current ? createPortal(
+        <View 
+            ref={dropdownRef as any}
+            style={[
+                styles.dropdown,
+                {
+                    position: 'fixed' as any,
+                    top: dropdownPosition.top,
+                    left: dropdownPosition.left,
+                    width: Math.max(dropdownPosition.width, 300),
+                    zIndex: 999999
+                }
+            ]}
+        >
+            <TextInput
+                style={styles.searchInput}
+                placeholder="Search..."
+                value={search}
+                onChangeText={setSearch}
+                autoFocus
+            />
+            <ScrollView style={styles.optionsList} nestedScrollEnabled>
+                {filteredOptions.length === 0 ? (
+                    <Text style={styles.noResults}>No results found</Text>
+                ) : (
+                    filteredOptions.map(opt => {
+                        const isSelected = values.includes(opt.value);
+                        return (
+                            <TouchableOpacity 
+                                key={opt.value} 
+                                style={[styles.option, isSelected && styles.optionSelected]}
+                                onPress={() => toggleValue(opt.value)}
+                            >
+                                <View>
+                                    <Text style={[styles.optionLabel, isSelected && styles.textSelected]}>{opt.label}</Text>
+                                    {opt.subtitle && <Text style={styles.optionSub}>{opt.subtitle}</Text>}
+                                </View>
+                                {isSelected && <Check size={16} color={colors.primary} />}
+                            </TouchableOpacity>
+                        );
+                    })
+                )}
+            </ScrollView>
+        </View>,
+        portalRef.current
+    ) : null;
+
     return (
         <View style={styles.container}>
             {label && <Text style={styles.label}>{label}</Text>}
-            <View ref={dropdownRef as any} style={styles.dropdownContainer}>
+            <View style={styles.dropdownContainer}>
                 <TouchableOpacity 
+                    ref={triggerRef as any}
                     activeOpacity={0.8}
                     style={[styles.trigger, isOpen && styles.triggerActive]} 
                     onPress={() => setIsOpen(!isOpen)}
@@ -84,40 +167,7 @@ export function SearchableSelect({ options, values, onChange, placeholder = "Sel
                     </View>
                     <ChevronDown size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
-
-                {isOpen && (
-                    <View style={styles.dropdown}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Search..."
-                            value={search}
-                            onChangeText={setSearch}
-                            autoFocus
-                        />
-                        <ScrollView style={styles.optionsList} nestedScrollEnabled>
-                            {filteredOptions.length === 0 ? (
-                                <Text style={styles.noResults}>No results found</Text>
-                            ) : (
-                                filteredOptions.map(opt => {
-                                    const isSelected = values.includes(opt.value);
-                                    return (
-                                        <TouchableOpacity 
-                                            key={opt.value} 
-                                            style={[styles.option, isSelected && styles.optionSelected]}
-                                            onPress={() => toggleValue(opt.value)}
-                                        >
-                                            <View>
-                                                <Text style={[styles.optionLabel, isSelected && styles.textSelected]}>{opt.label}</Text>
-                                                {opt.subtitle && <Text style={styles.optionSub}>{opt.subtitle}</Text>}
-                                            </View>
-                                            {isSelected && <Check size={16} color={colors.primary} />}
-                                        </TouchableOpacity>
-                                    );
-                                })
-                            )}
-                        </ScrollView>
-                    </View>
-                )}
+                {dropdownContent}
             </View>
         </View>
     );
@@ -129,7 +179,6 @@ const styles = StyleSheet.create({
     },
     dropdownContainer: {
         position: 'relative' as any,
-        zIndex: 10001,
     },
     label: {
         fontSize: 14,
@@ -179,11 +228,6 @@ const styles = StyleSheet.create({
         fontWeight: '500'
     },
     dropdown: {
-        // @ts-ignore
-        position: 'absolute',
-        top: '100%',
-        left: 0,
-        marginTop: 4,
         backgroundColor: '#fff',
         borderRadius: 8,
         borderWidth: 1,
@@ -194,9 +238,7 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 5,
         overflow: 'hidden',
-        zIndex: 10001,
         maxHeight: 300,
-        minWidth: 300,
     },
     searchInput: {
         padding: 12,

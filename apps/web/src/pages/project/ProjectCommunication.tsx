@@ -1,20 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
+import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
-import { MessageSquare, Send, StickyNote, Users, Clock, Pin } from 'lucide-react';
+import { MessageSquare, Send, StickyNote, Users, Clock, Pin, Trash2, Edit2, X, PinOff, Plus } from 'lucide-react';
 
 interface Message {
   id: string;
-  content: string;
+  project_id: string;
   user_id: string;
-  user_name: string;
+  content: string;
+  message_type: 'message' | 'note';
+  is_pinned: boolean;
+  pinned_by?: string;
+  pinned_at?: string;
+  parent_message_id?: string;
+  is_edited: boolean;
+  edited_at?: string;
+  is_deleted: boolean;
   created_at: string;
-  type: 'message' | 'note';
-  pinned?: boolean;
+  updated_at: string;
+  user_name?: string;
+  user_avatar?: string;
 }
 
 interface CommunicationStats {
@@ -31,38 +41,249 @@ export function ProjectCommunication() {
   const [notes, setNotes] = useState<Message[]>([]);
   const [activeTab, setActiveTab] = useState<'messages' | 'notes'>('messages');
   const [messageInput, setMessageInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [stats, setStats] = useState<CommunicationStats>({ totalMessages: 0, totalNotes: 0, activeUsers: 0 });
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    if (id) loadCommunication();
+    if (id) {
+      loadCommunication();
+      getCurrentUser();
+      
+      // Subscribe to realtime updates
+      const channel = supabase
+        .channel(`project-messages-${id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'project_messages',
+            filter: `project_id=eq.${id}`
+          },
+          () => {
+            loadCommunication();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [id]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, notes, activeTab]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const getCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) setCurrentUserId(user.id);
+  };
 
   const loadCommunication = async () => {
     if (!id) return;
     setLoading(true);
+    
     try {
-      const mockMessages: Message[] = [
-        { id: '1', content: 'Die Rohbauarbeiten verlaufen planmäßig.', user_id: 'user1', user_name: 'Max Mustermann', created_at: '2026-02-11T10:30:00', type: 'message' },
-        { id: '2', content: 'Bitte die neuen Materialpläne prüfen.', user_id: 'user2', user_name: 'Anna Schmidt', created_at: '2026-02-11T09:15:00', type: 'message' }
-      ];
-      const mockNotes: Message[] = [
-        { id: 'n1', content: 'Fundament vor Frost schützen.', user_id: 'user1', user_name: 'Max Mustermann', created_at: '2026-02-09T14:20:00', type: 'note', pinned: true }
-      ];
-      setMessages(mockMessages);
-      setNotes(mockNotes);
-      setStats({ totalMessages: mockMessages.length, totalNotes: mockNotes.length, activeUsers: 2 });
+      // Load messages
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('project_messages')
+        .select(`
+          *,
+          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+        `)
+        .eq('project_id', id)
+        .eq('message_type', 'message')
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: true });
+
+      if (messagesError) throw messagesError;
+
+      // Load notes
+      const { data: notesData, error: notesError } = await supabase
+        .from('project_messages')
+        .select(`
+          *,
+          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+        `)
+        .eq('project_id', id)
+        .eq('message_type', 'note')
+        .eq('is_deleted', false)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (notesError) throw notesError;
+
+      // Transform messages
+      const transformedMessages: Message[] = (messagesData || []).map((msg: any) => ({
+        ...msg,
+        user_name: msg.profiles 
+          ? `${msg.profiles.first_name || ''} ${msg.profiles.last_name || ''}`.trim() || msg.profiles.email
+          : 'Unbekannt',
+        user_avatar: msg.profiles?.avatar_url
+      }));
+
+      const transformedNotes: Message[] = (notesData || []).map((note: any) => ({
+        ...note,
+        user_name: note.profiles 
+          ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() || note.profiles.email
+          : 'Unbekannt',
+        user_avatar: note.profiles?.avatar_url
+      }));
+
+      setMessages(transformedMessages);
+      setNotes(transformedNotes);
+
+      // Calculate stats
+      const uniqueUsers = new Set([
+        ...transformedMessages.map(m => m.user_id),
+        ...transformedNotes.map(n => n.user_id)
+      ]);
+
+      setStats({
+        totalMessages: transformedMessages.length,
+        totalNotes: transformedNotes.length,
+        activeUsers: uniqueUsers.size
+      });
     } catch (error: any) {
-      showToast('Fehler beim Laden', 'error');
+      console.error('Error loading communication:', error);
+      showToast('Fehler beim Laden der Kommunikation', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim()) return;
-    showToast('Nachricht gesendet', 'success');
-    setMessageInput('');
-    loadCommunication();
+    if (!messageInput.trim() || sending) return;
+    
+    setSending(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht authentifiziert');
+
+      const { error } = await supabase
+        .from('project_messages')
+        .insert({
+          project_id: id,
+          user_id: user.id,
+          content: messageInput.trim(),
+          message_type: 'message'
+        });
+
+      if (error) throw error;
+
+      setMessageInput('');
+      showToast('Nachricht gesendet', 'success');
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      showToast(error.message || 'Fehler beim Senden', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleCreateNote = async () => {
+    if (!noteInput.trim()) return;
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht authentifiziert');
+
+      if (editingMessage) {
+        // Update existing note
+        const { error } = await supabase
+          .from('project_messages')
+          .update({
+            content: noteInput.trim(),
+            is_edited: true,
+            edited_at: new Date().toISOString()
+          })
+          .eq('id', editingMessage.id);
+
+        if (error) throw error;
+        showToast('Notiz aktualisiert', 'success');
+      } else {
+        // Create new note
+        const { error } = await supabase
+          .from('project_messages')
+          .insert({
+            project_id: id,
+            user_id: user.id,
+            content: noteInput.trim(),
+            message_type: 'note'
+          });
+
+        if (error) throw error;
+        showToast('Notiz erstellt', 'success');
+      }
+
+      setNoteInput('');
+      setEditingMessage(null);
+      setIsNoteModalOpen(false);
+    } catch (error: any) {
+      console.error('Error creating note:', error);
+      showToast(error.message || 'Fehler beim Erstellen der Notiz', 'error');
+    }
+  };
+
+  const handleTogglePin = async (message: Message) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht authentifiziert');
+
+      const { error } = await supabase
+        .from('project_messages')
+        .update({
+          is_pinned: !message.is_pinned,
+          pinned_by: !message.is_pinned ? user.id : null,
+          pinned_at: !message.is_pinned ? new Date().toISOString() : null
+        })
+        .eq('id', message.id);
+
+      if (error) throw error;
+      showToast(message.is_pinned ? 'Anheftung entfernt' : 'Angeheftet', 'success');
+    } catch (error: any) {
+      console.error('Error toggling pin:', error);
+      showToast('Fehler beim Anheften', 'error');
+    }
+  };
+
+  const handleEditNote = (note: Message) => {
+    setEditingMessage(note);
+    setNoteInput(note.content);
+    setIsNoteModalOpen(true);
+  };
+
+  const handleDeleteMessage = async (message: Message) => {
+    if (!confirm('Möchten Sie diese ' + (message.message_type === 'message' ? 'Nachricht' : 'Notiz') + ' wirklich löschen?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('project_messages')
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', message.id);
+
+      if (error) throw error;
+      showToast('Gelöscht', 'success');
+    } catch (error: any) {
+      console.error('Error deleting message:', error);
+      showToast('Fehler beim Löschen', 'error');
+    }
   };
 
   const formatTime = (dateString: string) => {
@@ -96,6 +317,19 @@ export function ProjectCommunication() {
           <Text style={styles.pageTitle}>Kommunikation</Text>
           <Text style={styles.pageSubtitle}>Nachrichten, Notizen und Kommunikation</Text>
         </View>
+        {activeTab === 'notes' && (
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={() => {
+              setEditingMessage(null);
+              setNoteInput('');
+              setIsNoteModalOpen(true);
+            }}
+          >
+            <Plus size={20} color="#ffffff" />
+            <Text style={styles.addButtonText}>Notiz erstellen</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.statsRow}>
@@ -137,7 +371,7 @@ export function ProjectCommunication() {
           ) : (
             currentItems.map(item => (
               <View key={item.id} style={styles.messageCard}>
-                {item.pinned && (
+                {item.is_pinned && (
                   <View style={styles.pinnedBadge}>
                     <Pin size={12} color="#F59E0B" />
                     <Text style={styles.pinnedText}>Angeheftet</Text>
@@ -145,14 +379,47 @@ export function ProjectCommunication() {
                 )}
                 <View style={styles.messageHeader}>
                   <View style={styles.userAvatar}>
-                    <Text style={styles.avatarText}>{item.user_name.split(' ').map(n => n[0]).join('')}</Text>
+                    <Text style={styles.avatarText}>{(item.user_name || 'U').split(' ').map(n => n[0]).join('')}</Text>
                   </View>
                   <View style={styles.messageHeaderInfo}>
                     <Text style={styles.userName}>{item.user_name}</Text>
                     <View style={styles.timeRow}>
                       <Clock size={12} color="#94a3b8" />
                       <Text style={styles.timeText}>{formatTime(item.created_at)}</Text>
+                      {item.is_edited && (
+                        <Text style={styles.editedText}>(bearbeitet)</Text>
+                      )}
                     </View>
+                  </View>
+                  <View style={styles.messageActions}>
+                    <TouchableOpacity 
+                      style={styles.actionButton}
+                      onPress={() => handleTogglePin(item)}
+                    >
+                      {item.is_pinned ? (
+                        <PinOff size={16} color="#64748b" />
+                      ) : (
+                        <Pin size={16} color="#64748b" />
+                      )}
+                    </TouchableOpacity>
+                    {item.user_id === currentUserId && (
+                      <>
+                        {activeTab === 'notes' && (
+                          <TouchableOpacity 
+                            style={styles.actionButton}
+                            onPress={() => handleEditNote(item)}
+                          >
+                            <Edit2 size={16} color="#64748b" />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity 
+                          style={styles.actionButton}
+                          onPress={() => handleDeleteMessage(item)}
+                        >
+                          <Trash2 size={16} color="#ef4444" />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 </View>
                 <Text style={styles.messageContent}>{item.content}</Text>
@@ -163,13 +430,67 @@ export function ProjectCommunication() {
 
         {activeTab === 'messages' && (
           <View style={styles.inputContainer}>
-            <TextInput style={styles.messageInput} placeholder="Nachricht eingeben..." value={messageInput} onChangeText={setMessageInput} multiline />
-            <TouchableOpacity style={[styles.sendButton, !messageInput.trim() && styles.sendButtonDisabled]} onPress={handleSendMessage} disabled={!messageInput.trim()}>
+            <TextInput 
+              style={styles.messageInput} 
+              placeholder="Nachricht eingeben..." 
+              value={messageInput} 
+              onChangeText={setMessageInput} 
+              multiline 
+              onSubmitEditing={handleSendMessage}
+            />
+            <TouchableOpacity 
+              style={[styles.sendButton, (!messageInput.trim() || sending) && styles.sendButtonDisabled]} 
+              onPress={handleSendMessage} 
+              disabled={!messageInput.trim() || sending}
+            >
               <Send size={20} color="#ffffff" />
             </TouchableOpacity>
           </View>
         )}
       </Card>
+
+      <ModernModal
+        visible={isNoteModalOpen}
+        onClose={() => {
+          setIsNoteModalOpen(false);
+          setEditingMessage(null);
+          setNoteInput('');
+        }}
+        title={editingMessage ? 'Notiz bearbeiten' : 'Neue Notiz erstellen'}
+      >
+        <View style={styles.modalContent}>
+          <TextInput
+            style={styles.noteTextArea}
+            placeholder="Notiz eingeben..."
+            value={noteInput}
+            onChangeText={setNoteInput}
+            multiline
+            numberOfLines={6}
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setIsNoteModalOpen(false);
+                setEditingMessage(null);
+                setNoteInput('');
+              }}
+            >
+              <X size={18} color="#64748b" />
+              <Text style={styles.modalCancelText}>Abbrechen</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalSaveButton, !noteInput.trim() && styles.modalSaveButtonDisabled]}
+              onPress={handleCreateNote}
+              disabled={!noteInput.trim()}
+            >
+              <Text style={styles.modalSaveText}>
+                {editingMessage ? 'Aktualisieren' : 'Erstellen'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ModernModal>
     </View>
   );
 }
@@ -180,6 +501,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
   pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4, letterSpacing: -0.5 },
   pageSubtitle: { fontSize: 15, color: '#64748b' },
+  addButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 12 },
+  addButtonText: { fontSize: 15, fontWeight: '600', color: '#ffffff' },
   statsRow: { flexDirection: 'row', gap: 16, marginBottom: 24 },
   statCard: { flex: 1, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', alignItems: 'center', gap: 8 },
   statValue: { fontSize: 24, fontWeight: '800', color: '#0f172a' },
@@ -203,9 +526,20 @@ const styles = StyleSheet.create({
   userName: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   timeText: { fontSize: 12, color: '#94a3b8' },
+  editedText: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginLeft: 4 },
+  messageActions: { flexDirection: 'row', gap: 8 },
+  actionButton: { padding: 8, borderRadius: 8, backgroundColor: '#F1F5F9' },
   messageContent: { fontSize: 14, color: '#0f172a', lineHeight: 20 },
   inputContainer: { flexDirection: 'row', gap: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   messageInput: { flex: 1, minHeight: 48, maxHeight: 120, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', fontSize: 14, color: '#0f172a' },
   sendButton: { width: 48, height: 48, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  sendButtonDisabled: { backgroundColor: '#CBD5E1' }
+  sendButtonDisabled: { backgroundColor: '#CBD5E1' },
+  modalContent: { gap: 16 },
+  noteTextArea: { minHeight: 120, padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', fontSize: 14, color: '#0f172a', textAlignVertical: 'top' },
+  modalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
+  modalCancelButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: '#64748b' },
+  modalSaveButton: { paddingVertical: 10, paddingHorizontal: 20, backgroundColor: colors.primary, borderRadius: 12 },
+  modalSaveButtonDisabled: { backgroundColor: '#CBD5E1' },
+  modalSaveText: { fontSize: 15, fontWeight: '600', color: '#ffffff' }
 });

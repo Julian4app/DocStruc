@@ -11,4 +11,5 @@ export * from './tasks';
 export * from './members';
 export * from './storage';
 export * from './structure';
+export * from './activity';
 

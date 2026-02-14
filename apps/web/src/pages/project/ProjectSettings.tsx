@@ -9,12 +9,11 @@ import { Settings, Archive, Trash2, Save, AlertTriangle } from 'lucide-react';
 
 interface Project {
   id: string;
-  title: string;
+  name: string;
   description?: string;
   status: string;
   start_date?: string;
-  end_date?: string;
-  address?: string;
+  target_end_date?: string;
   city?: string;
   postal_code?: string;
   country?: string;
@@ -27,12 +26,11 @@ export function ProjectSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
-  const [title, setTitle] = useState('');
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('active');
   const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [address, setAddress] = useState('');
+  const [targetEndDate, setTargetEndDate] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('Deutschland');
@@ -49,12 +47,11 @@ export function ProjectSettings() {
       if (error) throw error;
       if (data) {
         setProject(data);
-        setTitle(data.title || '');
+        setName(data.name || '');
         setDescription(data.description || '');
         setStatus(data.status || 'active');
         setStartDate(data.start_date || '');
-        setEndDate(data.end_date || '');
-        setAddress(data.address || '');
+        setTargetEndDate(data.target_end_date || '');
         setCity(data.city || '');
         setPostalCode(data.postal_code || '');
         setCountry(data.country || 'Deutschland');
@@ -67,19 +64,18 @@ export function ProjectSettings() {
   };
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      showToast('Projekttitel erforderlich', 'error');
+    if (!name.trim()) {
+      showToast('Projektname erforderlich', 'error');
       return;
     }
     setSaving(true);
     try {
       const { error } = await supabase.from('projects').update({
-        title: title.trim(),
+        name: name.trim(),
         description: description.trim() || null,
         status,
         start_date: startDate || null,
-        end_date: endDate || null,
-        address: address.trim() || null,
+        target_end_date: targetEndDate || null,
         city: city.trim() || null,
         postal_code: postalCode.trim() || null,
         country: country.trim() || null,
@@ -139,7 +135,7 @@ export function ProjectSettings() {
             <Text style={styles.sectionTitle}>Allgemeine Einstellungen</Text>
           </View>
           <View style={styles.formGroup}>
-            <Input label="Projekttitel *" value={title} onChangeText={setTitle} placeholder="z.B. Neubau Einfamilienhaus" />
+            <Input label="Projektname *" value={name} onChangeText={setName} placeholder="z.B. Neubau Einfamilienhaus" />
             <Input label="Beschreibung" value={description} onChangeText={setDescription} placeholder="Kurze Beschreibung..." multiline numberOfLines={3} />
             <View>
               <Text style={styles.inputLabel}>Status</Text>
@@ -158,14 +154,14 @@ export function ProjectSettings() {
           <Text style={styles.sectionTitle}>Zeitraum</Text>
           <View style={styles.formGroup}>
             <Input label="Startdatum" value={startDate} onChangeText={setStartDate} placeholder="YYYY-MM-DD" />
-            <Input label="Enddatum" value={endDate} onChangeText={setEndDate} placeholder="YYYY-MM-DD" />
+            <Input label="Ziel-Enddatum" value={targetEndDate} onChangeText={setTargetEndDate} placeholder="YYYY-MM-DD" />
           </View>
         </Card>
 
         <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Adresse</Text>
+          <Text style={styles.sectionTitle}>Standort</Text>
+          <Text style={styles.noteText}>Hinweis: Detaillierte Adressverwaltung erfolgt über den Superuser-Bereich.</Text>
           <View style={styles.formGroup}>
-            <Input label="Straße" value={address} onChangeText={setAddress} placeholder="Musterstraße 123" />
             <View style={styles.row}>
               <Input label="PLZ" value={postalCode} onChangeText={setPostalCode} placeholder="12345" style={{ flex: 1 }} />
               <Input label="Stadt" value={city} onChangeText={setCity} placeholder="Berlin" style={{ flex: 2 }} />
@@ -202,6 +198,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
   formGroup: { gap: 16 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 },
+  noteText: { fontSize: 13, color: '#64748b', fontStyle: 'italic', marginBottom: 12 },
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   statusOption: { flex: 1, minWidth: '45%', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC', alignItems: 'center' },
   statusOptionText: { fontSize: 14, fontWeight: '600', color: '#475569' },
