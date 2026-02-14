@@ -83,10 +83,12 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
       {/* Sidebar - Desktop */}
       <View style={styles.sidebar}>
         <View style={styles.sidebarHeader}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>N</Text>
-          </View>
-          <Text style={styles.logoText}>Nexus<Text style={{ fontWeight: '300', color: '#94a3b8' }}>Admin</Text></Text> 
+          <img 
+            src="/logo.svg" 
+            alt="DocStruc Logo" 
+            style={{ width: 32, height: 32, borderRadius: 6 }}
+          />
+          <Text style={styles.logoText}>DocStruc<Text style={{ fontWeight: '300', color: '#94a3b8' }}>Admin</Text></Text> 
         </View>
 
         <ScrollView style={styles.navScroll} contentContainerStyle={{ paddingVertical: 20 }}>

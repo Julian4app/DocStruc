@@ -84,9 +84,11 @@ export function WebLayout() {
       {/* ─── Sidebar ─── */}
       <View style={styles.sidebar}>
         <View style={styles.logoContainer}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>D</Text>
-          </View>
+          <img 
+            src="/logo.svg" 
+            alt="DocStruc Logo" 
+            style={{ width: 36, height: 36, borderRadius: 8 }}
+          />
           <Text style={styles.logoText}>DocStruc</Text>
         </View>
 
