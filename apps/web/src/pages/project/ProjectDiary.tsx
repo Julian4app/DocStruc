@@ -8,7 +8,7 @@ import { ModernModal } from '../../components/ModernModal';
 import { DatePicker } from '../../components/DatePicker';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
-import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText } from 'lucide-react';
+import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock } from 'lucide-react';
 
 interface DiaryEntry {
   id: string;
@@ -50,11 +50,13 @@ export function ProjectDiary() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [weather, setWeather] = useState<'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'stormy' | 'foggy'>('sunny');
   const [temperature, setTemperature] = useState('');
+  const [manualWorkerCount, setManualWorkerCount] = useState('');
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
   const [workPerformed, setWorkPerformed] = useState('');
   const [progressNotes, setProgressNotes] = useState('');
   const [specialEvents, setSpecialEvents] = useState('');
   const [deliveries, setDeliveries] = useState('');
+  const [loadingWeather, setLoadingWeather] = useState(false);
   
   // Export state
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
@@ -110,21 +112,59 @@ export function ProjectDiary() {
   };
 
   const loadWeatherForDate = async (dateStr: string) => {
-    // Simulate weather API call - in production, you'd call a real weather API
-    // For now, we'll use a simple algorithm based on the date
-    const date = new Date(dateStr);
-    const dayOfYear = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 86400000);
-    const weatherIndex = dayOfYear % 6;
-    const weatherOptions: Array<'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'stormy' | 'foggy'> = 
-      ['sunny', 'cloudy', 'rainy', 'snowy', 'stormy', 'foggy'];
-    
-    setWeather(weatherOptions[weatherIndex]);
-    
-    // Simulate temperature based on date (rough approximation for Central Europe)
-    const month = date.getMonth();
-    const baseTemp = [-2, 0, 5, 10, 15, 20, 22, 21, 17, 11, 5, 1][month];
-    const variance = Math.floor(Math.random() * 10) - 5;
-    setTemperature((baseTemp + variance).toString());
+    setLoadingWeather(true);
+    try {
+      // DWD Bright Sky API - Free weather data for Germany
+      // Using Frankfurt as default location (lat: 50.1109, lon: 8.6821)
+      // For production, you'd want to get project location coordinates
+      const date = new Date(dateStr);
+      const apiDate = date.toISOString().split('T')[0];
+      
+      const response = await fetch(
+        `https://api.brightsky.dev/weather?lat=50.1109&lon=8.6821&date=${apiDate}`
+      );
+      
+      if (!response.ok) throw new Error('Weather API failed');
+      
+      const data = await response.json();
+      
+      if (data.weather && data.weather.length > 0) {
+        // Get midday weather (around 12:00)
+        const middayWeather = data.weather.find((w: any) => {
+          const hour = new Date(w.timestamp).getHours();
+          return hour >= 11 && hour <= 13;
+        }) || data.weather[Math.floor(data.weather.length / 2)];
+        
+        // Map DWD conditions to our weather types
+        const condition = middayWeather.condition;
+        const precipitation = middayWeather.precipitation || 0;
+        const cloudCover = middayWeather.cloud_cover || 0;
+        
+        let weatherType: 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'stormy' | 'foggy' = 'sunny';
+        
+        if (condition?.includes('snow')) weatherType = 'snowy';
+        else if (condition?.includes('thunderstorm')) weatherType = 'stormy';
+        else if (condition?.includes('fog')) weatherType = 'foggy';
+        else if (precipitation > 1 || condition?.includes('rain')) weatherType = 'rainy';
+        else if (cloudCover > 60) weatherType = 'cloudy';
+        
+        setWeather(weatherType);
+        setTemperature(Math.round(middayWeather.temperature || 15).toString());
+      } else {
+        throw new Error('No weather data available');
+      }
+    } catch (error) {
+      console.error('Error loading weather:', error);
+      // Fallback to simulation if API fails
+      const date = new Date(dateStr);
+      const month = date.getMonth();
+      const baseTemp = [-2, 0, 5, 10, 15, 20, 22, 21, 17, 11, 5, 1][month];
+      const variance = Math.floor(Math.random() * 10) - 5;
+      setTemperature((baseTemp + variance).toString());
+      setWeather('cloudy');
+    } finally {
+      setLoadingWeather(false);
+    }
   };
 
   const loadDiaryEntries = async () => {
@@ -181,6 +221,10 @@ export function ProjectDiary() {
         .filter(Boolean)
         .join(', ');
 
+      // Calculate total workers: manual count + selected workers
+      const manualCount = manualWorkerCount ? parseInt(manualWorkerCount) : 0;
+      const totalWorkers = manualCount + selectedWorkers.length;
+      
       const { error } = await supabase
         .from('diary_entries')
         .insert({
@@ -188,7 +232,7 @@ export function ProjectDiary() {
           entry_date: selectedDate,
           weather,
           temperature: temperature ? parseInt(temperature) : null,
-          workers_present: selectedWorkers.length,
+          workers_present: totalWorkers,
           workers_list: workerNames,
           work_performed: workPerformed,
           progress_notes: progressNotes || null,
@@ -226,14 +270,20 @@ export function ProjectDiary() {
 
       if (entriesToExport.length === 0) {
         showToast('Keine Einträge für den ausgewählten Zeitraum', 'error');
+        setExporting(false);
         return;
       }
 
-      // In production, generate actual PDF/Excel here
-      showToast(`${exportFormat.toUpperCase()}-Export wird vorbereitet... (${entriesToExport.length} Einträge)`, 'success');
-      
-      // Simulate export delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Generate document content
+      if (exportFormat === 'pdf') {
+        // Generate PDF
+        const content = generatePDFContent(entriesToExport);
+        downloadPDF(content, `Bautagebuch_${new Date().toISOString().split('T')[0]}.pdf`);
+      } else {
+        // Generate CSV
+        const csv = generateCSVContent(entriesToExport);
+        downloadCSV(csv, `Bautagebuch_${new Date().toISOString().split('T')[0]}.csv`);
+      }
       
       showToast('Export erfolgreich!', 'success');
       setIsExportModalOpen(false);
@@ -245,10 +295,143 @@ export function ProjectDiary() {
     }
   };
 
+  const generateCSVContent = (entries: DiaryEntry[]) => {
+    const headers = ['Datum', 'Wetter', 'Temperatur', 'Mitarbeiter', 'Arbeiten', 'Fortschritt', 'Ereignisse', 'Lieferungen', 'Erstellt von', 'Erstellt am'];
+    const rows = entries.map(entry => [
+      formatDate(entry.entry_date),
+      getWeatherLabel(entry.weather),
+      entry.temperature ? `${entry.temperature}°C` : '',
+      entry.workers_present || '',
+      entry.work_performed || '',
+      entry.progress_notes || '',
+      entry.special_events || '',
+      entry.deliveries || '',
+      entry.creator_name || '',
+      formatDateTime(entry.created_at)
+    ]);
+    
+    return [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+  };
+
+  const generatePDFContent = (entries: DiaryEntry[]) => {
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Bautagebuch Export</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
+          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; }
+          .logo { width: 80px; height: 80px; margin: 0 auto 20px; }
+          h1 { color: #1e3a5f; margin: 10px 0; }
+          .subtitle { color: #666; font-size: 14px; }
+          .entry { margin-bottom: 30px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; page-break-inside: avoid; }
+          .entry-header { background: #f8fafc; padding: 12px; margin: -20px -20px 15px; border-radius: 8px 8px 0 0; border-bottom: 2px solid #e2e8f0; }
+          .entry-date { font-size: 18px; font-weight: bold; color: #1e3a5f; margin-bottom: 5px; }
+          .entry-meta { display: flex; gap: 20px; font-size: 13px; color: #64748b; }
+          .section { margin: 15px 0; }
+          .section-title { font-weight: bold; color: #475569; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
+          .section-content { color: #0f172a; line-height: 1.6; }
+          .footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; font-style: italic; }
+          @media print { .entry { page-break-inside: avoid; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <rect width="512" height="512" rx="90" fill="#1e3a5f"/>
+            <path d="M 280 90 L 360 150 L 360 180 L 340 180 L 340 160 L 300 130 L 280 140 Z" fill="#1e3a5f" stroke="#fff" stroke-width="3"/>
+            <circle cx="445" cy="135" r="20" fill="#F59E0B" stroke="#fff" stroke-width="3"/>
+            <line x1="445" y1="155" x2="445" y2="200" stroke="#1e3a5f" stroke-width="8"/>
+            <text x="75" y="360" font-family="Arial" font-size="280" font-weight="bold" fill="#fff">DS</text>
+          </svg>
+          <h1>Bautagebuch</h1>
+          <div class="subtitle">DocStruc - Baudokumentation • Exportiert am ${formatDateTime(new Date().toISOString())}</div>
+        </div>
+    `;
+
+    entries.forEach(entry => {
+      html += `
+        <div class="entry">
+          <div class="entry-header">
+            <div class="entry-date">${formatDate(entry.entry_date)}</div>
+            <div class="entry-meta">
+              <span>${getWeatherLabel(entry.weather)}${entry.temperature ? ` • ${entry.temperature}°C` : ''}</span>
+              ${entry.workers_present ? `<span>👷 ${entry.workers_present} Mitarbeiter</span>` : ''}
+            </div>
+          </div>
+          ${entry.workers_list ? `
+            <div class="section">
+              <div class="section-title">Anwesende Mitarbeiter</div>
+              <div class="section-content">${entry.workers_list}</div>
+            </div>
+          ` : ''}
+          <div class="section">
+            <div class="section-title">Durchgeführte Arbeiten</div>
+            <div class="section-content">${entry.work_performed}</div>
+          </div>
+          ${entry.progress_notes ? `
+            <div class="section">
+              <div class="section-title">Fortschrittsnotizen</div>
+              <div class="section-content">${entry.progress_notes}</div>
+            </div>
+          ` : ''}
+          ${entry.special_events ? `
+            <div class="section">
+              <div class="section-title">Besondere Vorkommnisse</div>
+              <div class="section-content">${entry.special_events}</div>
+            </div>
+          ` : ''}
+          ${entry.deliveries ? `
+            <div class="section">
+              <div class="section-title">Lieferungen</div>
+              <div class="section-content">${entry.deliveries}</div>
+            </div>
+          ` : ''}
+          <div class="footer">
+            Erstellt von: ${entry.creator_name} • ${formatDateTime(entry.created_at)}
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</body></html>';
+    return html;
+  };
+
+  const downloadPDF = (htmlContent: string, filename: string) => {
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.replace('.pdf', '.html');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCSV = (csvContent: string, filename: string) => {
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const resetForm = () => {
     setSelectedDate(new Date().toISOString().split('T')[0]);
     setWeather('sunny');
     setTemperature('');
+    setManualWorkerCount('');
     setSelectedWorkers([]);
     setWorkPerformed('');
     setProgressNotes('');
@@ -264,6 +447,17 @@ export function ProjectDiary() {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
+    });
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -406,7 +600,9 @@ export function ProjectDiary() {
                     </View>
                   )}
                   <View style={styles.entryFooter}>
-                    <Text style={styles.entryCreator}>Erstellt von: {entry.creator_name}</Text>
+                    <Text style={styles.entryCreator}>
+                      Erstellt von: {entry.creator_name} • {formatDateTime(entry.created_at)}
+                    </Text>
                   </View>
                 </Card>
               ))}
@@ -452,8 +648,16 @@ export function ProjectDiary() {
             placeholder="Automatisch geladen" 
           />
           
+          <Input 
+            label="Zusätzliche Mitarbeiter (Anzahl)" 
+            value={manualWorkerCount} 
+            onChangeText={setManualWorkerCount} 
+            placeholder="z.B. 5 externe Mitarbeiter" 
+            keyboardType="numeric"
+          />
+          
           <SearchableSelect
-            label="Anwesende Mitarbeiter"
+            label="Anwesende Projektmitarbeiter"
             options={projectMembers.map(member => ({
               label: `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email,
               value: member.user_id
@@ -463,6 +667,10 @@ export function ProjectDiary() {
             placeholder="Mitarbeiter auswählen..."
             multi
           />
+          
+          <Text style={styles.workerCountInfo}>
+            Gesamt: {(manualWorkerCount ? parseInt(manualWorkerCount) || 0 : 0) + selectedWorkers.length} Mitarbeiter
+          </Text>
           
           <Input 
             label="Durchgeführte Arbeiten *" 
@@ -706,5 +914,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 16,
+  },
+  workerCountInfo: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: -8,
+    marginBottom: 8,
   },
 });
