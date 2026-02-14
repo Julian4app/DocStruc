@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
+import { Select } from '../../components/Select';
 import { 
   FolderOpen, Upload, File, FileText, Image, Video, Folder, Download, 
   MoreVertical, Edit2, Trash2, Share2, X, Plus, FolderPlus, Clock,
@@ -182,7 +183,7 @@ export function ProjectFiles() {
       .from('project_files')
       .select(`
         *,
-        profiles!project_files_uploaded_by_fkey(name)
+        profiles!project_files_uploaded_by_fkey(email, first_name, last_name)
       `)
       .eq('project_id', id)
       .eq('is_latest_version', true)
@@ -196,7 +197,9 @@ export function ProjectFiles() {
 
     const filesWithNames = (data || []).map((file: any) => ({
       ...file,
-      uploader_name: file.profiles?.name || 'Unbekannt'
+      uploader_name: file.profiles 
+        ? `${file.profiles.first_name || ''} ${file.profiles.last_name || ''}`.trim() || file.profiles.email || 'Unbekannt'
+        : 'Unbekannt'
     }));
 
     setFiles(filesWithNames);
@@ -210,7 +213,7 @@ export function ProjectFiles() {
     
     const { data } = await supabase
       .from('project_members')
-      .select('*, profiles(name, email)')
+      .select('*, profiles(email, first_name, last_name)')
       .eq('project_id', id);
 
     setProjectMembers(data || []);
@@ -388,37 +391,43 @@ export function ProjectFiles() {
     }
 
     try {
-      // Upload to storage
+      // First, verify the user is a project member
+      const { data: memberCheck } = await supabase
+        .from('project_members')
+        .select('id')
+        .eq('project_id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      const { data: ownerCheck } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('id', id)
+        .eq('owner_id', user.id)
+        .single();
+
+      if (!memberCheck && !ownerCheck) {
+        showToast('Sie haben keine Berechtigung für dieses Projekt', 'error');
+        return;
+      }
+
+      // Create file record FIRST (before storage upload)
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const folderPath = isUploadingToFolder || 'root';
       const filePath = `${id}/${folderPath}/${fileName}`;
+      const mimeType = file.type || 'application/octet-stream';
 
-      console.log('Uploading file:', {
+      console.log('Creating file record:', {
+        project_id: id,
+        folder_id: isUploadingToFolder,
         name: file.name,
-        size: file.size,
-        type: file.type,
-        path: filePath
+        storage_path: filePath,
+        user_id: user.id
       });
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('project-files')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
-      }
-
-      console.log('File uploaded successfully:', uploadData);
-
-      // Create file record with fallback mime type
-      const mimeType = file.type || 'application/octet-stream';
-      
-      const { error: insertError } = await supabase
+      // Insert database record first
+      const { data: fileRecord, error: insertError } = await supabase
         .from('project_files')
         .insert({
           project_id: id,
@@ -428,14 +437,33 @@ export function ProjectFiles() {
           file_size: file.size,
           mime_type: mimeType,
           uploaded_by: user.id
-        });
+        })
+        .select()
+        .single();
 
       if (insertError) {
         console.error('Insert error:', insertError);
-        // Try to clean up uploaded file
-        await supabase.storage.from('project-files').remove([filePath]);
         throw new Error(`Datenbankfehler: ${insertError.message}`);
       }
+
+      console.log('Database record created, now uploading to storage:', filePath);
+
+      // Now upload to storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('project-files')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        // Clean up database record if upload fails
+        await supabase.from('project_files').delete().eq('id', fileRecord.id);
+        throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
+      }
+
+      console.log('File uploaded successfully:', uploadData);
 
       showToast('Datei erfolgreich hochgeladen', 'success');
       setIsUploadingToFolder(null);
@@ -585,7 +613,7 @@ export function ProjectFiles() {
       .from('project_file_versions')
       .select(`
         *,
-        profiles!project_file_versions_uploaded_by_fkey(name)
+        profiles!project_file_versions_uploaded_by_fkey(email, first_name, last_name)
       `)
       .eq('file_id', fileId)
       .order('version', { ascending: false });
@@ -597,7 +625,9 @@ export function ProjectFiles() {
 
     const versionsWithNames = (data || []).map((v: any) => ({
       ...v,
-      uploader_name: v.profiles?.name || 'Unbekannt'
+      uploader_name: v.profiles 
+        ? `${v.profiles.first_name || ''} ${v.profiles.last_name || ''}`.trim() || v.profiles.email || 'Unbekannt'
+        : 'Unbekannt'
     }));
 
     setFileVersions(versionsWithNames);
@@ -1320,64 +1350,64 @@ export function ProjectFiles() {
         title={`Teilen: ${selectedFile?.name}`}
       >
         <View style={styles.modalBody}>
-          <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>Benutzer</Text>
-            <select
-              value={shareFormData.user_id}
-              onChange={(e) => setShareFormData({ ...shareFormData, user_id: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                fontSize: 14,
-                outline: 'none'
-              }}
-            >
-              <option value="">Benutzer auswählen</option>
-              {projectMembers.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {member.profiles?.name || member.profiles?.email}
-                </option>
-              ))}
-            </select>
-          </View>
+          <Select
+            label="Benutzer"
+            value={shareFormData.user_id}
+            options={[
+              { label: 'Benutzer auswählen', value: '' },
+              ...projectMembers.map((member) => ({
+                label: member.profiles
+                  ? `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email
+                  : 'Unbekannt',
+                value: member.user_id
+              }))
+            ]}
+            onChange={(value) => setShareFormData({ ...shareFormData, user_id: value as string })}
+            placeholder="Benutzer auswählen"
+          />
 
           <View style={styles.formGroup}>
             <Text style={styles.formLabel}>Berechtigungen</Text>
             <View style={styles.permissionsGrid}>
-              <label style={styles.permissionItem}>
-                <input
-                  type="checkbox"
-                  checked={shareFormData.can_download}
-                  onChange={(e) => setShareFormData({ ...shareFormData, can_download: e.target.checked })}
-                />
-                <Text style={styles.permissionLabel}>Herunterladen</Text>
-              </label>
-              <label style={styles.permissionItem}>
-                <input
-                  type="checkbox"
-                  checked={shareFormData.can_edit}
-                  onChange={(e) => setShareFormData({ ...shareFormData, can_edit: e.target.checked })}
-                />
-                <Text style={styles.permissionLabel}>Bearbeiten</Text>
-              </label>
-              <label style={styles.permissionItem}>
-                <input
-                  type="checkbox"
-                  checked={shareFormData.can_delete}
-                  onChange={(e) => setShareFormData({ ...shareFormData, can_delete: e.target.checked })}
-                />
-                <Text style={styles.permissionLabel}>Löschen</Text>
-              </label>
-              <label style={styles.permissionItem}>
-                <input
-                  type="checkbox"
-                  checked={shareFormData.can_share}
-                  onChange={(e) => setShareFormData({ ...shareFormData, can_share: e.target.checked })}
-                />
-                <Text style={styles.permissionLabel}>Teilen</Text>
-              </label>
+              <TouchableOpacity
+                style={[styles.permissionToggle, shareFormData.can_download && styles.permissionToggleActive]}
+                onPress={() => setShareFormData({ ...shareFormData, can_download: !shareFormData.can_download })}
+              >
+                <Download size={14} color={shareFormData.can_download ? '#fff' : '#64748b'} />
+                <Text style={[styles.permissionToggleText, shareFormData.can_download && styles.permissionToggleTextActive]}>
+                  Herunterladen
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.permissionToggle, shareFormData.can_edit && styles.permissionToggleActive]}
+                onPress={() => setShareFormData({ ...shareFormData, can_edit: !shareFormData.can_edit })}
+              >
+                <Edit2 size={14} color={shareFormData.can_edit ? '#fff' : '#64748b'} />
+                <Text style={[styles.permissionToggleText, shareFormData.can_edit && styles.permissionToggleTextActive]}>
+                  Bearbeiten
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.permissionToggle, shareFormData.can_delete && styles.permissionToggleActive]}
+                onPress={() => setShareFormData({ ...shareFormData, can_delete: !shareFormData.can_delete })}
+              >
+                <Trash2 size={14} color={shareFormData.can_delete ? '#fff' : '#64748b'} />
+                <Text style={[styles.permissionToggleText, shareFormData.can_delete && styles.permissionToggleTextActive]}>
+                  Löschen
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.permissionToggle, shareFormData.can_share && styles.permissionToggleActive]}
+                onPress={() => setShareFormData({ ...shareFormData, can_share: !shareFormData.can_share })}
+              >
+                <Share2 size={14} color={shareFormData.can_share ? '#fff' : '#64748b'} />
+                <Text style={[styles.permissionToggleText, shareFormData.can_share && styles.permissionToggleTextActive]}>
+                  Teilen
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1396,7 +1426,9 @@ export function ProjectFiles() {
                     <View style={styles.shareInfo}>
                       <User size={16} color="#64748b" />
                       <Text style={styles.shareName}>
-                        {member?.profiles?.name || 'Unbekannt'}
+                        {member?.profiles
+                          ? `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email || 'Unbekannt'
+                          : 'Unbekannt'}
                       </Text>
                       <View style={styles.sharePermissions}>
                         {share.can_download && <Download size={12} color="#10B981" />}
@@ -1828,16 +1860,31 @@ const styles = StyleSheet.create({
   permissionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-  },
-  permissionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
-  permissionLabel: {
-    fontSize: 14,
-    color: '#334155',
+  permissionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    transition: 'all 0.2s',
+  },
+  permissionToggleActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  permissionToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  permissionToggleTextActive: {
+    color: '#ffffff',
   },
   sharesList: {
     marginTop: 16,
