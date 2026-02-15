@@ -13,7 +13,7 @@ import { SearchableSelect } from '../../components/SearchableSelect';
 import { useLayout } from '../../layouts/LayoutContext';
 import { 
   Settings, Archive, Trash2, Save, AlertTriangle, Building2, MapPin, 
-  Calendar, Image, Users, FileText, Briefcase, ArrowLeft 
+  Calendar, Image, Users, FileText, Briefcase, ArrowLeft, Shield 
 } from 'lucide-react';
 
 interface Project {
@@ -62,13 +62,14 @@ export function ProjectManagementDetail() {
   // Media
   const [images, setImages] = useState<string[]>([]);
   
-  // People
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [owners, setOwners] = useState<any[]>([]);
-  const [subcontractors, setSubcontractors] = useState<any[]>([]);
-  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
-  const [selectedSubcontractors, setSelectedSubcontractors] = useState<string[]>([]);
+  // People (uses user_accessors + project_members for actual access control)
+  const [allAccessors, setAllAccessors] = useState<any[]>([]);
+  const [currentMembers, setCurrentMembers] = useState<any[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  
+  // Roles for this project
+  const [availableRoles, setAvailableRoles] = useState<any[]>([]);
+  const [selectedProjectRoleIds, setSelectedProjectRoleIds] = useState<string[]>([]);
 
   useEffect(() => {
     setTitle('Projekt Management');
@@ -123,15 +124,29 @@ export function ProjectManagementDetail() {
 
   const loadResources = async () => {
     try {
-      const [empRes, ownRes, subRes] = await Promise.all([
-        supabase.from('crm_contacts').select('*').eq('type', 'employee'),
-        supabase.from('crm_contacts').select('*').eq('type', 'owner'),
-        supabase.from('subcontractors').select('*')
-      ]);
+      // Get current user (superuser) ID
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Load all user_accessors (the actual users that can be added to projects)
+      const { data: accessorsData, error: accessorsError } = await supabase
+        .from('user_accessors')
+        .select('*')
+        .eq('owner_id', user.id)
+        .eq('is_active', true);
+
+      if (accessorsError) throw accessorsError;
+      setAllAccessors(accessorsData || []);
       
-      if (empRes.data) setEmployees(empRes.data);
-      if (ownRes.data) setOwners(ownRes.data);
-      if (subRes.data) setSubcontractors(subRes.data);
+      // Load all roles that can be assigned to projects
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('roles')
+        .select('id, role_name, role_description')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+      
+      if (rolesError) throw rolesError;
+      setAvailableRoles(rolesData || []);
     } catch (error: any) {
       console.error('Error loading resources:', error);
     }
@@ -141,22 +156,35 @@ export function ProjectManagementDetail() {
     if (!id) return;
     
     try {
-      const [linksRes, subLinksRes] = await Promise.all([
-        supabase.from('project_crm_links').select('contact_id, role').eq('project_id', id),
-        supabase.from('project_subcontractors').select('subcontractor_id').eq('project_id', id)
-      ]);
+      // Load actual project_members (the real access-control table)
+      const { data: membersData, error: membersError } = await supabase
+        .from('project_members')
+        .select(`
+          *,
+          accessor:user_accessors(*),
+          role:roles(id, role_name)
+        `)
+        .eq('project_id', id);
 
-      if (linksRes.data) {
-        const empIds = linksRes.data.filter(l => l.role === 'employee').map(l => l.contact_id);
-        const ownIds = linksRes.data.filter(l => l.role === 'owner').map(l => l.contact_id);
-        setSelectedEmployees(empIds);
-        setSelectedOwners(ownIds);
-      }
-
-      if (subLinksRes.data) {
-        const subIds = subLinksRes.data.map(l => l.subcontractor_id);
-        setSelectedSubcontractors(subIds);
-      }
+      if (membersError) throw membersError;
+      
+      setCurrentMembers(membersData || []);
+      // Set selected member accessor IDs for the SearchableSelect
+      const accessorIds = (membersData || [])
+        .filter(m => m.accessor_id)
+        .map(m => m.accessor_id);
+      setSelectedMemberIds(accessorIds);
+      
+      // Load project_roles for this project
+      const { data: projectRolesData, error: projectRolesError } = await supabase
+        .from('project_roles')
+        .select('role_id')
+        .eq('project_id', id);
+      
+      if (projectRolesError) throw projectRolesError;
+      
+      const roleIds = (projectRolesData || []).map(pr => pr.role_id).filter(Boolean);
+      setSelectedProjectRoleIds(roleIds as string[]);
     } catch (error: any) {
       console.error('Error loading linked people:', error);
     }
@@ -201,29 +229,69 @@ export function ProjectManagementDetail() {
 
       if (projectError) throw projectError;
 
-      // Update Employee & Owner Links
-      await supabase.from('project_crm_links').delete().eq('project_id', id);
+      // 1. Sync project_roles with selected roles
+      const { data: existingProjectRoles } = await supabase
+        .from('project_roles')
+        .select('id, role_id')
+        .eq('project_id', id);
+
+      const existingRoleIds = (existingProjectRoles || []).map(pr => pr.role_id).filter(Boolean);
       
-      const contactLinks = [
-        ...selectedEmployees.map(contactId => ({ project_id: id, contact_id: contactId, role: 'employee' })),
-        ...selectedOwners.map(contactId => ({ project_id: id, contact_id: contactId, role: 'owner' }))
-      ];
-      
-      if (contactLinks.length > 0) {
-        const { error: linkError } = await supabase.from('project_crm_links').insert(contactLinks);
-        if (linkError) throw linkError;
+      // Find roles to add/remove
+      const rolesToAdd = selectedProjectRoleIds.filter(rid => !existingRoleIds.includes(rid));
+      const rolesToRemove = (existingProjectRoles || []).filter(pr => pr.role_id && !selectedProjectRoleIds.includes(pr.role_id));
+
+      // Remove unselected project roles
+      if (rolesToRemove.length > 0) {
+        const removeRoleIds = rolesToRemove.map(pr => pr.id);
+        await supabase.from('project_roles').delete().in('id', removeRoleIds);
       }
 
-      // Update Subcontractor Links
-      await supabase.from('project_subcontractors').delete().eq('project_id', id);
-      
-      if (selectedSubcontractors.length > 0) {
-        const subInserts = selectedSubcontractors.map(subId => ({
+      // Add newly selected project roles
+      if (rolesToAdd.length > 0) {
+        const projectRolesToInsert = rolesToAdd.map(roleId => ({
           project_id: id,
-          subcontractor_id: subId
+          role_id: roleId
         }));
-        const { error: subError } = await supabase.from('project_subcontractors').insert(subInserts);
-        if (subError) throw subError;
+        await supabase.from('project_roles').insert(projectRolesToInsert);
+      }
+
+      // 2. Sync project_members with selected accessors
+      const { data: existingMembers } = await supabase
+        .from('project_members')
+        .select('id, accessor_id')
+        .eq('project_id', id);
+
+      const existingAccessorIds = (existingMembers || []).map(m => m.accessor_id).filter(Boolean);
+      
+      // Find members to add (in selected but not existing)
+      const toAdd = selectedMemberIds.filter(aid => !existingAccessorIds.includes(aid));
+      // Find members to remove (in existing but not selected)
+      const toRemove = (existingMembers || []).filter(m => m.accessor_id && !selectedMemberIds.includes(m.accessor_id));
+
+      // Remove unselected members
+      if (toRemove.length > 0) {
+        const removeIds = toRemove.map(m => m.id);
+        // Also delete their custom permissions first
+        await supabase.from('project_member_permissions').delete().in('project_member_id', removeIds);
+        await supabase.from('project_members').delete().in('id', removeIds);
+      }
+
+      // Add newly selected members
+      if (toAdd.length > 0) {
+        for (const accessorId of toAdd) {
+          const accessor = allAccessors.find(a => a.id === accessorId);
+          if (!accessor) continue;
+
+          await supabase.from('project_members').insert({
+            project_id: id,
+            user_id: accessor.registered_user_id || null,
+            accessor_id: accessorId,
+            member_type: accessor.accessor_type || 'other',
+            role: 'member',
+            status: 'open'
+          });
+        }
       }
 
       showToast('Einstellungen gespeichert', 'success');
@@ -433,49 +501,139 @@ export function ProjectManagementDetail() {
           </View>
         </Card>
 
-        {/* 5. People & Trades */}
+        {/* 5. Project Roles */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Shield size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Projektrollen</Text>
+          </View>
+          <Text style={styles.helperText}>
+            Definieren Sie welche Rollen für dieses Projekt verfügbar sein sollen. Diese Rollen können dann Mitgliedern auf der "Beteiligte" Seite zugewiesen werden.
+          </Text>
+          <View style={styles.formGroup}>
+            <SearchableSelect
+              label="Verfügbare Rollen für dieses Projekt"
+              placeholder="Rollen auswählen..."
+              options={availableRoles.map(r => ({
+                label: r.role_name,
+                value: r.id,
+                subtitle: r.role_description || undefined
+              }))}
+              values={selectedProjectRoleIds}
+              onChange={setSelectedProjectRoleIds}
+              multi
+            />
+          </View>
+          {availableRoles.length === 0 && (
+            <Text style={{ fontSize: 13, color: '#F59E0B', marginTop: 8 }}>
+              ⚠️ Keine Rollen verfügbar. Erstellen Sie zuerst Rollen auf der "Zugriffsberechtigte" Seite im "Rollen" Tab.
+            </Text>
+          )}
+        </Card>
+
+        {/* 6. People & Trades */}
         <Card style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <Users size={20} color={colors.primary} />
             <Text style={styles.sectionTitle}>Beteiligte Personen</Text>
           </View>
+          <Text style={styles.helperText}>
+            Hier ausgewählte Personen erhalten Zugang zum Projekt und erscheinen in allen Bereichen (Beteiligte, Zuweisungen, etc.). Verwalten Sie die Benutzer unter "Zugriffsberechtigte".
+          </Text>
           <View style={styles.formGroup}>
             <SearchableSelect
-              label="Mitarbeiter"
-              placeholder="Mitarbeiter auswählen..."
-              options={employees.map(e => ({
-                label: `${e.first_name} ${e.last_name}`,
-                value: e.id
-              }))}
-              values={selectedEmployees}
-              onChange={setSelectedEmployees}
-              multi
-            />
-            
-            <SearchableSelect
-              label="Bauherren / Eigentümer"
-              placeholder="Eigentümer auswählen..."
-              options={owners.map(o => ({
-                label: `${o.first_name} ${o.last_name}`,
-                value: o.id
-              }))}
-              values={selectedOwners}
-              onChange={setSelectedOwners}
-              multi
-            />
-            
-            <SearchableSelect
-              label="Nachunternehmer"
-              placeholder="Nachunternehmer auswählen..."
-              options={subcontractors.map(s => ({
-                label: s.company_name || `${s.first_name} ${s.last_name}`,
-                value: s.id
-              }))}
-              values={selectedSubcontractors}
-              onChange={setSelectedSubcontractors}
+              label="Projektmitglieder"
+              placeholder="Personen zum Projekt hinzufügen..."
+              options={allAccessors.map(a => {
+                const typeLabels: Record<string, string> = {
+                  employee: 'Mitarbeiter',
+                  owner: 'Bauherr',
+                  subcontractor: 'Nachunternehmer',
+                  other: 'Sonstige'
+                };
+                return {
+                  label: `${a.accessor_first_name || ''} ${a.accessor_last_name || ''}`.trim() || a.accessor_email,
+                  value: a.id,
+                  subtitle: `${typeLabels[a.accessor_type] || a.accessor_type}${a.accessor_company ? ' · ' + a.accessor_company : ''}`
+                };
+              })}
+              values={selectedMemberIds}
+              onChange={setSelectedMemberIds}
               multi
             />
           </View>
+          
+          {/* Current Members Overview */}
+          {currentMembers.length > 0 && (
+            <View style={styles.currentMembersSection}>
+              <Text style={styles.currentMembersTitle}>Aktuelle Mitglieder ({currentMembers.length})</Text>
+              <Text style={{ fontSize: 12, color: '#94A3B8', marginBottom: 12 }}>
+                Rollen und Einladungen verwalten Sie unter "Beteiligte" im Projekt.
+              </Text>
+              {currentMembers.map(member => {
+                const accessor = member.accessor;
+                const typeLabels: Record<string, string> = {
+                  employee: 'Mitarbeiter',
+                  owner: 'Bauherr',
+                  subcontractor: 'Nachunternehmer',
+                  other: 'Sonstige'
+                };
+                const typeColors: Record<string, string> = {
+                  employee: '#3B82F6',
+                  owner: '#10B981',
+                  subcontractor: '#F59E0B',
+                  other: '#6B7280'
+                };
+                const statusLabels: Record<string, string> = {
+                  open: 'Offen',
+                  invited: 'Eingeladen',
+                  active: 'Aktiv',
+                  inactive: 'Inaktiv'
+                };
+                const statusColors: Record<string, string> = {
+                  open: '#94A3B8',
+                  invited: '#F59E0B',
+                  active: '#10B981',
+                  inactive: '#EF4444'
+                };
+                const memberStatus = member.status || 'open';
+                return (
+                  <View key={member.id} style={styles.memberRow}>
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>
+                        {accessor?.accessor_first_name || ''} {accessor?.accessor_last_name || ''}
+                      </Text>
+                      <Text style={styles.memberEmail}>{accessor?.accessor_email || 'Keine E-Mail'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={[
+                        styles.memberTypeBadge,
+                        { backgroundColor: `${statusColors[memberStatus]}15` }
+                      ]}>
+                        <Text style={[
+                          styles.memberTypeBadgeText,
+                          { color: statusColors[memberStatus] }
+                        ]}>
+                          {statusLabels[memberStatus]}
+                        </Text>
+                      </View>
+                      <View style={[
+                        styles.memberTypeBadge, 
+                        { backgroundColor: `${typeColors[member.member_type] || '#6B7280'}15` }
+                      ]}>
+                        <Text style={[
+                          styles.memberTypeBadgeText,
+                          { color: typeColors[member.member_type] || '#6B7280' }
+                        ]}>
+                          {typeLabels[member.member_type] || member.member_type}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </Card>
 
         {/* 6. Danger Zone */}
@@ -608,5 +766,50 @@ const styles = StyleSheet.create({
   deleteButton: {
     backgroundColor: '#DC2626',
     borderColor: '#DC2626',
+  },
+  currentMembersSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  currentMembersTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 12,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1E293B',
+  },
+  memberEmail: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  memberTypeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 12,
+  },
+  memberTypeBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

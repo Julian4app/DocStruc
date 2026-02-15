@@ -70,8 +70,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
     }
   ];
 
-  const displayName = userName || 'User';}
-  ];
+  const displayName = userName || 'User';
 
   const bottomMenu = [
     { label: 'Settings', path: '/settings', icon: Settings },

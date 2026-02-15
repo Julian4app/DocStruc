@@ -6,7 +6,10 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
-import { Users, Plus, Trash2, Edit2, Shield, Eye, Check, Mail, Building, Phone, UserPlus } from 'lucide-react';
+import { 
+  Users, Plus, Trash2, Edit2, Shield, Eye, Check, Mail, Building, 
+  Phone, UserPlus, Send, UserX, UserCheck, RefreshCw, MoreVertical 
+} from 'lucide-react';
 
 interface PermissionModule {
   module_key: string;
@@ -39,6 +42,9 @@ interface ProjectMember {
   accessor_id: string;
   member_type: 'employee' | 'owner' | 'subcontractor' | 'other';
   role_id: string | null;
+  status: 'open' | 'invited' | 'active' | 'inactive';
+  invited_at: string | null;
+  accepted_at: string | null;
   accessor: UserAccessor;
   role: Role | null;
   custom_permissions: PermissionModule[];
@@ -60,12 +66,17 @@ export function ProjectParticipants() {
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isEditPermissionsModalOpen, setIsEditPermissionsModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<ProjectMember | null>(null);
+  const [actionMenuMemberId, setActionMenuMemberId] = useState<string | null>(null);
+  const [invitingMemberIds, setInvitingMemberIds] = useState<Set<string>>(new Set());
   
   // Add member form
   const [selectedAccessorId, setSelectedAccessorId] = useState('');
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [useCustomPermissions, setUseCustomPermissions] = useState(false);
   const [customPermissions, setCustomPermissions] = useState<Record<string, PermissionModule>>({});
+
+  // Status filter
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
     if (projectId) {
@@ -82,16 +93,16 @@ export function ProjectParticipants() {
       // Check if user is project owner
       const { data: project } = await supabase
         .from('projects')
-        .select('created_by')
+        .select('created_by, owner_id')
         .eq('id', projectId)
         .single();
 
-      setIsProjectOwner(project?.created_by === user.id);
+      setIsProjectOwner(project?.created_by === user.id || project?.owner_id === user.id);
 
       // Load project members
       await loadMembers();
       
-      // Load available accessors (users I can add)
+      // Load available accessors
       const { data: accessorsData, error: accessorsError } = await supabase
         .from('user_accessors')
         .select('*')
@@ -101,15 +112,23 @@ export function ProjectParticipants() {
       if (accessorsError) throw accessorsError;
       setAvailableAccessors(accessorsData || []);
 
-      // Load available roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('roles')
-        .select('id, role_name, role_description')
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // Load roles that are assigned to THIS PROJECT (via project_roles table)
+      const { data: projectRolesData, error: projectRolesError } = await supabase
+        .from('project_roles')
+        .select(`
+          role_id,
+          role:roles(id, role_name, role_description)
+        `)
+        .eq('project_id', projectId);
 
-      if (rolesError) throw rolesError;
-      setAvailableRoles(rolesData || []);
+      if (projectRolesError) throw projectRolesError;
+      
+      // Extract the role objects from the junction table
+      const rolesForProject = (projectRolesData || [])
+        .map(pr => pr.role)
+        .filter(Boolean);
+      
+      setAvailableRoles(rolesForProject as any[]);
 
       // Load permission modules
       const { data: modulesData, error: modulesError } = await supabase
@@ -146,17 +165,12 @@ export function ProjectParticipants() {
         (membersData || []).map(async (member) => {
           const { data: permsData } = await supabase
             .from('project_member_permissions')
-            .select(`
-              module_key,
-              can_view,
-              can_create,
-              can_edit,
-              can_delete
-            `)
+            .select('module_key, can_view, can_create, can_edit, can_delete')
             .eq('project_member_id', member.id);
 
           return {
             ...member,
+            status: member.status || 'open',
             custom_permissions: permsData || []
           };
         })
@@ -168,25 +182,23 @@ export function ProjectParticipants() {
     }
   };
 
+  // ==========================================
+  // MODAL HELPERS
+  // ==========================================
+
   const openAddMemberModal = () => {
     setSelectedAccessorId('');
     setSelectedRoleId('');
     setUseCustomPermissions(false);
-    
-    // Initialize custom permissions with all modules set to false
     const permsObj: Record<string, PermissionModule> = {};
     availableModules.forEach(module => {
       permsObj[module.module_key] = {
         module_key: module.module_key,
         module_name: module.module_name,
-        can_view: false,
-        can_create: false,
-        can_edit: false,
-        can_delete: false
+        can_view: false, can_create: false, can_edit: false, can_delete: false
       };
     });
     setCustomPermissions(permsObj);
-    
     setIsAddMemberModalOpen(true);
   };
 
@@ -195,60 +207,48 @@ export function ProjectParticipants() {
     setSelectedRoleId(member.role_id || '');
     setUseCustomPermissions(member.custom_permissions.length > 0);
 
-    // If member has role, load role permissions
     const permsObj: Record<string, PermissionModule> = {};
     
     if (member.custom_permissions.length > 0) {
-      // Load custom permissions
-      member.custom_permissions.forEach(perm => {
-        permsObj[perm.module_key] = perm;
-      });
+      member.custom_permissions.forEach(perm => { permsObj[perm.module_key] = perm; });
     } else if (member.role_id) {
-      // Load role permissions
       const { data: rolePerms } = await supabase
-        .from('role_permissions')
-        .select('*')
-        .eq('role_id', member.role_id);
-
+        .from('role_permissions').select('*').eq('role_id', member.role_id);
       (rolePerms || []).forEach(perm => {
-        const module = availableModules.find(m => m.module_key === perm.module_key);
-        if (module) {
+        const mod = availableModules.find(m => m.module_key === perm.module_key);
+        if (mod) {
           permsObj[perm.module_key] = {
-            module_key: perm.module_key,
-            module_name: module.module_name,
-            can_view: perm.can_view,
-            can_create: perm.can_create,
-            can_edit: perm.can_edit,
-            can_delete: perm.can_delete
+            module_key: perm.module_key, module_name: mod.module_name,
+            can_view: perm.can_view, can_create: perm.can_create,
+            can_edit: perm.can_edit, can_delete: perm.can_delete
           };
         }
       });
     }
 
-    // Fill missing modules with false
-    availableModules.forEach(module => {
-      if (!permsObj[module.module_key]) {
-        permsObj[module.module_key] = {
-          module_key: module.module_key,
-          module_name: module.module_name,
-          can_view: false,
-          can_create: false,
-          can_edit: false,
-          can_delete: false
+    availableModules.forEach(mod => {
+      if (!permsObj[mod.module_key]) {
+        permsObj[mod.module_key] = {
+          module_key: mod.module_key, module_name: mod.module_name,
+          can_view: false, can_create: false, can_edit: false, can_delete: false
         };
       }
     });
 
     setCustomPermissions(permsObj);
     setIsEditPermissionsModalOpen(true);
+    setActionMenuMemberId(null);
   };
+
+  // ==========================================
+  // CRUD OPERATIONS
+  // ==========================================
 
   const addMember = async () => {
     if (!selectedAccessorId) {
       showToast('Bitte wählen Sie einen Zugreifer aus', 'error');
       return;
     }
-
     if (!useCustomPermissions && !selectedRoleId) {
       showToast('Bitte wählen Sie eine Rolle oder aktivieren Sie individuelle Berechtigungen', 'error');
       return;
@@ -258,7 +258,12 @@ export function ProjectParticipants() {
       const accessor = availableAccessors.find(a => a.id === selectedAccessorId);
       if (!accessor) return;
 
-      // Create project member
+      // Check duplicate
+      if (members.find(m => m.accessor_id === selectedAccessorId)) {
+        showToast('Diese Person ist bereits Projektmitglied', 'error');
+        return;
+      }
+
       const { data: newMember, error: memberError } = await supabase
         .from('project_members')
         .insert({
@@ -267,156 +272,256 @@ export function ProjectParticipants() {
           accessor_id: selectedAccessorId,
           member_type: accessor.accessor_type,
           role_id: useCustomPermissions ? null : selectedRoleId,
-          role: 'member'
+          role: 'member',
+          status: 'open'
         })
         .select()
         .single();
 
       if (memberError) throw memberError;
 
-      // If custom permissions, create them
       if (useCustomPermissions) {
-        const permissionsToInsert = Object.values(customPermissions).filter(
-          perm => perm.can_view || perm.can_create || perm.can_edit || perm.can_delete
-        ).map(perm => ({
-          project_member_id: newMember.id,
-          module_key: perm.module_key,
-          can_view: perm.can_view,
-          can_create: perm.can_create,
-          can_edit: perm.can_edit,
-          can_delete: perm.can_delete
-        }));
-
-        if (permissionsToInsert.length > 0) {
-          const { error: permsError } = await supabase
-            .from('project_member_permissions')
-            .insert(permissionsToInsert);
-
-          if (permsError) throw permsError;
+        const permsToInsert = Object.values(customPermissions)
+          .filter(p => p.can_view || p.can_create || p.can_edit || p.can_delete)
+          .map(p => ({
+            project_member_id: newMember.id,
+            module_key: p.module_key,
+            can_view: p.can_view, can_create: p.can_create,
+            can_edit: p.can_edit, can_delete: p.can_delete
+          }));
+        if (permsToInsert.length > 0) {
+          const { error } = await supabase.from('project_member_permissions').insert(permsToInsert);
+          if (error) throw error;
         }
       }
 
-      showToast('Mitglied erfolgreich hinzugefügt', 'success');
+      showToast('Mitglied hinzugefügt (Status: Offen)', 'success');
       setIsAddMemberModalOpen(false);
       loadMembers();
     } catch (error: any) {
-      showToast('Fehler beim Hinzufügen: ' + error.message, 'error');
+      showToast('Fehler: ' + error.message, 'error');
     }
   };
 
   const updateMemberPermissions = async () => {
     if (!editingMember) return;
-
     try {
-      // Update member's role_id
-      const { error: updateError } = await supabase
-        .from('project_members')
-        .update({
-          role_id: useCustomPermissions ? null : selectedRoleId
-        })
+      await supabase.from('project_members')
+        .update({ role_id: useCustomPermissions ? null : selectedRoleId })
         .eq('id', editingMember.id);
 
-      if (updateError) throw updateError;
+      await supabase.from('project_member_permissions')
+        .delete().eq('project_member_id', editingMember.id);
 
-      // Delete existing custom permissions
-      await supabase
-        .from('project_member_permissions')
-        .delete()
-        .eq('project_member_id', editingMember.id);
-
-      // If custom permissions, create them
       if (useCustomPermissions) {
-        const permissionsToInsert = Object.values(customPermissions).filter(
-          perm => perm.can_view || perm.can_create || perm.can_edit || perm.can_delete
-        ).map(perm => ({
-          project_member_id: editingMember.id,
-          module_key: perm.module_key,
-          can_view: perm.can_view,
-          can_create: perm.can_create,
-          can_edit: perm.can_edit,
-          can_delete: perm.can_delete
-        }));
-
-        if (permissionsToInsert.length > 0) {
-          const { error: permsError } = await supabase
-            .from('project_member_permissions')
-            .insert(permissionsToInsert);
-
-          if (permsError) throw permsError;
+        const permsToInsert = Object.values(customPermissions)
+          .filter(p => p.can_view || p.can_create || p.can_edit || p.can_delete)
+          .map(p => ({
+            project_member_id: editingMember.id,
+            module_key: p.module_key,
+            can_view: p.can_view, can_create: p.can_create,
+            can_edit: p.can_edit, can_delete: p.can_delete
+          }));
+        if (permsToInsert.length > 0) {
+          await supabase.from('project_member_permissions').insert(permsToInsert);
         }
       }
 
-      showToast('Berechtigungen erfolgreich aktualisiert', 'success');
+      showToast('Berechtigungen aktualisiert', 'success');
       setIsEditPermissionsModalOpen(false);
       loadMembers();
     } catch (error: any) {
-      showToast('Fehler beim Aktualisieren: ' + error.message, 'error');
+      showToast('Fehler: ' + error.message, 'error');
     }
   };
 
-  const removeMember = async (memberId: string) => {
-    if (!confirm('Möchten Sie dieses Mitglied wirklich entfernen?')) return;
+  // ==========================================
+  // INVITATION & STATUS MANAGEMENT
+  // ==========================================
 
+  const inviteMember = async (member: ProjectMember) => {
+    if (!member.accessor?.accessor_email) {
+      showToast('Keine E-Mail-Adresse vorhanden', 'error');
+      return;
+    }
+    if (!member.role_id && member.custom_permissions.length === 0) {
+      showToast('Bitte zuerst eine Rolle oder Berechtigungen zuweisen', 'error');
+      return;
+    }
+
+    setInvitingMemberIds(prev => new Set(prev).add(member.id));
     try {
-      const { error } = await supabase
-        .from('project_members')
-        .delete()
-        .eq('id', memberId);
-
+      const { error } = await supabase.from('project_members')
+        .update({ status: 'invited', invited_at: new Date().toISOString() })
+        .eq('id', member.id);
       if (error) throw error;
 
-      showToast('Mitglied erfolgreich entfernt', 'success');
+      // Get project info and sender info for the email
+      const { data: project } = await supabase
+        .from('projects').select('name').eq('id', projectId).single();
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles').select('display_name, email').eq('id', user?.id).single();
+
+      // Try to send invitation email
+      try {
+        const inviteUrl = `${window.location.origin}/login?invite=${member.id}`;
+        await supabase.functions.invoke('send-invitation', {
+          body: {
+            to: member.accessor.accessor_email,
+            inviterName: profile?.display_name || profile?.email || 'Projektleiter',
+            projectName: project?.name || 'Projekt',
+            inviteUrl,
+            memberName: `${member.accessor.accessor_first_name || ''} ${member.accessor.accessor_last_name || ''}`.trim()
+          }
+        });
+        showToast(`Einladung an ${member.accessor.accessor_email} gesendet`, 'success');
+      } catch (e) {
+        console.warn('Email sending not configured:', e);
+        showToast(`Status "Eingeladen" gesetzt für ${member.accessor.accessor_email}. E-Mail-Versand noch nicht konfiguriert.`, 'success');
+      }
+
       loadMembers();
     } catch (error: any) {
-      showToast('Fehler beim Entfernen: ' + error.message, 'error');
+      showToast('Fehler: ' + error.message, 'error');
+    } finally {
+      setInvitingMemberIds(prev => { const n = new Set(prev); n.delete(member.id); return n; });
     }
+  };
+
+  const inviteAllOpen = async () => {
+    const openWithRole = members.filter(m => m.status === 'open' && (m.role_id || m.custom_permissions.length > 0));
+    if (openWithRole.length === 0) {
+      showToast('Keine Mitglieder mit zugewiesener Rolle zum Einladen', 'error');
+      return;
+    }
+    for (const member of openWithRole) {
+      await inviteMember(member);
+    }
+  };
+
+  const reInviteMember = async (member: ProjectMember) => {
+    setInvitingMemberIds(prev => new Set(prev).add(member.id));
+    setActionMenuMemberId(null);
+    try {
+      await supabase.from('project_members')
+        .update({ status: 'invited', invited_at: new Date().toISOString() })
+        .eq('id', member.id);
+      try {
+        const { data: project } = await supabase.from('projects').select('name').eq('id', projectId).single();
+        const inviteUrl = `${window.location.origin}/login?invite=${member.id}`;
+        await supabase.functions.invoke('send-invitation', {
+          body: {
+            to: member.accessor.accessor_email,
+            projectName: project?.name || 'Projekt',
+            inviteUrl,
+            memberName: `${member.accessor.accessor_first_name || ''} ${member.accessor.accessor_last_name || ''}`.trim()
+          }
+        });
+      } catch (e) { console.warn('Email not configured:', e); }
+      showToast(`Einladung erneut gesendet`, 'success');
+      loadMembers();
+    } catch (error: any) {
+      showToast('Fehler: ' + error.message, 'error');
+    } finally {
+      setInvitingMemberIds(prev => { const n = new Set(prev); n.delete(member.id); return n; });
+    }
+  };
+
+  const setMemberInactive = async (member: ProjectMember) => {
+    const name = `${member.accessor?.accessor_first_name || ''} ${member.accessor?.accessor_last_name || ''}`.trim();
+    if (!confirm(`${name} als inaktiv setzen? Die Person kann das Projekt nicht mehr sehen.`)) return;
+    setActionMenuMemberId(null);
+    try {
+      await supabase.from('project_members').update({ status: 'inactive' }).eq('id', member.id);
+      showToast('Mitglied inaktiv gesetzt', 'success');
+      loadMembers();
+    } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
+  };
+
+  const reactivateMember = async (member: ProjectMember) => {
+    setActionMenuMemberId(null);
+    try {
+      await supabase.from('project_members').update({ status: 'active' }).eq('id', member.id);
+      showToast('Mitglied reaktiviert', 'success');
+      loadMembers();
+    } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
+  };
+
+  const removeMember = async (memberId: string) => {
+    if (!confirm('Mitglied endgültig entfernen?')) return;
+    setActionMenuMemberId(null);
+    try {
+      await supabase.from('project_member_permissions').delete().eq('project_member_id', memberId);
+      await supabase.from('project_members').delete().eq('id', memberId);
+      showToast('Mitglied entfernt', 'success');
+      loadMembers();
+    } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
   };
 
   const togglePermission = (moduleKey: string, permType: 'can_view' | 'can_create' | 'can_edit' | 'can_delete') => {
     setCustomPermissions(prev => {
       const current = prev[moduleKey];
       const updated = { ...current, [permType]: !current[permType] };
-
-      // Auto-enable view if any other permission is enabled
       if ((updated.can_create || updated.can_edit || updated.can_delete) && !updated.can_view) {
         updated.can_view = true;
       }
-
       return { ...prev, [moduleKey]: updated };
     });
   };
 
+  // ==========================================
+  // HELPERS
+  // ==========================================
+
   const getMemberTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      employee: 'Mitarbeiter',
-      owner: 'Bauherr',
-      subcontractor: 'Gewerk',
-      other: 'Sonstiges'
-    };
+    const labels: Record<string, string> = { employee: 'Mitarbeiter', owner: 'Bauherr', subcontractor: 'Gewerk', other: 'Sonstiges' };
     return labels[type] || type;
   };
-
   const getMemberTypeBadgeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      employee: '#3B82F6',
-      owner: '#10B981',
-      subcontractor: '#F59E0B',
-      other: '#6B7280'
-    };
-    return colors[type] || '#6B7280';
+    const c: Record<string, string> = { employee: '#3B82F6', owner: '#10B981', subcontractor: '#F59E0B', other: '#6B7280' };
+    return c[type] || '#6B7280';
+  };
+  const getStatusLabel = (status: string) => {
+    const l: Record<string, string> = { open: 'Offen', invited: 'Eingeladen', active: 'Aktiv', inactive: 'Inaktiv' };
+    return l[status] || status;
+  };
+  const getStatusColor = (status: string) => {
+    const c: Record<string, string> = { open: '#94A3B8', invited: '#F59E0B', active: '#10B981', inactive: '#EF4444' };
+    return c[status] || '#6B7280';
+  };
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'open': return <UserPlus size={14} color="#94A3B8" />;
+      case 'invited': return <Mail size={14} color="#F59E0B" />;
+      case 'active': return <UserCheck size={14} color="#10B981" />;
+      case 'inactive': return <UserX size={14} color="#EF4444" />;
+      default: return null;
+    }
+  };
+  const getPermissionsSummary = (member: ProjectMember) => {
+    if (member.role) return `Rolle: ${member.role.role_name}`;
+    if (member.custom_permissions.length > 0) {
+      const v = member.custom_permissions.filter(p => p.can_view).length;
+      const e = member.custom_permissions.filter(p => p.can_edit || p.can_delete).length;
+      return `${v} Module (${e} bearbeitbar)`;
+    }
+    return 'Keine Rolle zugewiesen';
   };
 
-  const getPermissionsSummary = (member: ProjectMember) => {
-    if (member.role) {
-      return `Rolle: ${member.role.role_name}`;
-    }
-    if (member.custom_permissions.length > 0) {
-      const viewCount = member.custom_permissions.filter(p => p.can_view).length;
-      const editCount = member.custom_permissions.filter(p => p.can_edit || p.can_delete).length;
-      return `${viewCount} Module (${editCount} bearbeitbar)`;
-    }
-    return 'Keine Berechtigungen';
+  const filteredMembers = statusFilter === 'all' ? members : members.filter(m => m.status === statusFilter);
+  const statusCounts = {
+    all: members.length,
+    open: members.filter(m => m.status === 'open').length,
+    invited: members.filter(m => m.status === 'invited').length,
+    active: members.filter(m => m.status === 'active').length,
+    inactive: members.filter(m => m.status === 'inactive').length,
   };
+  const unaddedAccessors = availableAccessors.filter(a => !members.some(m => m.accessor_id === a.id));
+
+  // ==========================================
+  // RENDER
+  // ==========================================
 
   if (loading) {
     return (
@@ -443,109 +548,249 @@ export function ProjectParticipants() {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.pageTitle}>Beteiligte</Text>
-            <Text style={styles.pageSubtitle}>
-              Projektmitglieder und Berechtigungen verwalten
-            </Text>
+            <Text style={styles.pageSubtitle}>Projektmitglieder, Rollen und Einladungen verwalten</Text>
           </View>
-          <Button
-            onClick={openAddMemberModal}
-            variant="primary"
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <UserPlus size={18} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Mitglied hinzufügen</Text>
-            </View>
-          </Button>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {statusCounts.open > 0 && (
+              <Button onClick={inviteAllOpen} variant="secondary">
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Send size={16} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>
+                    Alle einladen ({statusCounts.open})
+                  </Text>
+                </View>
+              </Button>
+            )}
+            <Button onClick={openAddMemberModal} variant="primary">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <UserPlus size={18} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Mitglied hinzufügen</Text>
+              </View>
+            </Button>
+          </View>
         </View>
 
-        {members.length === 0 ? (
+        {/* Status Filter Tabs */}
+        <View style={styles.filterTabs}>
+          {([
+            { key: 'all', label: 'Alle' },
+            { key: 'open', label: 'Offen' },
+            { key: 'invited', label: 'Eingeladen' },
+            { key: 'active', label: 'Aktiv' },
+            { key: 'inactive', label: 'Inaktiv' },
+          ] as const).map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.filterTab, statusFilter === tab.key && styles.filterTabActive]}
+              onPress={() => setStatusFilter(tab.key)}
+            >
+              <Text style={[styles.filterTabText, statusFilter === tab.key && styles.filterTabTextActive]}>
+                {tab.label}
+              </Text>
+              {statusCounts[tab.key] > 0 && (
+                <View style={[styles.filterBadge, statusFilter === tab.key && styles.filterBadgeActive]}>
+                  <Text style={[styles.filterBadgeText, statusFilter === tab.key && styles.filterBadgeTextActive]}>
+                    {statusCounts[tab.key]}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Member List */}
+        {filteredMembers.length === 0 ? (
           <Card style={styles.emptyCard}>
             <Users size={48} color="#CBD5E1" />
-            <Text style={styles.emptyTitle}>Keine Mitglieder</Text>
-            <Text style={styles.emptyText}>
-              Fügen Sie Mitglieder hinzu und vergeben Sie Berechtigungen.
+            <Text style={styles.emptyTitle}>
+              {statusFilter === 'all' ? 'Keine Mitglieder' : `Keine "${getStatusLabel(statusFilter)}" Mitglieder`}
             </Text>
-            <Button
-              onClick={openAddMemberModal}
-              variant="primary"
-            >
-              Erstes Mitglied hinzufügen
-            </Button>
+            <Text style={styles.emptyText}>
+              {statusFilter === 'all'
+                ? 'Fügen Sie Mitglieder hinzu, weisen Sie Rollen zu und senden Sie Einladungen.'
+                : 'Wechseln Sie den Filter um andere Mitglieder zu sehen.'}
+            </Text>
+            {statusFilter === 'all' && (
+              <Button onClick={openAddMemberModal} variant="primary">Erstes Mitglied hinzufügen</Button>
+            )}
           </Card>
         ) : (
           <View style={styles.membersList}>
-            {members.map(member => (
-              <Card key={member.id} style={styles.memberCard}>
-                <View style={styles.memberHeader}>
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberAvatarText}>
-                      {(member.accessor?.accessor_first_name?.[0] || 
-                        member.accessor?.accessor_email[0] || 'U').toUpperCase()}
-                    </Text>
-                  </View>
+            {filteredMembers.map(member => {
+              const sColor = getStatusColor(member.status);
+              const isInviting = invitingMemberIds.has(member.id);
+              const showMenu = actionMenuMemberId === member.id;
+              const hasPerms = !!member.role_id || member.custom_permissions.length > 0;
 
-                  <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>
-                      {member.accessor?.accessor_first_name && member.accessor?.accessor_last_name
-                        ? `${member.accessor.accessor_first_name} ${member.accessor.accessor_last_name}`
-                        : member.accessor?.accessor_email}
-                    </Text>
-                    <View style={styles.memberMeta}>
-                      <Mail size={12} color="#94a3b8" />
-                      <Text style={styles.memberEmail}>{member.accessor?.accessor_email}</Text>
-                    </View>
-                    {member.accessor?.accessor_company && (
-                      <View style={styles.memberMeta}>
-                        <Building size={12} color="#94a3b8" />
-                        <Text style={styles.memberCompany}>{member.accessor.accessor_company}</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.memberActions}>
-                    <View
-                      style={[
-                        styles.typeBadge,
-                        { backgroundColor: getMemberTypeBadgeColor(member.member_type) }
-                      ]}
-                    >
-                      <Text style={styles.typeBadgeText}>
-                        {getMemberTypeLabel(member.member_type)}
+              return (
+                <Card key={member.id} style={[styles.memberCard, member.status === 'inactive' && { opacity: 0.6 }]}>
+                  <View style={styles.memberHeader}>
+                    {/* Avatar */}
+                    <View style={[styles.memberAvatar, { borderColor: sColor, borderWidth: 2 }]}>
+                      <Text style={styles.memberAvatarText}>
+                        {(member.accessor?.accessor_first_name?.[0] || member.accessor?.accessor_email?.[0] || 'U').toUpperCase()}
                       </Text>
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => openEditPermissionsModal(member)}
-                    >
-                      <Edit2 size={16} color="#64748b" />
-                    </TouchableOpacity>
+                    {/* Info */}
+                    <View style={styles.memberInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Text style={styles.memberName}>
+                          {member.accessor?.accessor_first_name && member.accessor?.accessor_last_name
+                            ? `${member.accessor.accessor_first_name} ${member.accessor.accessor_last_name}`
+                            : member.accessor?.accessor_email}
+                        </Text>
+                        <View style={[styles.statusBadge, { backgroundColor: `${sColor}15`, borderColor: `${sColor}30` }]}>
+                          {getStatusIcon(member.status)}
+                          <Text style={[styles.statusBadgeText, { color: sColor }]}>
+                            {getStatusLabel(member.status)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.memberMeta}>
+                        <Mail size={12} color="#94a3b8" />
+                        <Text style={styles.memberEmail}>{member.accessor?.accessor_email}</Text>
+                      </View>
+                      {member.accessor?.accessor_company && (
+                        <View style={styles.memberMeta}>
+                          <Building size={12} color="#94a3b8" />
+                          <Text style={styles.memberCompany}>{member.accessor.accessor_company}</Text>
+                        </View>
+                      )}
+                    </View>
 
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => removeMember(member.id)}
-                    >
-                      <Trash2 size={16} color="#EF4444" />
-                    </TouchableOpacity>
+                    {/* Actions */}
+                    <View style={styles.memberActions}>
+                      <View style={[styles.typeBadge, { backgroundColor: getMemberTypeBadgeColor(member.member_type) }]}>
+                        <Text style={styles.typeBadgeText}>{getMemberTypeLabel(member.member_type)}</Text>
+                      </View>
+
+                      {/* Invite button for open members with permissions */}
+                      {member.status === 'open' && hasPerms && (
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.inviteButton]}
+                          onPress={() => inviteMember(member)}
+                          disabled={isInviting}
+                        >
+                          {isInviting
+                            ? <ActivityIndicator size="small" color="#fff" />
+                            : <><Send size={14} color="#fff" /><Text style={styles.inviteButtonText}>Einladen</Text></>
+                          }
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Re-invite for invited members */}
+                      {member.status === 'invited' && (
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.reInviteButton]}
+                          onPress={() => reInviteMember(member)}
+                          disabled={isInviting}
+                        >
+                          {isInviting
+                            ? <ActivityIndicator size="small" color={colors.primary} />
+                            : <><RefreshCw size={14} color={colors.primary} /><Text style={styles.reInviteButtonText}>Erneut</Text></>
+                          }
+                        </TouchableOpacity>
+                      )}
+
+                      {/* More Actions */}
+                      <View style={{ position: 'relative', zIndex: showMenu ? 100 : 1 }}>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => setActionMenuMemberId(showMenu ? null : member.id)}
+                        >
+                          <MoreVertical size={16} color="#64748b" />
+                        </TouchableOpacity>
+
+                        {showMenu && (
+                          <View style={styles.actionMenu}>
+                            <TouchableOpacity style={styles.actionMenuItem} onPress={() => openEditPermissionsModal(member)}>
+                              <Shield size={14} color="#64748b" />
+                              <Text style={styles.actionMenuText}>Berechtigungen bearbeiten</Text>
+                            </TouchableOpacity>
+
+                            {member.status === 'active' && (
+                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => setMemberInactive(member)}>
+                                <UserX size={14} color="#F59E0B" />
+                                <Text style={[styles.actionMenuText, { color: '#F59E0B' }]}>Inaktiv setzen</Text>
+                              </TouchableOpacity>
+                            )}
+
+                            {member.status === 'inactive' && (
+                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => reactivateMember(member)}>
+                                <UserCheck size={14} color="#10B981" />
+                                <Text style={[styles.actionMenuText, { color: '#10B981' }]}>Reaktivieren</Text>
+                              </TouchableOpacity>
+                            )}
+
+                            {(member.status === 'invited' || member.status === 'active') && (
+                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => reInviteMember(member)}>
+                                <RefreshCw size={14} color="#64748b" />
+                                <Text style={styles.actionMenuText}>Einladung erneut senden</Text>
+                              </TouchableOpacity>
+                            )}
+
+                            <TouchableOpacity
+                              style={[styles.actionMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}
+                              onPress={() => removeMember(member.id)}
+                            >
+                              <Trash2 size={14} color="#EF4444" />
+                              <Text style={[styles.actionMenuText, { color: '#EF4444' }]}>Entfernen</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.memberPermissions}>
-                  <Shield size={14} color="#64748b" />
-                  <Text style={styles.permissionsSummary}>
-                    {getPermissionsSummary(member)}
-                  </Text>
-                </View>
-              </Card>
-            ))}
+                  {/* Permissions & Dates */}
+                  <View style={styles.memberPermissions}>
+                    <Shield size={14} color={hasPerms ? '#64748b' : '#EF4444'} />
+                    <Text style={[styles.permissionsSummary, !hasPerms && { color: '#EF4444', fontWeight: '600' }]}>
+                      {getPermissionsSummary(member)}
+                    </Text>
+                    {member.invited_at && (
+                      <Text style={styles.dateText}>
+                        Eingeladen: {new Date(member.invited_at).toLocaleDateString('de-DE')}
+                      </Text>
+                    )}
+                    {member.accepted_at && (
+                      <Text style={styles.dateText}>
+                        Akzeptiert: {new Date(member.accepted_at).toLocaleDateString('de-DE')}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Warning if open but no role */}
+                  {member.status === 'open' && !hasPerms && (
+                    <View style={styles.warningBar}>
+                      <Text style={styles.warningText}>⚠️ Bitte Rolle zuweisen bevor Sie einladen</Text>
+                      <TouchableOpacity onPress={() => openEditPermissionsModal(member)}>
+                        <Text style={styles.warningLink}>Rolle zuweisen →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
           </View>
         )}
       </ScrollView>
 
-      {/* Add Member Modal */}
+      {/* Backdrop to close action menu */}
+      {actionMenuMemberId && (
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={() => setActionMenuMemberId(null)}
+        />
+      )}
+
+      {/* ======================== ADD MEMBER MODAL ======================== */}
       <ModernModal
         visible={isAddMemberModalOpen}
         onClose={() => setIsAddMemberModalOpen(false)}
@@ -557,23 +802,23 @@ export function ProjectParticipants() {
             <View style={styles.selectWrapper}>
               <select
                 value={selectedAccessorId}
-                onChange={(e) => setSelectedAccessorId(e.target.value)}
-                style={styles.select as any}
+                onChange={(e: any) => setSelectedAccessorId(e.target.value)}
+                style={styles.nativeSelect as any}
               >
                 <option value="">Bitte wählen...</option>
-                {availableAccessors.map(accessor => (
-                  <option key={accessor.id} value={accessor.id}>
-                    {accessor.accessor_first_name && accessor.accessor_last_name
-                      ? `${accessor.accessor_first_name} ${accessor.accessor_last_name}`
-                      : accessor.accessor_email}
-                    {' '}({getMemberTypeLabel(accessor.accessor_type)})
+                {unaddedAccessors.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.accessor_first_name && a.accessor_last_name
+                      ? `${a.accessor_first_name} ${a.accessor_last_name}`
+                      : a.accessor_email}
+                    {' '}({getMemberTypeLabel(a.accessor_type)})
                   </option>
                 ))}
               </select>
             </View>
-            {availableAccessors.length === 0 && (
+            {unaddedAccessors.length === 0 && (
               <Text style={styles.helperText}>
-                Keine Zugreifer verfügbar. Fügen Sie zuerst Zugreifer unter "/accessors" hinzu.
+                Keine neuen Zugreifer verfügbar. Erstellen Sie zuerst Zugreifer auf der "Zugreifer" Seite.
               </Text>
             )}
           </View>
@@ -585,27 +830,18 @@ export function ProjectParticipants() {
             >
               <Shield size={20} color={!useCustomPermissions ? colors.primary : '#64748b'} />
               <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, !useCustomPermissions && styles.modeOptionTitleActive]}>
-                  Vordefinierte Rolle
-                </Text>
-                <Text style={styles.modeOptionDesc}>
-                  Rolle mit vordefinierten Berechtigungen zuweisen
-                </Text>
+                <Text style={[styles.modeOptionTitle, !useCustomPermissions && styles.modeOptionTitleActive]}>Vordefinierte Rolle</Text>
+                <Text style={styles.modeOptionDesc}>Rolle mit vordefinierten Berechtigungen zuweisen</Text>
               </View>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.modeOption, useCustomPermissions && styles.modeOptionActive]}
               onPress={() => setUseCustomPermissions(true)}
             >
               <Edit2 size={20} color={useCustomPermissions ? colors.primary : '#64748b'} />
               <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, useCustomPermissions && styles.modeOptionTitleActive]}>
-                  Individuelle Berechtigungen
-                </Text>
-                <Text style={styles.modeOptionDesc}>
-                  Berechtigungen manuell festlegen
-                </Text>
+                <Text style={[styles.modeOptionTitle, useCustomPermissions && styles.modeOptionTitleActive]}>Individuelle Berechtigungen</Text>
+                <Text style={styles.modeOptionDesc}>Berechtigungen manuell festlegen</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -616,52 +852,51 @@ export function ProjectParticipants() {
               <View style={styles.selectWrapper}>
                 <select
                   value={selectedRoleId}
-                  onChange={(e) => setSelectedRoleId(e.target.value)}
-                  style={styles.select as any}
+                  onChange={(e: any) => setSelectedRoleId(e.target.value)}
+                  style={styles.nativeSelect as any}
                 >
                   <option value="">Bitte wählen...</option>
-                  {availableRoles.map(role => (
-                    <option key={role.id} value={role.id}>
-                      {role.role_name}
-                      {role.role_description && ` - ${role.role_description}`}
+                  {availableRoles.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.role_name}{r.role_description && ` - ${r.role_description}`}
                     </option>
                   ))}
                 </select>
               </View>
               {availableRoles.length === 0 && (
-                <Text style={styles.helperText}>
-                  Keine Rollen verfügbar. Erstellen Sie zuerst Rollen unter "/accessors".
-                </Text>
+                <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', marginTop: 8 }}>
+                  <Text style={{ fontSize: 13, color: '#92400E', marginBottom: 6, fontWeight: '600' }}>
+                    ⚠️ Keine Rollen für dieses Projekt verfügbar
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#92400E' }}>
+                    Der Projektersteller muss zuerst auf der Projektverwaltungsseite unter "Projektrollen" Rollen für dieses Projekt definieren.
+                  </Text>
+                </View>
               )}
             </View>
           ) : (
             <View style={styles.permissionsSection}>
-              <Text style={styles.permissionsSectionTitle}>Berechtigungen definieren</Text>
-              <ScrollView style={styles.permissionsList} showsVerticalScrollIndicator={false}>
-                {availableModules.map(module => {
-                  const perm = customPermissions[module.module_key];
+              <Text style={styles.permsSectionTitle}>Berechtigungen definieren</Text>
+              <ScrollView style={styles.permsList} showsVerticalScrollIndicator={false}>
+                {availableModules.map(mod => {
+                  const p = customPermissions[mod.module_key];
                   return (
-                    <View key={module.module_key} style={styles.permissionItem}>
-                      <Text style={styles.permissionName}>{module.module_name}</Text>
-                      <View style={styles.permissionToggles}>
+                    <View key={mod.module_key} style={styles.permItem}>
+                      <Text style={styles.permName}>{mod.module_name}</Text>
+                      <View style={styles.permToggles}>
                         <TouchableOpacity
-                          style={[styles.permissionToggle, perm.can_view && styles.permissionToggleActive]}
-                          onPress={() => togglePermission(module.module_key, 'can_view')}
+                          style={[styles.permToggle, p?.can_view && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_view')}
                         >
-                          <Eye size={12} color={perm.can_view ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permissionToggleText, perm.can_view && styles.permissionToggleTextActive]}>
-                            Sehen
-                          </Text>
+                          <Eye size={12} color={p?.can_view ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_view && styles.permToggleTextActive]}>Sehen</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity
-                          style={[styles.permissionToggle, perm.can_edit && styles.permissionToggleActive]}
-                          onPress={() => togglePermission(module.module_key, 'can_edit')}
+                          style={[styles.permToggle, p?.can_edit && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_edit')}
                         >
-                          <Edit2 size={12} color={perm.can_edit ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permissionToggleText, perm.can_edit && styles.permissionToggleTextActive]}>
-                            Bearbeiten
-                          </Text>
+                          <Edit2 size={12} color={p?.can_edit ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_edit && styles.permToggleTextActive]}>Bearbeiten</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -678,7 +913,7 @@ export function ProjectParticipants() {
         </View>
       </ModernModal>
 
-      {/* Edit Permissions Modal */}
+      {/* ======================== EDIT PERMISSIONS MODAL ======================== */}
       <ModernModal
         visible={isEditPermissionsModalOpen}
         onClose={() => setIsEditPermissionsModalOpen(false)}
@@ -686,13 +921,23 @@ export function ProjectParticipants() {
       >
         <View style={styles.modalContent}>
           {editingMember && (
-            <View style={styles.editingMemberInfo}>
-              <Text style={styles.editingMemberName}>
-                {editingMember.accessor?.accessor_first_name && editingMember.accessor?.accessor_last_name
-                  ? `${editingMember.accessor.accessor_first_name} ${editingMember.accessor.accessor_last_name}`
-                  : editingMember.accessor?.accessor_email}
-              </Text>
-              <Text style={styles.editingMemberEmail}>{editingMember.accessor?.accessor_email}</Text>
+            <View style={styles.editingInfo}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={styles.editingName}>
+                  {editingMember.accessor?.accessor_first_name && editingMember.accessor?.accessor_last_name
+                    ? `${editingMember.accessor.accessor_first_name} ${editingMember.accessor.accessor_last_name}`
+                    : editingMember.accessor?.accessor_email}
+                </Text>
+                <View style={[styles.statusBadge, {
+                  backgroundColor: `${getStatusColor(editingMember.status)}15`,
+                  borderColor: `${getStatusColor(editingMember.status)}30`
+                }]}>
+                  <Text style={[styles.statusBadgeText, { color: getStatusColor(editingMember.status) }]}>
+                    {getStatusLabel(editingMember.status)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.editingEmail}>{editingMember.accessor?.accessor_email}</Text>
             </View>
           )}
 
@@ -703,21 +948,16 @@ export function ProjectParticipants() {
             >
               <Shield size={20} color={!useCustomPermissions ? colors.primary : '#64748b'} />
               <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, !useCustomPermissions && styles.modeOptionTitleActive]}>
-                  Vordefinierte Rolle
-                </Text>
+                <Text style={[styles.modeOptionTitle, !useCustomPermissions && styles.modeOptionTitleActive]}>Vordefinierte Rolle</Text>
               </View>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.modeOption, useCustomPermissions && styles.modeOptionActive]}
               onPress={() => setUseCustomPermissions(true)}
             >
               <Edit2 size={20} color={useCustomPermissions ? colors.primary : '#64748b'} />
               <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, useCustomPermissions && styles.modeOptionTitleActive]}>
-                  Individuelle Berechtigungen
-                </Text>
+                <Text style={[styles.modeOptionTitle, useCustomPermissions && styles.modeOptionTitleActive]}>Individuelle Berechtigungen</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -728,47 +968,51 @@ export function ProjectParticipants() {
               <View style={styles.selectWrapper}>
                 <select
                   value={selectedRoleId}
-                  onChange={(e) => setSelectedRoleId(e.target.value)}
-                  style={styles.select as any}
+                  onChange={(e: any) => setSelectedRoleId(e.target.value)}
+                  style={styles.nativeSelect as any}
                 >
                   <option value="">Bitte wählen...</option>
-                  {availableRoles.map(role => (
-                    <option key={role.id} value={role.id}>
-                      {role.role_name}
-                      {role.role_description && ` - ${role.role_description}`}
+                  {availableRoles.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.role_name}{r.role_description && ` - ${r.role_description}`}
                     </option>
                   ))}
                 </select>
               </View>
+              {availableRoles.length === 0 && (
+                <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', marginTop: 8 }}>
+                  <Text style={{ fontSize: 13, color: '#92400E', marginBottom: 6, fontWeight: '600' }}>
+                    ⚠️ Keine Rollen für dieses Projekt verfügbar
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#92400E' }}>
+                    Der Projektersteller muss zuerst auf der Projektverwaltungsseite unter "Projektrollen" Rollen für dieses Projekt definieren.
+                  </Text>
+                </View>
+              )}
             </View>
           ) : (
             <View style={styles.permissionsSection}>
-              <Text style={styles.permissionsSectionTitle}>Berechtigungen definieren</Text>
-              <ScrollView style={styles.permissionsList} showsVerticalScrollIndicator={false}>
-                {availableModules.map(module => {
-                  const perm = customPermissions[module.module_key];
+              <Text style={styles.permsSectionTitle}>Berechtigungen definieren</Text>
+              <ScrollView style={styles.permsList} showsVerticalScrollIndicator={false}>
+                {availableModules.map(mod => {
+                  const p = customPermissions[mod.module_key];
                   return (
-                    <View key={module.module_key} style={styles.permissionItem}>
-                      <Text style={styles.permissionName}>{module.module_name}</Text>
-                      <View style={styles.permissionToggles}>
+                    <View key={mod.module_key} style={styles.permItem}>
+                      <Text style={styles.permName}>{mod.module_name}</Text>
+                      <View style={styles.permToggles}>
                         <TouchableOpacity
-                          style={[styles.permissionToggle, perm.can_view && styles.permissionToggleActive]}
-                          onPress={() => togglePermission(module.module_key, 'can_view')}
+                          style={[styles.permToggle, p?.can_view && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_view')}
                         >
-                          <Eye size={12} color={perm.can_view ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permissionToggleText, perm.can_view && styles.permissionToggleTextActive]}>
-                            Sehen
-                          </Text>
+                          <Eye size={12} color={p?.can_view ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_view && styles.permToggleTextActive]}>Sehen</Text>
                         </TouchableOpacity>
-
                         <TouchableOpacity
-                          style={[styles.permissionToggle, perm.can_edit && styles.permissionToggleActive]}
-                          onPress={() => togglePermission(module.module_key, 'can_edit')}
+                          style={[styles.permToggle, p?.can_edit && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_edit')}
                         >
-                          <Edit2 size={12} color={perm.can_edit ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permissionToggleText, perm.can_edit && styles.permissionToggleTextActive]}>
-                            Bearbeiten
-                          </Text>
+                          <Edit2 size={12} color={p?.can_edit ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_edit && styles.permToggleTextActive]}>Bearbeiten</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -792,36 +1036,103 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1, padding: 24 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4, letterSpacing: -0.5 },
   pageSubtitle: { fontSize: 15, color: '#64748b' },
+  
+  // Filter tabs
+  filterTabs: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
+  filterTab: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: 10, backgroundColor: '#fff',
+    borderWidth: 1, borderColor: '#E2E8F0'
+  },
+  filterTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterTabText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  filterTabTextActive: { color: '#fff' },
+  filterBadge: {
+    minWidth: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6
+  },
+  filterBadgeActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
+  filterBadgeText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  filterBadgeTextActive: { color: '#fff' },
+
+  // Empty / no access
   noAccessCard: { padding: 48, alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', margin: 24 },
   noAccessTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginTop: 16, marginBottom: 8 },
   noAccessText: { fontSize: 15, color: '#64748b', textAlign: 'center' },
   emptyCard: { padding: 48, alignItems: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginTop: 16, marginBottom: 8 },
   emptyText: { fontSize: 15, color: '#64748b', textAlign: 'center', marginBottom: 24, lineHeight: 22 },
+
+  // Member list
   membersList: { gap: 12 },
   memberCard: { padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
   memberHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 12 },
-  memberAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  memberAvatarText: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  memberAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  memberAvatarText: { fontSize: 18, fontWeight: '700', color: colors.primary },
   memberInfo: { flex: 1 },
   memberName: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 4 },
   memberMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   memberEmail: { fontSize: 13, color: '#64748b' },
   memberCompany: { fontSize: 13, color: '#94a3b8' },
-  memberActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typeBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  memberActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+
+  // Status badge
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  statusBadgeText: { fontSize: 11, fontWeight: '700' },
+
+  // Type badge
+  typeBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
   typeBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff', textTransform: 'uppercase' },
+
+  // Action buttons
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  inviteButton: { backgroundColor: colors.primary },
+  inviteButtonText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  reInviteButton: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: colors.primary },
+  reInviteButtonText: { fontSize: 12, fontWeight: '600', color: colors.primary },
   iconButton: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
-  memberPermissions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+
+  // Action menu
+  actionMenu: {
+    position: 'absolute', top: 36, right: 0,
+    backgroundColor: '#fff', borderRadius: 12,
+    borderWidth: 1, borderColor: '#E2E8F0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12, shadowRadius: 12,
+    minWidth: 240, zIndex: 100, overflow: 'hidden'
+  },
+  actionMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
+  actionMenuText: { fontSize: 13, fontWeight: '500', color: '#334155' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50 },
+
+  // Permissions row
+  memberPermissions: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexWrap: 'wrap'
+  },
   permissionsSummary: { fontSize: 13, color: '#64748b' },
+  dateText: { fontSize: 11, color: '#94A3B8', marginLeft: 'auto' },
+
+  // Warning bar
+  warningBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB', borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 8, marginTop: 8,
+    borderWidth: 1, borderColor: '#FDE68A'
+  },
+  warningText: { fontSize: 12, color: '#92400E' },
+  warningLink: { fontSize: 12, fontWeight: '700', color: colors.primary },
+
+  // Modal
   modalContent: { gap: 20 },
   formGroup: { gap: 8 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#475569' },
   selectWrapper: { position: 'relative' },
-  select: { width: '100%', padding: 12, fontSize: 14, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', color: '#0f172a' },
+  nativeSelect: { width: '100%', padding: 12, fontSize: 14, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff', color: '#0f172a' },
   helperText: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
   permissionModeSelector: { gap: 12 },
   modeOption: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 12, borderWidth: 2, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
@@ -831,17 +1142,17 @@ const styles = StyleSheet.create({
   modeOptionTitleActive: { color: colors.primary },
   modeOptionDesc: { fontSize: 12, color: '#64748b' },
   permissionsSection: { marginTop: 8 },
-  permissionsSectionTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
-  permissionsList: { maxHeight: 300 },
-  permissionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  permissionName: { fontSize: 13, fontWeight: '600', color: '#0f172a', flex: 1 },
-  permissionToggles: { flexDirection: 'row', gap: 6 },
-  permissionToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  permissionToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  permissionToggleText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
-  permissionToggleTextActive: { color: '#fff' },
-  editingMemberInfo: { padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  editingMemberName: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
-  editingMemberEmail: { fontSize: 13, color: '#64748b' },
+  permsSectionTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
+  permsList: { maxHeight: 300 },
+  permItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  permName: { fontSize: 13, fontWeight: '600', color: '#0f172a', flex: 1 },
+  permToggles: { flexDirection: 'row', gap: 6 },
+  permToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  permToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  permToggleText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  permToggleTextActive: { color: '#fff' },
+  editingInfo: { padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  editingName: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
+  editingEmail: { fontSize: 13, color: '#64748b', marginTop: 4 },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 }
 });
