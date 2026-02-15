@@ -327,7 +327,8 @@ export function ProjectManagementDetail() {
       await loadProject();
     } catch (error: any) {
       console.error('Error saving project:', error);
-      showToast('Fehler beim Speichern', 'error');
+      const errorMessage = error?.message || error?.error_description || error?.hint || 'Unbekannter Fehler';
+      showToast(`Fehler beim Speichern: ${errorMessage}`, 'error');
     } finally {
       setSaving(false);
     }
