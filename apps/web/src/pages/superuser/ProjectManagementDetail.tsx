@@ -447,9 +447,9 @@ export function ProjectManagementDetail() {
                 label: `${e.first_name} ${e.last_name}`,
                 value: e.id
               }))}
-              value={selectedEmployees}
+              values={selectedEmployees}
               onChange={setSelectedEmployees}
-              multiple
+              multi
             />
             
             <SearchableSelect
@@ -459,9 +459,9 @@ export function ProjectManagementDetail() {
                 label: `${o.first_name} ${o.last_name}`,
                 value: o.id
               }))}
-              value={selectedOwners}
+              values={selectedOwners}
               onChange={setSelectedOwners}
-              multiple
+              multi
             />
             
             <SearchableSelect
@@ -471,9 +471,9 @@ export function ProjectManagementDetail() {
                 label: s.company_name || `${s.first_name} ${s.last_name}`,
                 value: s.id
               }))}
-              value={selectedSubcontractors}
+              values={selectedSubcontractors}
               onChange={setSelectedSubcontractors}
-              multiple
+              multi
             />
           </View>
         </Card>
