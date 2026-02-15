@@ -548,8 +548,8 @@ DO $$ BEGIN
       SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.company_history;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'company_history'
     );
-    EXECUTE 'CREATE POLICY "company_history_select" ON public.company_history FOR SELECT USING (user_id = auth.uid())';
-    EXECUTE 'CREATE POLICY "company_history_insert" ON public.company_history FOR INSERT WITH CHECK (user_id = auth.uid())';
+    EXECUTE 'CREATE POLICY "company_history_select" ON public.company_history FOR SELECT USING (true)';
+    EXECUTE 'CREATE POLICY "company_history_insert" ON public.company_history FOR INSERT WITH CHECK (true)';
   END IF;
 END $$;
 
