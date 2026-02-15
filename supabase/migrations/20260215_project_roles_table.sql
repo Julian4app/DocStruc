@@ -15,6 +15,7 @@ ALTER TABLE project_roles ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can view project_roles if they have access to the project
 -- Note: We check project ownership OR membership separately to avoid circular dependency
+-- We don't check status here since that column is added in a separate migration
 CREATE POLICY "Users can view project_roles for their projects"
   ON project_roles FOR SELECT
   USING (
@@ -30,7 +31,6 @@ CREATE POLICY "Users can view project_roles for their projects"
       SELECT 1 FROM project_members
       WHERE project_members.project_id = project_roles.project_id
       AND project_members.user_id = auth.uid()
-      AND project_members.status = 'active'
     )
   );
 
