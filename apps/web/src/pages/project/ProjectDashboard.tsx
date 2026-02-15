@@ -155,9 +155,17 @@ export function ProjectDashboard() {
     );
   }
 
-  const progress = stats.totalTasks > 0 
-    ? Math.round((stats.completedTasks / stats.totalTasks) * 100) 
+  // Calculate comprehensive progress including tasks and milestones
+  const taskProgress = stats.totalTasks > 0 
+    ? (stats.completedTasks / stats.totalTasks) * 100 
     : 0;
+  
+  const milestoneProgress = milestones.length > 0
+    ? (milestones.filter(m => m.completed).length / milestones.length) * 100
+    : 0;
+  
+  // Weighted average: 70% tasks, 30% milestones
+  const progress = Math.round((taskProgress * 0.7) + (milestoneProgress * 0.3));
 
   return (
     <ScrollView style={styles.container}>
@@ -167,6 +175,16 @@ export function ProjectDashboard() {
       {/* Progress Overview */}
       <Card style={styles.progressCard}>
         <Text style={styles.cardTitle}>Gesamtfortschritt</Text>
+        <View style={styles.progressDetails}>
+          <View style={styles.progressDetailItem}>
+            <Text style={styles.progressDetailLabel}>Aufgaben</Text>
+            <Text style={styles.progressDetailValue}>{Math.round(taskProgress)}%</Text>
+          </View>
+          <View style={styles.progressDetailItem}>
+            <Text style={styles.progressDetailLabel}>Meilensteine</Text>
+            <Text style={styles.progressDetailValue}>{Math.round(milestoneProgress)}%</Text>
+          </View>
+        </View>
         <View style={styles.progressBarContainer}>
           <View style={[styles.progressBar, { width: `${progress}%` }]} />
         </View>
@@ -513,6 +531,31 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 16,
     letterSpacing: -0.3,
+  },
+  progressDetails: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 12,
+  },
+  progressDetailItem: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+  },
+  progressDetailLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  progressDetailValue: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '700',
   },
   progressBarContainer: {
     height: 12,

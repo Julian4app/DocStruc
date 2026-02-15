@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { DatePicker } from '../../components/DatePicker';
-import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2 } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { TaskDetailModal } from './TaskModals';
 
 interface TimelineEvent {
@@ -88,6 +88,11 @@ export function ProjectSchedule() {
   const [editFormData, setEditFormData] = useState<any>({});
   const [docFormData, setDocFormData] = useState<any>({});
   const [isRecording, setIsRecording] = useState(false);
+  
+  // Project schedule overview
+  const [projectStartDate, setProjectStartDate] = useState<string | null>(null);
+  const [projectEndDate, setProjectEndDate] = useState<string | null>(null);
+  const [scheduleStatus, setScheduleStatus] = useState<'on_track' | 'behind' | 'ahead' | 'unknown'>('unknown');
 
   useEffect(() => {
     if (id) {
@@ -101,6 +106,18 @@ export function ProjectSchedule() {
     setLoading(true);
 
     try {
+      // Load project dates
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .select('start_date, target_end_date')
+        .eq('id', id)
+        .single();
+      
+      if (!projectError && projectData) {
+        setProjectStartDate(projectData.start_date);
+        setProjectEndDate(projectData.target_end_date);
+      }
+
       // Load milestones/timeline events
       const { data: timelineData, error: timelineError } = await supabase
         .from('timeline_events')
@@ -110,6 +127,9 @@ export function ProjectSchedule() {
 
       if (timelineError) throw timelineError;
       setMilestones(timelineData || []);
+
+      // Calculate schedule status
+      calculateScheduleStatus(timelineData || [], projectData?.target_end_date);
 
       // Load milestones with linked tasks/defects for timeline view
       await loadMilestonesWithLinkedItems(timelineData || []);
@@ -131,6 +151,47 @@ export function ProjectSchedule() {
       showToast('Fehler beim Laden der Termine', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const calculateScheduleStatus = (milestonesData: TimelineEvent[], targetEndDate: string | null) => {
+    if (!milestonesData.length || !targetEndDate) {
+      setScheduleStatus('unknown');
+      return;
+    }
+
+    const today = new Date();
+    const projectEnd = new Date(targetEndDate);
+    const totalDays = projectEnd.getTime() - today.getTime();
+    
+    // Get incomplete milestones
+    const incompleteMilestones = milestonesData.filter(m => m.status !== 'completed');
+    const overdueMilestones = incompleteMilestones.filter(m => {
+      const milestoneDate = new Date(m.start_date);
+      return milestoneDate < today;
+    });
+
+    // Calculate progress
+    const totalMilestones = milestonesData.length;
+    const completedMilestones = milestonesData.filter(m => m.status === 'completed').length;
+    const progressPercentage = totalMilestones > 0 ? (completedMilestones / totalMilestones) * 100 : 0;
+
+    // Calculate expected progress based on time elapsed
+    const firstMilestoneDate = new Date(milestonesData[0].start_date);
+    const lastMilestoneDate = new Date(milestonesData[milestonesData.length - 1].start_date);
+    const totalTimespan = lastMilestoneDate.getTime() - firstMilestoneDate.getTime();
+    const elapsedTime = today.getTime() - firstMilestoneDate.getTime();
+    const expectedProgress = totalTimespan > 0 ? (elapsedTime / totalTimespan) * 100 : 0;
+
+    // Determine status
+    if (overdueMilestones.length > 0) {
+      setScheduleStatus('behind');
+    } else if (progressPercentage > expectedProgress + 10) {
+      setScheduleStatus('ahead');
+    } else if (progressPercentage >= expectedProgress - 10) {
+      setScheduleStatus('on_track');
+    } else {
+      setScheduleStatus('behind');
     }
   };
 
@@ -538,6 +599,22 @@ export function ProjectSchedule() {
     return diffDays;
   };
 
+  const calculateMilestoneProgress = (milestone: any) => {
+    if (!milestone.linkedItems || milestone.linkedItems.length === 0) return 0;
+    
+    const completedItems = milestone.linkedItems.filter((item: any) => 
+      item.status === 'done' || item.status === 'resolved'
+    ).length;
+    
+    return Math.round((completedItems / milestone.linkedItems.length) * 100);
+  };
+
+  const getOverallMilestoneProgress = () => {
+    if (milestones.length === 0) return 0;
+    const completedCount = milestones.filter(m => m.status === 'completed').length;
+    return Math.round((completedCount / milestones.length) * 100);
+  };
+
   const getEventTypeLabel = (type: string) => {
     switch (type) {
       case 'milestone': return 'Meilenstein';
@@ -747,6 +824,72 @@ export function ProjectSchedule() {
   // Render Timeline View
   const renderTimelineView = () => (
     <View style={styles.timelineContainer}>
+      {/* Schedule Overview */}
+      <Card style={styles.scheduleOverviewCard}>
+        <View style={styles.overviewHeader}>
+          <Text style={styles.overviewTitle}>Zeitplan-Übersicht</Text>
+          {scheduleStatus !== 'unknown' && (
+            <View style={[
+              styles.statusBadge,
+              scheduleStatus === 'on_track' && styles.statusBadgeOnTrack,
+              scheduleStatus === 'ahead' && styles.statusBadgeAhead,
+              scheduleStatus === 'behind' && styles.statusBadgeBehind
+            ]}>
+              {scheduleStatus === 'on_track' && <CheckCircle size={14} color="#22c55e" />}
+              {scheduleStatus === 'ahead' && <TrendingUp size={14} color="#3B82F6" />}
+              {scheduleStatus === 'behind' && <TrendingDown size={14} color="#EF4444" />}
+              <Text style={[
+                styles.statusBadgeText,
+                scheduleStatus === 'on_track' && styles.statusTextOnTrack,
+                scheduleStatus === 'ahead' && styles.statusTextAhead,
+                scheduleStatus === 'behind' && styles.statusTextBehind
+              ]}>
+                {scheduleStatus === 'on_track' && 'Im Zeitplan'}
+                {scheduleStatus === 'ahead' && 'Vor dem Zeitplan'}
+                {scheduleStatus === 'behind' && 'Hinter dem Zeitplan'}
+              </Text>
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.overviewContent}>
+          <View style={styles.overviewRow}>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Projektstart</Text>
+              <Text style={styles.overviewValue}>
+                {projectStartDate ? formatDate(projectStartDate) : 'Nicht festgelegt'}
+              </Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Projektziel</Text>
+              <Text style={styles.overviewValue}>
+                {projectEndDate ? formatDate(projectEndDate) : 'Nicht festgelegt'}
+              </Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Meilensteine</Text>
+              <Text style={styles.overviewValue}>
+                {milestones.filter(m => m.status === 'completed').length} von {milestones.length}
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.progressSection}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>Meilenstein-Fortschritt</Text>
+              <Text style={styles.progressPercentage}>{getOverallMilestoneProgress()}%</Text>
+            </View>
+            <View style={styles.progressBarContainer}>
+              <View style={[
+                styles.progressBar,
+                { width: `${getOverallMilestoneProgress()}%` }
+              ]} />
+            </View>
+          </View>
+        </View>
+      </Card>
+
+      {/* Milestones List */}
       {milestonesWithLinkedItems.length === 0 ? (
         <Card style={styles.emptyStateCard}>
           <Flag size={48} color="#CBD5E1" />
@@ -819,6 +962,17 @@ export function ProjectSchedule() {
                       <Text style={styles.linkedItemsTitle}>
                         Verknüpfte Aufgaben & Mängel ({milestone.linkedItems.length})
                       </Text>
+                      <View style={styles.milestoneProgressBadge}>
+                        <Text style={styles.milestoneProgressText}>
+                          {calculateMilestoneProgress(milestone)}% abgeschlossen
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.milestoneProgressBarContainer}>
+                      <View style={[
+                        styles.milestoneProgressBar,
+                        { width: `${calculateMilestoneProgress(milestone)}%` }
+                      ]} />
                     </View>
                     <View style={styles.linkedItemsList}>
                       {milestone.linkedItems.map((item: any) => (
@@ -1514,6 +1668,27 @@ export function ProjectSchedule() {
                   <Text style={styles.detailSectionTitle}>
                     Verknüpfte Aufgaben & Mängel ({selectedMilestoneLinkedItems.length})
                   </Text>
+                  <View style={styles.milestoneProgressBadge}>
+                    <Text style={styles.milestoneProgressText}>
+                      {(() => {
+                        const completedCount = selectedMilestoneLinkedItems.filter(
+                          (item: any) => item.status === 'done' || item.status === 'resolved'
+                        ).length;
+                        return Math.round((completedCount / selectedMilestoneLinkedItems.length) * 100);
+                      })()}% abgeschlossen
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.milestoneProgressBarContainer}>
+                  <View style={[
+                    styles.milestoneProgressBar,
+                    { width: `${(() => {
+                      const completedCount = selectedMilestoneLinkedItems.filter(
+                        (item: any) => item.status === 'done' || item.status === 'resolved'
+                      ).length;
+                      return Math.round((completedCount / selectedMilestoneLinkedItems.length) * 100);
+                    })()}%` }
+                  ]} />
                 </View>
                 <View style={styles.linkedItemsList}>
                   {selectedMilestoneLinkedItems.map((item: any) => (
@@ -2887,5 +3062,133 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 16,
+  },
+  // Schedule Overview Styles
+  scheduleOverviewCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 24,
+    backgroundColor: '#ffffff',
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  overviewTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  statusBadgeOnTrack: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  statusBadgeAhead: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  statusBadgeBehind: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  statusBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  statusTextOnTrack: {
+    color: '#22c55e',
+  },
+  statusTextAhead: {
+    color: '#3B82F6',
+  },
+  statusTextBehind: {
+    color: '#EF4444',
+  },
+  overviewContent: {
+    gap: 20,
+  },
+  overviewRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  overviewItem: {
+    flex: 1,
+    gap: 4,
+  },
+  overviewLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  overviewValue: {
+    fontSize: 18,
+    color: '#0f172a',
+    fontWeight: '700',
+  },
+  progressSection: {
+    gap: 8,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  progressPercentage: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+  },
+  milestoneProgressBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 12,
+    marginLeft: 'auto',
+  },
+  milestoneProgressText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  milestoneProgressBarContainer: {
+    height: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  milestoneProgressBar: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 3,
   },
 });
