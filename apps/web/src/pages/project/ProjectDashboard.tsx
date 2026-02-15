@@ -75,7 +75,7 @@ export function ProjectDashboard() {
     
     try {
       // Load project info
-      const { data: projectData, error: projectError} = await supabase
+      const { data: projectData, error: projectError } = await supabase
         .from('projects')
         .select('status, status_date')
         .eq('id', id)
