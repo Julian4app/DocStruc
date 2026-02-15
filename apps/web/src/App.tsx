@@ -9,6 +9,7 @@ import { Dashboard } from './pages/Dashboard';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { Accessors } from './pages/Accessors';
 import { ManageProjects } from './pages/superuser/ManageProjects';
+import { ProjectManagementDetail } from './pages/superuser/ProjectManagementDetail';
 import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Datenschutz } from './pages/Datenschutz';
@@ -28,7 +29,7 @@ import { ProjectCommunication } from './pages/project/ProjectCommunication';
 import { ProjectParticipants } from './pages/project/ProjectParticipants';
 import { ProjectReports } from './pages/project/ProjectReports';
 import { ProjectActivity } from './pages/project/ProjectActivity';
-import { ProjectSettings } from './pages/project/ProjectSettings';
+
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
@@ -126,6 +127,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/accessors" element={<Accessors />} />
               <Route path="/manage-projects" element={<ManageProjects />} />
+              <Route path="/manage-projects/:id" element={<ProjectManagementDetail />} />
               <Route path="/project/:id" element={<ProjectDetail />}>
                 <Route index element={<ProjectDashboard />} />
                 <Route path="general-info" element={<ProjectGeneralInfo />} />
@@ -140,7 +142,7 @@ function App() {
                 <Route path="participants" element={<ProjectParticipants />} />
                 <Route path="reports" element={<ProjectReports />} />
                 <Route path="activity" element={<ProjectActivity />} />
-                <Route path="settings" element={<ProjectSettings />} />
+
               </Route>
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />

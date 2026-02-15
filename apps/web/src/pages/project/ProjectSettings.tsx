@@ -5,6 +5,7 @@ import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
+import { DatePicker } from '../../components/DatePicker';
 import { Settings, Archive, Trash2, Save, AlertTriangle } from 'lucide-react';
 
 interface Project {
@@ -153,8 +154,8 @@ export function ProjectSettings() {
         <Card style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Zeitraum</Text>
           <View style={styles.formGroup}>
-            <Input label="Startdatum" value={startDate} onChangeText={setStartDate} placeholder="YYYY-MM-DD" />
-            <Input label="Ziel-Enddatum" value={targetEndDate} onChangeText={setTargetEndDate} placeholder="YYYY-MM-DD" />
+            <DatePicker label="Startdatum" value={startDate} onChange={setStartDate} placeholder="TT.MM.JJJJ" />
+            <DatePicker label="Ziel-Enddatum" value={targetEndDate} onChange={setTargetEndDate} placeholder="TT.MM.JJJJ" />
           </View>
         </Card>
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input } from '@docstruc/ui';
@@ -13,6 +14,7 @@ import { colors } from '@docstruc/theme';
 import { Edit2, Trash2, MapPin } from 'lucide-react';
 
 export function ManageProjects() {
+    const navigate = useNavigate();
     const { setTitle, setSubtitle, setActions } = useLayout();
     const { showToast } = useToast();
     const [projects, setProjects] = useState<Project[]>([]);
@@ -106,7 +108,7 @@ export function ManageProjects() {
                                 </View>
                             </View>
                             <View style={styles.actionBtns}>
-                                <TouchableOpacity style={styles.iconBtn} onPress={() => setEditingProject(p)}>
+                                <TouchableOpacity style={styles.iconBtn} onPress={() => navigate(`/manage-projects/${p.id}`)}>
                                     <Edit2 size={16} color={colors.primary} />
                                 </TouchableOpacity>
                                 <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => handleDelete(p.id)}>

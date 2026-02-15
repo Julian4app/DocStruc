@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Project } from '@docstruc/logic';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLayout } from '../layouts/LayoutContext';
-import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Building2, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity, Settings } from 'lucide-react';
+import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Building2, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity } from 'lucide-react';
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -55,8 +55,7 @@ export function ProjectDetail() {
           {label:'Kommunikation',path:`/project/${id}/communication`,icon:MessageSquare},
           {label:'Beteiligte',path:`/project/${id}/participants`,icon:UsersIcon},
           {label:'Berichte & Exporte',path:`/project/${id}/reports`,icon:BarChart3},
-          {label:'Aktivitäten',path:`/project/${id}/activity`,icon:Activity},
-          {label:'Einstellungen',path:`/project/${id}/settings`,icon:Settings}
+          {label:'Aktivitäten',path:`/project/${id}/activity`,icon:Activity}
         ]);
     } else {
         setTitle('Lade Projekt...');

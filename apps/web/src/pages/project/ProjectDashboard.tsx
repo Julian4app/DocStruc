@@ -62,6 +62,10 @@ export function ProjectDashboard() {
   const [recentTasks, setRecentTasks] = useState<RecentTask[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [projectStatus, setProjectStatus] = useState<string>('active');
+  const [statusDate, setStatusDate] = useState<string | null>(null);
+  const [projectStatus, setProjectStatus] = useState<string>('active');
+  const [statusDate, setStatusDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -72,6 +76,18 @@ export function ProjectDashboard() {
     setLoading(true);
     
     try {
+      // Load project info
+      const { data: projectData, error: projectError} = await supabase
+        .from('projects')
+        .select('status, status_date')
+        .eq('id', id)
+        .single();
+      
+      if (!projectError && projectData) {
+        setProjectStatus(projectData.status || 'active');
+        setStatusDate(projectData.status_date);
+      }
+
       // Load all tasks
       const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
@@ -155,6 +171,45 @@ export function ProjectDashboard() {
     );
   }
 
+  const getStatusColor = (status: string) => {
+    const colors: { [key: string]: { bg: string; text: string; label: string } } = {
+      'active': { bg: '#DCFCE7', text: '#166534', label: 'Aktiv' },
+      'planning': { bg: '#FEF3C7', text: '#92400E', label: 'Planung' },
+      'on_hold': { bg: '#E0E7FF', text: '#3730A3', label: 'Pausiert' },
+      'paused': { bg: '#E0E7FF', text: '#3730A3', label: 'Unterbrochen' },
+      'completed': { bg: '#DBEAFE', text: '#1E40AF', label: 'Abgeschlossen' },
+      'archived': { bg: '#F1F5F9', text: '#475569', label: 'Archiviert' },
+    };
+    return colors[status] || colors['active'];
+  };
+
+  const formatStatusDate = (dateStr: string | null) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      return `${day}.${month}.${year}`;
+    }
+    return '';
+  };
+
+  // Gradient color function for progress bars
+  const getProgressColor = (percentage: number) => {
+    if (percentage <= 50) {
+      // Red #EF4444 to Yellow #EFEB44
+      const r = 239;
+      const g = Math.round(68 + (191 * percentage / 50));
+      const b = 68;
+      return `rgb(${r}, ${g}, ${b})`;
+    } else {
+      // Yellow to Green #22C55E
+      const r = Math.round(239 - (205 * (percentage - 50) / 50));
+      const g = Math.round(235 - (40 * (percentage - 50) / 50));
+      const b = Math.round(68 + (21 * (percentage - 50) / 50));
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+  };
+
   // Calculate comprehensive progress including tasks and milestones
   const taskProgress = stats.totalTasks > 0 
     ? (stats.completedTasks / stats.totalTasks) * 100 
@@ -167,8 +222,23 @@ export function ProjectDashboard() {
   // Weighted average: 70% tasks, 30% milestones
   const progress = Math.round((taskProgress * 0.7) + (milestoneProgress * 0.3));
 
+  const statusInfo = getStatusColor(projectStatus);
+  const showStatusDate = ['on_hold', 'paused', 'planning'].includes(projectStatus) && statusDate;
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Status Badge */}
+      {projectStatus && (
+        <View style={styles.statusBadgeContainer}>
+          <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+            <Text style={[styles.statusBadgeText, { color: statusInfo.text }]}>
+              {statusInfo.label}
+              {showStatusDate && ` bis ${formatStatusDate(statusDate)}`}
+            </Text>
+          </View>
+        </View>
+      )}
+
       <Text style={styles.pageTitle}>Projekt Dashboard</Text>
       <Text style={styles.pageSubtitle}>Zentrale Projektsteuerung und Statusübersicht</Text>
 
@@ -186,7 +256,13 @@ export function ProjectDashboard() {
           </View>
         </View>
         <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${progress}%` }]} />
+          <View style={[
+            styles.progressBar, 
+            { 
+              width: `${progress}%`,
+              backgroundColor: getProgressColor(progress)
+            }
+          ]} />
         </View>
         <Text style={styles.progressText}>{progress}% abgeschlossen</Text>
       </Card>
@@ -500,6 +576,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
+  },
+  statusBadgeContainer: {
+    marginBottom: 12,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 8,
+  },
+  statusBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   loadingContainer: {
     flex: 1,
