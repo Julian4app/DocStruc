@@ -1,8 +1,13 @@
 -- Migration: Add project_roles table to track which roles are available for each project
 -- Date: 2026-02-15
 
+-- Drop existing table and policies if they exist (cleanup from failed attempts)
+DROP POLICY IF EXISTS "Users can view project_roles for their projects" ON project_roles;
+DROP POLICY IF EXISTS "Project owners can manage project_roles" ON project_roles;
+DROP TABLE IF EXISTS project_roles;
+
 -- Create project_roles junction table
-CREATE TABLE IF NOT EXISTS project_roles (
+CREATE TABLE project_roles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
