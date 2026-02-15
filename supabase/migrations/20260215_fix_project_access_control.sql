@@ -464,45 +464,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- STEP 17: Fix timeline_events policies (from general_info migration)
--- ============================================================
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'timeline_events') THEN
-    EXECUTE 'DROP POLICY IF EXISTS "Project members can view timeline events" ON timeline_events';
-    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can create events" ON timeline_events';
-    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can edit events" ON timeline_events';
-    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can delete events" ON timeline_events';
-    EXECUTE 'DROP POLICY IF EXISTS "Project owners can manage timeline events" ON timeline_events';
-    EXECUTE '
-      CREATE POLICY "timeline_events_select" ON timeline_events
-        FOR SELECT USING (
-          EXISTS (SELECT 1 FROM projects WHERE id = timeline_events.project_id AND owner_id = auth.uid())
-          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = timeline_events.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
-        )';
-    EXECUTE '
-      CREATE POLICY "timeline_events_insert" ON timeline_events
-        FOR INSERT WITH CHECK (
-          EXISTS (SELECT 1 FROM projects WHERE id = timeline_events.project_id AND owner_id = auth.uid())
-          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = timeline_events.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
-        )';
-    EXECUTE '
-      CREATE POLICY "timeline_events_update" ON timeline_events
-        FOR UPDATE USING (
-          EXISTS (SELECT 1 FROM projects WHERE id = timeline_events.project_id AND owner_id = auth.uid())
-          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = timeline_events.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
-        )';
-    EXECUTE '
-      CREATE POLICY "timeline_events_delete" ON timeline_events
-        FOR DELETE USING (
-          EXISTS (SELECT 1 FROM projects WHERE id = timeline_events.project_id AND owner_id = auth.uid())
-          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = timeline_events.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
-        )';
-  END IF;
-END $$;
-
--- ============================================================
--- STEP 18: Fix storage policies for member access
+-- STEP 17: Fix storage policies for member access
 -- ============================================================
 DO $$
 BEGIN
