@@ -262,12 +262,18 @@ export function ProjectManagementDetail() {
         .select('id, accessor_id')
         .eq('project_id', id);
 
+      console.log('Existing members:', existingMembers);
+      console.log('Selected member IDs:', selectedMemberIds);
+
       const existingAccessorIds = (existingMembers || []).map(m => m.accessor_id).filter(Boolean);
       
       // Find members to add (in selected but not existing)
       const toAdd = selectedMemberIds.filter(aid => !existingAccessorIds.includes(aid));
       // Find members to remove (in existing but not selected)
       const toRemove = (existingMembers || []).filter(m => m.accessor_id && !selectedMemberIds.includes(m.accessor_id));
+
+      console.log('Members to add:', toAdd);
+      console.log('Members to remove:', toRemove);
 
       // Remove unselected members
       if (toRemove.length > 0) {
@@ -279,11 +285,15 @@ export function ProjectManagementDetail() {
 
       // Add newly selected members
       if (toAdd.length > 0) {
+        console.log('Adding members:', toAdd);
         for (const accessorId of toAdd) {
           const accessor = allAccessors.find(a => a.id === accessorId);
-          if (!accessor) continue;
+          if (!accessor) {
+            console.warn('Accessor not found:', accessorId);
+            continue;
+          }
 
-          await supabase.from('project_members').insert({
+          console.log('Inserting member:', {
             project_id: id,
             user_id: accessor.registered_user_id || null,
             accessor_id: accessorId,
@@ -291,11 +301,30 @@ export function ProjectManagementDetail() {
             role: 'member',
             status: 'open'
           });
+
+          const { data: insertedMember, error: insertError } = await supabase
+            .from('project_members')
+            .insert({
+              project_id: id,
+              user_id: accessor.registered_user_id || null,
+              accessor_id: accessorId,
+              member_type: accessor.accessor_type || 'other',
+              role: 'member',
+              status: 'open'
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error('Error inserting member:', insertError);
+            throw insertError;
+          }
+          console.log('Successfully inserted member:', insertedMember);
         }
       }
 
       showToast('Einstellungen gespeichert', 'success');
-      loadProject();
+      await loadProject();
     } catch (error: any) {
       console.error('Error saving project:', error);
       showToast('Fehler beim Speichern', 'error');
