@@ -64,136 +64,166 @@ CREATE POLICY "Project members can view other members" ON public.project_members
 -- ============================================================
 -- STEP 4: Fix task_documentation policies
 -- ============================================================
-DROP POLICY IF EXISTS "task_documentation_select" ON task_documentation;
-DROP POLICY IF EXISTS "task_documentation_insert" ON task_documentation;
-
-CREATE POLICY "task_documentation_select" ON task_documentation
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = task_documentation.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_documentation.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "task_documentation_insert" ON task_documentation
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM projects WHERE id = task_documentation.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_documentation.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'task_documentation') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "task_documentation_select" ON task_documentation';
+    EXECUTE 'DROP POLICY IF EXISTS "task_documentation_insert" ON task_documentation';
+    EXECUTE '
+      CREATE POLICY "task_documentation_select" ON task_documentation
+        FOR SELECT USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = task_documentation.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_documentation.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "task_documentation_insert" ON task_documentation
+        FOR INSERT WITH CHECK (
+          EXISTS (SELECT 1 FROM projects WHERE id = task_documentation.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_documentation.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 5: Fix task_images policies
 -- ============================================================
-DROP POLICY IF EXISTS "task_images_select" ON task_images;
-DROP POLICY IF EXISTS "task_images_insert" ON task_images;
-
-CREATE POLICY "task_images_select" ON task_images
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = task_images.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_images.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "task_images_insert" ON task_images
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM projects WHERE id = task_images.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_images.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'task_images') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "task_images_select" ON task_images';
+    EXECUTE 'DROP POLICY IF EXISTS "task_images_insert" ON task_images';
+    EXECUTE '
+      CREATE POLICY "task_images_select" ON task_images
+        FOR SELECT USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = task_images.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_images.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "task_images_insert" ON task_images
+        FOR INSERT WITH CHECK (
+          EXISTS (SELECT 1 FROM projects WHERE id = task_images.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = task_images.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 6: Fix sprint policies 
 -- ============================================================
-DROP POLICY IF EXISTS "sprints_select" ON sprints;
-DROP POLICY IF EXISTS "sprints_insert" ON sprints;
-DROP POLICY IF EXISTS "sprints_update" ON sprints;
-
-CREATE POLICY "sprints_select" ON sprints
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "sprints_insert" ON sprints
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "sprints_update" ON sprints
-  FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sprints') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "sprints_select" ON sprints';
+    EXECUTE 'DROP POLICY IF EXISTS "sprints_insert" ON sprints';
+    EXECUTE 'DROP POLICY IF EXISTS "sprints_update" ON sprints';
+    EXECUTE '
+      CREATE POLICY "sprints_select" ON sprints
+        FOR SELECT USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "sprints_insert" ON sprints
+        FOR INSERT WITH CHECK (
+          EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "sprints_update" ON sprints
+        FOR UPDATE USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = sprints.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = sprints.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 7: Fix project_files policies
 -- ============================================================
-DROP POLICY IF EXISTS "project_files_select" ON project_files;
-DROP POLICY IF EXISTS "project_files_insert" ON project_files;
-DROP POLICY IF EXISTS "project_files_update" ON project_files;
-DROP POLICY IF EXISTS "project_files_delete" ON project_files;
-
-CREATE POLICY "project_files_select" ON project_files
-  FOR SELECT USING (
-    uploaded_by = auth.uid()
-    OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "project_files_insert" ON project_files
-  FOR INSERT WITH CHECK (
-    uploaded_by = auth.uid()
-    AND (
-      EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
-      OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-    )
-  );
-
-CREATE POLICY "project_files_update" ON project_files
-  FOR UPDATE USING (
-    uploaded_by = auth.uid()
-    OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "project_files_delete" ON project_files
-  FOR DELETE USING (
-    uploaded_by = auth.uid()
-    OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_files') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "project_files_select" ON project_files';
+    EXECUTE 'DROP POLICY IF EXISTS "project_files_insert" ON project_files';
+    EXECUTE 'DROP POLICY IF EXISTS "project_files_update" ON project_files';
+    EXECUTE 'DROP POLICY IF EXISTS "project_files_delete" ON project_files';
+    EXECUTE '
+      CREATE POLICY "project_files_select" ON project_files
+        FOR SELECT USING (
+          uploaded_by = auth.uid()
+          OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "project_files_insert" ON project_files
+        FOR INSERT WITH CHECK (
+          uploaded_by = auth.uid()
+          AND (
+            EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
+            OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+          )
+        )';
+    EXECUTE '
+      CREATE POLICY "project_files_update" ON project_files
+        FOR UPDATE USING (
+          uploaded_by = auth.uid()
+          OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_files.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "project_files_delete" ON project_files
+        FOR DELETE USING (
+          uploaded_by = auth.uid()
+          OR EXISTS (SELECT 1 FROM projects WHERE id = project_files.project_id AND owner_id = auth.uid())
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 8: Fix project_messages policies
 -- ============================================================
-DROP POLICY IF EXISTS "project_messages_select" ON project_messages;
-DROP POLICY IF EXISTS "project_messages_insert" ON project_messages;
-
-CREATE POLICY "project_messages_select" ON project_messages
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = project_messages.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_messages.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "project_messages_insert" ON project_messages
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM projects WHERE id = project_messages.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_messages.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_messages') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "project_messages_select" ON project_messages';
+    EXECUTE 'DROP POLICY IF EXISTS "project_messages_insert" ON project_messages';
+    EXECUTE '
+      CREATE POLICY "project_messages_select" ON project_messages
+        FOR SELECT USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = project_messages.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_messages.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "project_messages_insert" ON project_messages
+        FOR INSERT WITH CHECK (
+          EXISTS (SELECT 1 FROM projects WHERE id = project_messages.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_messages.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 9: Fix project_links policies
 -- ============================================================
-DROP POLICY IF EXISTS "Users can view project links" ON project_links;
-DROP POLICY IF EXISTS "Users can manage project links" ON project_links;
-
-CREATE POLICY "Users can view project links" ON project_links
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = project_links.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_links.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
-
-CREATE POLICY "Users can manage project links" ON project_links
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM projects WHERE id = project_links.project_id AND owner_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_links.project_id AND user_id = auth.uid() AND status IN ('open', 'invited', 'active'))
-  );
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_links') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Users can view project links" ON project_links';
+    EXECUTE 'DROP POLICY IF EXISTS "Users can manage project links" ON project_links';
+    EXECUTE '
+      CREATE POLICY "Users can view project links" ON project_links
+        FOR SELECT USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = project_links.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_links.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+    EXECUTE '
+      CREATE POLICY "Users can manage project links" ON project_links
+        FOR ALL USING (
+          EXISTS (SELECT 1 FROM projects WHERE id = project_links.project_id AND owner_id = auth.uid())
+          OR EXISTS (SELECT 1 FROM project_members WHERE project_id = project_links.project_id AND user_id = auth.uid() AND status IN (''open'', ''invited'', ''active''))
+        )';
+  END IF;
+END $$;
 
 -- ============================================================
 -- STEP 10: Fix report policies
@@ -481,31 +511,41 @@ END $$;
 -- ============================================================
 -- STEP 18: Fix storage policies for member access
 -- ============================================================
+DO $$
+BEGIN
+  -- Fix project-info-images storage policy
+  EXECUTE 'DROP POLICY IF EXISTS "Project members can view info images" ON storage.objects';
+  BEGIN
+    EXECUTE '
+      CREATE POLICY "Project members can view info images"
+        ON storage.objects FOR SELECT
+        USING (
+          bucket_id = ''project-info-images'' AND
+          (storage.foldername(name))[1] IN (
+            SELECT p.id::text FROM projects p WHERE p.owner_id = auth.uid()
+            UNION
+            SELECT pm.project_id::text FROM project_members pm WHERE pm.user_id = auth.uid() AND pm.status IN (''open'', ''invited'', ''active'')
+          )
+        )';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not create project-info-images policy: %', SQLERRM;
+  END;
 
--- Fix project-info-images storage policy
-DROP POLICY IF EXISTS "Project members can view info images" ON storage.objects;
-
-CREATE POLICY "Project members can view info images"
-  ON storage.objects FOR SELECT
-  USING (
-    bucket_id = 'project-info-images' AND
-    (storage.foldername(name))[1] IN (
-      SELECT p.id::text FROM projects p WHERE p.owner_id = auth.uid()
-      UNION
-      SELECT pm.project_id::text FROM project_members pm WHERE pm.user_id = auth.uid() AND pm.status IN ('open', 'invited', 'active')
-    )
-  );
-
--- Fix project-voice-messages storage policy
-DROP POLICY IF EXISTS "Project members can listen to voice messages" ON storage.objects;
-
-CREATE POLICY "Project members can listen to voice messages"
-  ON storage.objects FOR SELECT
-  USING (
-    bucket_id = 'project-voice-messages' AND
-    (storage.foldername(name))[1] IN (
-      SELECT p.id::text FROM projects p WHERE p.owner_id = auth.uid()
-      UNION
-      SELECT pm.project_id::text FROM project_members pm WHERE pm.user_id = auth.uid() AND pm.status IN ('open', 'invited', 'active')
-    )
-  );
+  -- Fix project-voice-messages storage policy
+  EXECUTE 'DROP POLICY IF EXISTS "Project members can listen to voice messages" ON storage.objects';
+  BEGIN
+    EXECUTE '
+      CREATE POLICY "Project members can listen to voice messages"
+        ON storage.objects FOR SELECT
+        USING (
+          bucket_id = ''project-voice-messages'' AND
+          (storage.foldername(name))[1] IN (
+            SELECT p.id::text FROM projects p WHERE p.owner_id = auth.uid()
+            UNION
+            SELECT pm.project_id::text FROM project_members pm WHERE pm.user_id = auth.uid() AND pm.status IN (''open'', ''invited'', ''active'')
+          )
+        )';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not create project-voice-messages policy: %', SQLERRM;
+  END;
+END $$;
