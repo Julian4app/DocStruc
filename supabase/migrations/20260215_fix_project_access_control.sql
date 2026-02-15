@@ -288,14 +288,13 @@ END $$;
 -- ============================================================
 -- STEP 11: Fix voice_messages policies
 -- ============================================================
-DROP POLICY IF EXISTS "voice_messages_select" ON voice_messages;
-DROP POLICY IF EXISTS "voice_messages_insert" ON voice_messages;
-DROP POLICY IF EXISTS "voice_messages_update" ON voice_messages;
-DROP POLICY IF EXISTS "voice_messages_delete" ON voice_messages;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'voice_messages') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'voice_messages') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "voice_messages_select" ON voice_messages';
+    EXECUTE 'DROP POLICY IF EXISTS "voice_messages_insert" ON voice_messages';
+    EXECUTE 'DROP POLICY IF EXISTS "voice_messages_update" ON voice_messages';
+    EXECUTE 'DROP POLICY IF EXISTS "voice_messages_delete" ON voice_messages';
     EXECUTE '
       CREATE POLICY "voice_messages_select" ON voice_messages
         FOR SELECT USING (
@@ -338,12 +337,11 @@ END $$;
 -- ============================================================
 -- STEP 12: Fix activity_log policies
 -- ============================================================
-DROP POLICY IF EXISTS "activity_log_select" ON activity_log;
-DROP POLICY IF EXISTS "activity_log_insert" ON activity_log;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'activity_log') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'activity_log') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "activity_log_select" ON activity_log';
+    EXECUTE 'DROP POLICY IF EXISTS "activity_log_insert" ON activity_log';
     EXECUTE '
       CREATE POLICY "activity_log_select" ON activity_log
         FOR SELECT USING (
@@ -364,14 +362,13 @@ END $$;
 -- ============================================================
 -- STEP 13: Fix timeline_events policies
 -- ============================================================
-DROP POLICY IF EXISTS "timeline_events_select" ON timeline_events;
-DROP POLICY IF EXISTS "timeline_events_insert" ON timeline_events;
-DROP POLICY IF EXISTS "timeline_events_update" ON timeline_events;
-DROP POLICY IF EXISTS "timeline_events_delete" ON timeline_events;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'timeline_events') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'timeline_events') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "timeline_events_select" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "timeline_events_insert" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "timeline_events_update" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "timeline_events_delete" ON timeline_events';
     EXECUTE '
       CREATE POLICY "timeline_events_select" ON timeline_events
         FOR SELECT USING (public.has_project_access(project_id))';
@@ -390,14 +387,13 @@ END $$;
 -- ============================================================
 -- STEP 14: Fix project_available_roles policies
 -- ============================================================
-DROP POLICY IF EXISTS "project_available_roles_select" ON project_available_roles;
-DROP POLICY IF EXISTS "project_available_roles_insert" ON project_available_roles;
-DROP POLICY IF EXISTS "project_available_roles_update" ON project_available_roles;
-DROP POLICY IF EXISTS "project_available_roles_delete" ON project_available_roles;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'project_available_roles') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_available_roles') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "project_available_roles_select" ON project_available_roles';
+    EXECUTE 'DROP POLICY IF EXISTS "project_available_roles_insert" ON project_available_roles';
+    EXECUTE 'DROP POLICY IF EXISTS "project_available_roles_update" ON project_available_roles';
+    EXECUTE 'DROP POLICY IF EXISTS "project_available_roles_delete" ON project_available_roles';
     EXECUTE '
       CREATE POLICY "project_available_roles_select" ON project_available_roles
         FOR SELECT USING (public.has_project_access(project_id))';
@@ -422,12 +418,11 @@ END $$;
 -- ============================================================
 -- STEP 15: Fix project_member_permissions policies
 -- ============================================================
-DROP POLICY IF EXISTS "project_member_permissions_select" ON project_member_permissions;
-DROP POLICY IF EXISTS "project_member_permissions_manage" ON project_member_permissions;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'project_member_permissions') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_member_permissions') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "project_member_permissions_select" ON project_member_permissions';
+    EXECUTE 'DROP POLICY IF EXISTS "project_member_permissions_manage" ON project_member_permissions';
     EXECUTE '
       CREATE POLICY "project_member_permissions_select" ON project_member_permissions
         FOR SELECT USING (
@@ -454,12 +449,11 @@ END $$;
 -- ============================================================
 -- STEP 16: Fix project_info policies
 -- ============================================================
-DROP POLICY IF EXISTS "Project members can view project info" ON project_info;
-DROP POLICY IF EXISTS "Members with permission can edit project info" ON project_info;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'project_info') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_info') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Project members can view project info" ON project_info';
+    EXECUTE 'DROP POLICY IF EXISTS "Members with permission can edit project info" ON project_info';
     EXECUTE '
       CREATE POLICY "Project members can view project info" ON project_info
         FOR SELECT USING (
@@ -472,15 +466,14 @@ END $$;
 -- ============================================================
 -- STEP 17: Fix timeline_events policies (from general_info migration)
 -- ============================================================
-DROP POLICY IF EXISTS "Project members can view timeline events" ON timeline_events;
-DROP POLICY IF EXISTS "Members with schedule permission can create events" ON timeline_events;
-DROP POLICY IF EXISTS "Members with schedule permission can edit events" ON timeline_events;
-DROP POLICY IF EXISTS "Members with schedule permission can delete events" ON timeline_events;
-DROP POLICY IF EXISTS "Project owners can manage timeline events" ON timeline_events;
-
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'timeline_events') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'timeline_events') THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Project members can view timeline events" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can create events" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can edit events" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "Members with schedule permission can delete events" ON timeline_events';
+    EXECUTE 'DROP POLICY IF EXISTS "Project owners can manage timeline events" ON timeline_events';
     EXECUTE '
       CREATE POLICY "timeline_events_select" ON timeline_events
         FOR SELECT USING (
