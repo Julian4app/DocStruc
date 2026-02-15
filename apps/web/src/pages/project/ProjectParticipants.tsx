@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
@@ -58,19 +59,16 @@ export function ProjectParticipants() {
   
   // Data states
   const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [availableAccessors, setAvailableAccessors] = useState<UserAccessor[]>([]);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [availableModules, setAvailableModules] = useState<PermissionModule[]>([]);
   
   // Modal states
-  const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isEditPermissionsModalOpen, setIsEditPermissionsModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<ProjectMember | null>(null);
   const [actionMenuMemberId, setActionMenuMemberId] = useState<string | null>(null);
   const [invitingMemberIds, setInvitingMemberIds] = useState<Set<string>>(new Set());
   
-  // Add member form
-  const [selectedAccessorId, setSelectedAccessorId] = useState('');
+  // Edit permissions form
   const [selectedRoleId, setSelectedRoleId] = useState('');
   const [useCustomPermissions, setUseCustomPermissions] = useState(false);
   const [customPermissions, setCustomPermissions] = useState<Record<string, PermissionModule>>({});
@@ -101,16 +99,6 @@ export function ProjectParticipants() {
 
       // Load project members
       await loadMembers();
-      
-      // Load available accessors
-      const { data: accessorsData, error: accessorsError } = await supabase
-        .from('user_accessors')
-        .select('*')
-        .eq('owner_id', user.id)
-        .eq('is_active', true);
-
-      if (accessorsError) throw accessorsError;
-      setAvailableAccessors(accessorsData || []);
 
       // Load roles that are assigned to THIS PROJECT (via project_available_roles table)
       const { data: projectRolesData, error: projectRolesError } = await supabase
@@ -186,22 +174,6 @@ export function ProjectParticipants() {
   // MODAL HELPERS
   // ==========================================
 
-  const openAddMemberModal = () => {
-    setSelectedAccessorId('');
-    setSelectedRoleId('');
-    setUseCustomPermissions(false);
-    const permsObj: Record<string, PermissionModule> = {};
-    availableModules.forEach(module => {
-      permsObj[module.module_key] = {
-        module_key: module.module_key,
-        module_name: module.module_name,
-        can_view: false, can_create: false, can_edit: false, can_delete: false
-      };
-    });
-    setCustomPermissions(permsObj);
-    setIsAddMemberModalOpen(true);
-  };
-
   const openEditPermissionsModal = async (member: ProjectMember) => {
     setEditingMember(member);
     setSelectedRoleId(member.role_id || '');
@@ -243,65 +215,6 @@ export function ProjectParticipants() {
   // ==========================================
   // CRUD OPERATIONS
   // ==========================================
-
-  const addMember = async () => {
-    if (!selectedAccessorId) {
-      showToast('Bitte wählen Sie einen Zugreifer aus', 'error');
-      return;
-    }
-    if (!useCustomPermissions && !selectedRoleId) {
-      showToast('Bitte wählen Sie eine Rolle oder aktivieren Sie individuelle Berechtigungen', 'error');
-      return;
-    }
-
-    try {
-      const accessor = availableAccessors.find(a => a.id === selectedAccessorId);
-      if (!accessor) return;
-
-      // Check duplicate
-      if (members.find(m => m.accessor_id === selectedAccessorId)) {
-        showToast('Diese Person ist bereits Projektmitglied', 'error');
-        return;
-      }
-
-      const { data: newMember, error: memberError } = await supabase
-        .from('project_members')
-        .insert({
-          project_id: projectId,
-          user_id: accessor.registered_user_id || null,
-          accessor_id: selectedAccessorId,
-          member_type: accessor.accessor_type,
-          role_id: useCustomPermissions ? null : selectedRoleId,
-          role: 'member',
-          status: 'open'
-        })
-        .select()
-        .single();
-
-      if (memberError) throw memberError;
-
-      if (useCustomPermissions) {
-        const permsToInsert = Object.values(customPermissions)
-          .filter(p => p.can_view || p.can_create || p.can_edit || p.can_delete)
-          .map(p => ({
-            project_member_id: newMember.id,
-            module_key: p.module_key,
-            can_view: p.can_view, can_create: p.can_create,
-            can_edit: p.can_edit, can_delete: p.can_delete
-          }));
-        if (permsToInsert.length > 0) {
-          const { error } = await supabase.from('project_member_permissions').insert(permsToInsert);
-          if (error) throw error;
-        }
-      }
-
-      showToast('Mitglied hinzugefügt (Status: Offen)', 'success');
-      setIsAddMemberModalOpen(false);
-      loadMembers();
-    } catch (error: any) {
-      showToast('Fehler: ' + error.message, 'error');
-    }
-  };
 
   const updateMemberPermissions = async () => {
     if (!editingMember) return;
@@ -517,7 +430,6 @@ export function ProjectParticipants() {
     active: members.filter(m => m.status === 'active').length,
     inactive: members.filter(m => m.status === 'inactive').length,
   };
-  const unaddedAccessors = availableAccessors.filter(a => !members.some(m => m.accessor_id === a.id));
 
   // ==========================================
   // RENDER
@@ -554,7 +466,7 @@ export function ProjectParticipants() {
             <Text style={styles.pageTitle}>Beteiligte</Text>
             <Text style={styles.pageSubtitle}>Projektmitglieder, Rollen und Einladungen verwalten</Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             {statusCounts.open > 0 && (
               <Button onClick={inviteAllOpen} variant="secondary">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -565,12 +477,11 @@ export function ProjectParticipants() {
                 </View>
               </Button>
             )}
-            <Button onClick={openAddMemberModal} variant="primary">
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <UserPlus size={18} color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Mitglied hinzufügen</Text>
-              </View>
-            </Button>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#F1F5F9', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <Text style={{ fontSize: 12, color: '#64748B' }}>
+                💡 Mitglieder hinzufügen unter: Projekt → Einstellungen → Beteiligte Personen
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -611,12 +522,9 @@ export function ProjectParticipants() {
             </Text>
             <Text style={styles.emptyText}>
               {statusFilter === 'all'
-                ? 'Fügen Sie Mitglieder hinzu, weisen Sie Rollen zu und senden Sie Einladungen.'
+                ? 'Keine Mitglieder im Projekt. Fügen Sie Mitglieder unter Projekt → Einstellungen → Beteiligte Personen hinzu.'
                 : 'Wechseln Sie den Filter um andere Mitglieder zu sehen.'}
             </Text>
-            {statusFilter === 'all' && (
-              <Button onClick={openAddMemberModal} variant="primary">Erstes Mitglied hinzufügen</Button>
-            )}
           </Card>
         ) : (
           <View style={styles.membersList}>
@@ -790,129 +698,6 @@ export function ProjectParticipants() {
         />
       )}
 
-      {/* ======================== ADD MEMBER MODAL ======================== */}
-      <ModernModal
-        visible={isAddMemberModalOpen}
-        onClose={() => setIsAddMemberModalOpen(false)}
-        title="Mitglied hinzufügen"
-      >
-        <View style={styles.modalContent}>
-          <View style={styles.formGroup}>
-            <Text style={styles.inputLabel}>Zugreifer auswählen *</Text>
-            <View style={styles.selectWrapper}>
-              <select
-                value={selectedAccessorId}
-                onChange={(e: any) => setSelectedAccessorId(e.target.value)}
-                style={styles.nativeSelect as any}
-              >
-                <option value="">Bitte wählen...</option>
-                {unaddedAccessors.map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.accessor_first_name && a.accessor_last_name
-                      ? `${a.accessor_first_name} ${a.accessor_last_name}`
-                      : a.accessor_email}
-                    {' '}({getMemberTypeLabel(a.accessor_type)})
-                  </option>
-                ))}
-              </select>
-            </View>
-            {unaddedAccessors.length === 0 && (
-              <Text style={styles.helperText}>
-                Keine neuen Zugreifer verfügbar. Erstellen Sie zuerst Zugreifer auf der "Zugreifer" Seite.
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.permissionModeSelector}>
-            <TouchableOpacity
-              style={[styles.modeOption, !useCustomPermissions && styles.modeOptionActive]}
-              onPress={() => setUseCustomPermissions(false)}
-            >
-              <Shield size={20} color={!useCustomPermissions ? colors.primary : '#64748b'} />
-              <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, !useCustomPermissions && styles.modeOptionTitleActive]}>Vordefinierte Rolle</Text>
-                <Text style={styles.modeOptionDesc}>Rolle mit vordefinierten Berechtigungen zuweisen</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeOption, useCustomPermissions && styles.modeOptionActive]}
-              onPress={() => setUseCustomPermissions(true)}
-            >
-              <Edit2 size={20} color={useCustomPermissions ? colors.primary : '#64748b'} />
-              <View style={styles.modeOptionText}>
-                <Text style={[styles.modeOptionTitle, useCustomPermissions && styles.modeOptionTitleActive]}>Individuelle Berechtigungen</Text>
-                <Text style={styles.modeOptionDesc}>Berechtigungen manuell festlegen</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {!useCustomPermissions ? (
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Rolle auswählen *</Text>
-              <View style={styles.selectWrapper}>
-                <select
-                  value={selectedRoleId}
-                  onChange={(e: any) => setSelectedRoleId(e.target.value)}
-                  style={styles.nativeSelect as any}
-                >
-                  <option value="">Bitte wählen...</option>
-                  {availableRoles.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.role_name}{r.role_description && ` - ${r.role_description}`}
-                    </option>
-                  ))}
-                </select>
-              </View>
-              {availableRoles.length === 0 && (
-                <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', marginTop: 8 }}>
-                  <Text style={{ fontSize: 13, color: '#92400E', marginBottom: 6, fontWeight: '600' }}>
-                    ⚠️ Keine Rollen für dieses Projekt verfügbar
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#92400E' }}>
-                    Der Projektersteller muss zuerst auf der Projektverwaltungsseite unter "Projektrollen" Rollen für dieses Projekt definieren.
-                  </Text>
-                </View>
-              )}
-            </View>
-          ) : (
-            <View style={styles.permissionsSection}>
-              <Text style={styles.permsSectionTitle}>Berechtigungen definieren</Text>
-              <ScrollView style={styles.permsList} showsVerticalScrollIndicator={false}>
-                {availableModules.map(mod => {
-                  const p = customPermissions[mod.module_key];
-                  return (
-                    <View key={mod.module_key} style={styles.permItem}>
-                      <Text style={styles.permName}>{mod.module_name}</Text>
-                      <View style={styles.permToggles}>
-                        <TouchableOpacity
-                          style={[styles.permToggle, p?.can_view && styles.permToggleActive]}
-                          onPress={() => togglePermission(mod.module_key, 'can_view')}
-                        >
-                          <Eye size={12} color={p?.can_view ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permToggleText, p?.can_view && styles.permToggleTextActive]}>Sehen</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.permToggle, p?.can_edit && styles.permToggleActive]}
-                          onPress={() => togglePermission(mod.module_key, 'can_edit')}
-                        >
-                          <Edit2 size={12} color={p?.can_edit ? '#fff' : '#64748b'} />
-                          <Text style={[styles.permToggleText, p?.can_edit && styles.permToggleTextActive]}>Bearbeiten</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-
-          <View style={styles.modalActions}>
-            <Button onClick={() => setIsAddMemberModalOpen(false)} variant="secondary">Abbrechen</Button>
-            <Button onClick={addMember} variant="primary">Hinzufügen</Button>
-          </View>
-        </View>
-      </ModernModal>
-
       {/* ======================== EDIT PERMISSIONS MODAL ======================== */}
       <ModernModal
         visible={isEditPermissionsModalOpen}
@@ -964,21 +749,17 @@ export function ProjectParticipants() {
 
           {!useCustomPermissions ? (
             <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Rolle auswählen *</Text>
-              <View style={styles.selectWrapper}>
-                <select
-                  value={selectedRoleId}
-                  onChange={(e: any) => setSelectedRoleId(e.target.value)}
-                  style={styles.nativeSelect as any}
-                >
-                  <option value="">Bitte wählen...</option>
-                  {availableRoles.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.role_name}{r.role_description && ` - ${r.role_description}`}
-                    </option>
-                  ))}
-                </select>
-              </View>
+              <SearchableSelect
+                label="Rolle auswählen *"
+                placeholder="Rolle wählen..."
+                options={availableRoles.map(r => ({
+                  label: r.role_name,
+                  value: r.id,
+                  subtitle: r.role_description || undefined
+                }))}
+                value={selectedRoleId}
+                onChange={setSelectedRoleId}
+              />
               {availableRoles.length === 0 && (
                 <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', marginTop: 8 }}>
                   <Text style={{ fontSize: 13, color: '#92400E', marginBottom: 6, fontWeight: '600' }}>
