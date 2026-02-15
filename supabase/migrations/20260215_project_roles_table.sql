@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS project_roles (
 ALTER TABLE project_roles ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can view project_roles if they have access to the project
+-- Note: We check project ownership OR membership separately to avoid circular dependency
 CREATE POLICY "Users can view project_roles for their projects"
   ON project_roles FOR SELECT
   USING (
@@ -23,12 +24,17 @@ CREATE POLICY "Users can view project_roles for their projects"
       AND (
         projects.created_by = auth.uid()
         OR projects.owner_id = auth.uid()
-        OR has_project_access(project_roles.project_id)
       )
+    )
+    OR EXISTS (
+      SELECT 1 FROM project_members
+      WHERE project_members.project_id = project_roles.project_id
+      AND project_members.user_id = auth.uid()
+      AND project_members.status = 'active'
     )
   );
 
--- Policy: Only project owners can insert project_roles
+-- Policy: Only project owners can manage project_roles
 CREATE POLICY "Project owners can manage project_roles"
   ON project_roles FOR ALL
   USING (
