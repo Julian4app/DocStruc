@@ -44,7 +44,7 @@ export function ProjectManagementDetail() {
   
   // Basic Information
   const [name, setName] = useState('');
-  const [subtitle, setSubtitle] = useState('');
+  const [projectSubtitle, setProjectSubtitle] = useState('');
   const [description, setDescription] = useState('');
   
   // Status & Dates
@@ -98,7 +98,7 @@ export function ProjectManagementDetail() {
       if (data) {
         setProject(data);
         setName(data.name || '');
-        setSubtitle(data.subtitle || '');
+        setProjectSubtitle(data.subtitle || '');
         setDescription(data.description || '');
         setStatus(data.status || 'active');
         setStartDate(data.start_date || '');
@@ -183,7 +183,7 @@ export function ProjectManagementDetail() {
         .from('projects')
         .update({
           name: name.trim(),
-          subtitle: subtitle.trim() || null,
+          subtitle: projectSubtitle.trim() || null,
           description: description.trim() || null,
           status,
           start_date: startDate || null,
@@ -319,8 +319,8 @@ export function ProjectManagementDetail() {
             />
             <Input 
               label="Untertitel" 
-              value={subtitle} 
-              onChangeText={setSubtitle} 
+              value={projectSubtitle} 
+              onChangeText={setProjectSubtitle} 
               placeholder="Kurzer Zusatz zum Projektnamen"
             />
             <Input 
