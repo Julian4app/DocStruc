@@ -93,11 +93,11 @@ export function ProjectParticipants() {
       // Check if user is project owner
       const { data: project } = await supabase
         .from('projects')
-        .select('created_by, owner_id')
+        .select('owner_id')
         .eq('id', projectId)
         .single();
 
-      setIsProjectOwner(project?.created_by === user.id || project?.owner_id === user.id);
+      setIsProjectOwner(project?.owner_id === user.id);
 
       // Load project members
       await loadMembers();

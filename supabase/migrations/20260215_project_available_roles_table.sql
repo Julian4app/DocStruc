@@ -39,10 +39,7 @@ CREATE POLICY "Users can view project_available_roles for their projects"
     EXISTS (
       SELECT 1 FROM projects
       WHERE projects.id = project_available_roles.project_id
-      AND (
-        projects.created_by = auth.uid()
-        OR projects.owner_id = auth.uid()
-      )
+      AND projects.owner_id = auth.uid()
     )
     OR EXISTS (
       SELECT 1 FROM project_members
@@ -58,10 +55,7 @@ CREATE POLICY "Project owners can manage project_available_roles"
     EXISTS (
       SELECT 1 FROM projects
       WHERE projects.id = project_available_roles.project_id
-      AND (
-        projects.created_by = auth.uid()
-        OR projects.owner_id = auth.uid()
-      )
+      AND projects.owner_id = auth.uid()
     )
   );
 
