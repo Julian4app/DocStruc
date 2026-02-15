@@ -64,8 +64,6 @@ export function ProjectDashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projectStatus, setProjectStatus] = useState<string>('active');
   const [statusDate, setStatusDate] = useState<string | null>(null);
-  const [projectStatus, setProjectStatus] = useState<string>('active');
-  const [statusDate, setStatusDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
