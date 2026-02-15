@@ -757,8 +757,9 @@ export function ProjectParticipants() {
                   value: r.id,
                   subtitle: r.role_description || undefined
                 }))}
-                value={selectedRoleId}
-                onChange={setSelectedRoleId}
+                values={selectedRoleId ? [selectedRoleId] : []}
+                onChange={(values) => setSelectedRoleId(values[0] || '')}
+                multi={false}
               />
               {availableRoles.length === 0 && (
                 <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A', marginTop: 8 }}>
