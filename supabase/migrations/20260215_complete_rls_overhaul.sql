@@ -32,7 +32,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DO $$ BEGIN
   -- Drop ALL existing select policies on projects
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.projects;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.projects;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'projects'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -55,7 +55,7 @@ CREATE POLICY "projects_delete" ON public.projects
 -- ============================================================
 DO $$ BEGIN
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_members;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_members;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_members'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -88,7 +88,7 @@ CREATE POLICY "project_members_delete" ON public.project_members
 -- ============================================================
 DO $$ BEGIN
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.buildings;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.buildings;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'buildings'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -111,7 +111,7 @@ CREATE POLICY "buildings_delete" ON public.buildings
 -- ============================================================
 DO $$ BEGIN
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.floors;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.floors;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'floors'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -142,7 +142,7 @@ CREATE POLICY "floors_delete" ON public.floors
 -- ============================================================
 DO $$ BEGIN
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.rooms;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.rooms;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'rooms'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -173,7 +173,7 @@ CREATE POLICY "rooms_delete" ON public.rooms
 -- ============================================================
 DO $$ BEGIN
   EXECUTE (
-    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.tasks;', E'\n')
+    SELECT string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.tasks;', E'\n')
     FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tasks'
   );
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -200,7 +200,7 @@ CREATE POLICY "tasks_delete" ON public.tasks
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='task_documentation') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.task_documentation;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.task_documentation;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'task_documentation'
     );
     EXECUTE 'CREATE POLICY "task_documentation_select" ON public.task_documentation FOR SELECT USING (public.has_project_access(project_id))';
@@ -216,7 +216,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='task_images') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.task_images;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.task_images;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'task_images'
     );
     EXECUTE 'CREATE POLICY "task_images_select" ON public.task_images FOR SELECT USING (public.has_project_access(project_id))';
@@ -231,7 +231,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sprints') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.sprints;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.sprints;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'sprints'
     );
     EXECUTE 'CREATE POLICY "sprints_select" ON public.sprints FOR SELECT USING (public.has_project_access(project_id))';
@@ -247,7 +247,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_info') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_info;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_info;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_info'
     );
     EXECUTE 'CREATE POLICY "project_info_select" ON public.project_info FOR SELECT USING (public.has_project_access(project_id))';
@@ -263,7 +263,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_info_images') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_info_images;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_info_images;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_info_images'
     );
     EXECUTE 'CREATE POLICY "project_info_images_select" ON public.project_info_images FOR SELECT USING (
@@ -284,7 +284,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_voice_messages') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_voice_messages;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_voice_messages;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_voice_messages'
     );
     EXECUTE 'CREATE POLICY "project_voice_messages_select" ON public.project_voice_messages FOR SELECT USING (
@@ -308,7 +308,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_messages') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_messages;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_messages;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_messages'
     );
     EXECUTE 'CREATE POLICY "project_messages_select" ON public.project_messages FOR SELECT USING (public.has_project_access(project_id))';
@@ -324,7 +324,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='timeline_events') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.timeline_events;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.timeline_events;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'timeline_events'
     );
     EXECUTE 'CREATE POLICY "timeline_events_select" ON public.timeline_events FOR SELECT USING (public.has_project_access(project_id))';
@@ -340,7 +340,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_timeline') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_timeline;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_timeline;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_timeline'
     );
     EXECUTE 'CREATE POLICY "project_timeline_select" ON public.project_timeline FOR SELECT USING (public.has_project_access(project_id))';
@@ -356,7 +356,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='report_templates') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.report_templates;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.report_templates;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'report_templates'
     );
     EXECUTE 'CREATE POLICY "report_templates_select" ON public.report_templates FOR SELECT USING (
@@ -373,7 +373,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='generated_reports') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.generated_reports;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.generated_reports;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'generated_reports'
     );
     EXECUTE 'CREATE POLICY "generated_reports_select" ON public.generated_reports FOR SELECT USING (public.has_project_access(project_id))';
@@ -388,7 +388,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='scheduled_reports') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.scheduled_reports;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.scheduled_reports;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'scheduled_reports'
     );
     EXECUTE 'CREATE POLICY "scheduled_reports_select" ON public.scheduled_reports FOR SELECT USING (public.has_project_access(project_id))';
@@ -404,7 +404,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='activity_logs') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.activity_logs;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.activity_logs;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'activity_logs'
     );
     EXECUTE 'CREATE POLICY "activity_logs_select" ON public.activity_logs FOR SELECT USING (public.has_project_access(project_id))';
@@ -418,7 +418,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_files') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_files;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_files;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_files'
     );
     EXECUTE 'CREATE POLICY "project_files_select" ON public.project_files FOR SELECT USING (public.has_project_access(project_id))';
@@ -434,7 +434,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_file_versions') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_file_versions;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_file_versions;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_file_versions'
     );
     EXECUTE 'CREATE POLICY "project_file_versions_select" ON public.project_file_versions FOR SELECT USING (
@@ -452,7 +452,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_file_shares') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_file_shares;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_file_shares;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_file_shares'
     );
     EXECUTE 'CREATE POLICY "project_file_shares_select" ON public.project_file_shares FOR SELECT USING (
@@ -473,7 +473,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_available_roles') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_available_roles;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_available_roles;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_available_roles'
     );
     EXECUTE 'CREATE POLICY "project_available_roles_select" ON public.project_available_roles FOR SELECT USING (public.has_project_access(project_id))';
@@ -489,7 +489,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_member_permissions') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_member_permissions;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_member_permissions;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_member_permissions'
     );
     EXECUTE 'CREATE POLICY "project_member_permissions_select" ON public.project_member_permissions FOR SELECT USING (
@@ -517,7 +517,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_crm_links') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_crm_links;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_crm_links;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_crm_links'
     );
     EXECUTE 'CREATE POLICY "project_crm_links_select" ON public.project_crm_links FOR SELECT USING (public.has_project_access(project_id))';
@@ -531,7 +531,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='project_subcontractors') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.project_subcontractors;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.project_subcontractors;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_subcontractors'
     );
     EXECUTE 'CREATE POLICY "project_subcontractors_select" ON public.project_subcontractors FOR SELECT USING (public.has_project_access(project_id))';
@@ -545,7 +545,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='company_history') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.company_history;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.company_history;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'company_history'
     );
     EXECUTE 'CREATE POLICY "company_history_select" ON public.company_history FOR SELECT USING (user_id = auth.uid())';
@@ -559,7 +559,7 @@ END $$;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='permission_audit_log') THEN
     EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_literal(policyname) || ' ON public.permission_audit_log;', E'\n'), '')
+      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.permission_audit_log;', E'\n'), '')
       FROM pg_policies WHERE schemaname = 'public' AND tablename = 'permission_audit_log'
     );
     EXECUTE 'CREATE POLICY "permission_audit_log_select" ON public.permission_audit_log FOR SELECT USING (
