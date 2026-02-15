@@ -52,13 +52,8 @@ CREATE POLICY "Project members can view other members" ON public.project_members
       AND p.owner_id = auth.uid()
     )
     OR
-    -- Members of the same project can see each other
-    EXISTS (
-      SELECT 1 FROM public.project_members pm
-      WHERE pm.project_id = project_members.project_id
-      AND pm.user_id = auth.uid()
-      AND pm.status IN ('open', 'invited', 'active')
-    )
+    -- User can see their own membership record
+    user_id = auth.uid()
   );
 
 -- ============================================================
