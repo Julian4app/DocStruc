@@ -112,9 +112,9 @@ export function ProjectParticipants() {
       if (accessorsError) throw accessorsError;
       setAvailableAccessors(accessorsData || []);
 
-      // Load roles that are assigned to THIS PROJECT (via project_roles table)
+      // Load roles that are assigned to THIS PROJECT (via project_available_roles table)
       const { data: projectRolesData, error: projectRolesError } = await supabase
-        .from('project_roles')
+        .from('project_available_roles')
         .select(`
           role_id,
           role:roles(id, role_name, role_description)

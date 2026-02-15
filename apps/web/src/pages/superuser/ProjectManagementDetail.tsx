@@ -175,9 +175,9 @@ export function ProjectManagementDetail() {
         .map(m => m.accessor_id);
       setSelectedMemberIds(accessorIds);
       
-      // Load project_roles for this project
+      // Load project_available_roles for this project
       const { data: projectRolesData, error: projectRolesError } = await supabase
-        .from('project_roles')
+        .from('project_available_roles')
         .select('role_id')
         .eq('project_id', id);
       
@@ -229,9 +229,9 @@ export function ProjectManagementDetail() {
 
       if (projectError) throw projectError;
 
-      // 1. Sync project_roles with selected roles
+      // 1. Sync project_available_roles with selected roles
       const { data: existingProjectRoles } = await supabase
-        .from('project_roles')
+        .from('project_available_roles')
         .select('id, role_id')
         .eq('project_id', id);
 
@@ -244,7 +244,7 @@ export function ProjectManagementDetail() {
       // Remove unselected project roles
       if (rolesToRemove.length > 0) {
         const removeRoleIds = rolesToRemove.map(pr => pr.id);
-        await supabase.from('project_roles').delete().in('id', removeRoleIds);
+        await supabase.from('project_available_roles').delete().in('id', removeRoleIds);
       }
 
       // Add newly selected project roles
@@ -253,7 +253,7 @@ export function ProjectManagementDetail() {
           project_id: id,
           role_id: roleId
         }));
-        await supabase.from('project_roles').insert(projectRolesToInsert);
+        await supabase.from('project_available_roles').insert(projectRolesToInsert);
       }
 
       // 2. Sync project_members with selected accessors
