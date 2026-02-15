@@ -309,7 +309,7 @@ export function ProjectManagementDetail() {
               user_id: accessor.registered_user_id || null,
               accessor_id: accessorId,
               member_type: accessor.accessor_type || 'other',
-              role: 'member',
+              role: 'viewer',
               status: 'open'
             })
             .select()
