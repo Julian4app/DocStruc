@@ -14,7 +14,7 @@ import {
   Search,
   Bell,
   Smartphone
-} from 'lucide-react-native';
+} from 'lucide-react';
 
 export function WebLayout() {
   const navigate = useNavigate();

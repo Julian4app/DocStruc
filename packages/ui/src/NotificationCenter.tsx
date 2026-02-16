@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
-import { Bell, X, Check, ExternalLink } from 'lucide-react-native';
+import { Bell, X, Check, ExternalLink } from 'lucide-react';
 
 interface Notification {
   id: string;
