@@ -722,10 +722,12 @@ export function ProjectDefects() {
             value={assignedTo}
             options={[
               { label: 'Nicht zugewiesen', value: '' },
-              ...projectMembers.map((member) => ({
-                label: member.profiles.email,
-                value: member.user_id
-              }))
+              ...projectMembers
+                .filter((member) => member.profiles?.email)
+                .map((member) => ({
+                  label: member.profiles.email,
+                  value: member.user_id
+                }))
             ]}
             onChange={(value) => setAssignedTo(String(value))}
             placeholder="Mitglied auswählen"
@@ -1066,10 +1068,12 @@ export function ProjectDefects() {
                       value={editFormData.assigned_to}
                       options={[
                         { label: 'Nicht zugewiesen', value: '' },
-                        ...projectMembers.map((member) => ({
-                          label: member.profiles.email,
-                          value: member.user_id
-                        }))
+                        ...projectMembers
+                          .filter((member) => member.profiles?.email)
+                          .map((member) => ({
+                            label: member.profiles.email,
+                            value: member.user_id
+                          }))
                       ]}
                       onChange={(value) => setEditFormData({ ...editFormData, assigned_to: String(value) })}
                       placeholder="Mitglied auswählen"
