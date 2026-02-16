@@ -10,7 +10,7 @@ interface Notification {
   title: string;
   message: string;
   data: any;
-  read: boolean;
+  is_read: boolean;
   created_at: string;
 }
 
@@ -75,7 +75,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
       if (error) throw error;
       
       setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
     } catch (error: any) {
       console.error('Error marking notification as read:', error);
@@ -87,7 +87,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
       const { error } = await supabase.rpc('mark_all_notifications_read');
       if (error) throw error;
       
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch (error: any) {
       console.error('Error marking all as read:', error);
     }
@@ -140,7 +140,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
 
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read
-    if (!notification.read) {
+    if (!notification.is_read) {
       await markAsRead(notification.id);
     }
 
@@ -170,7 +170,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
     return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   if (loading) {
     return (
@@ -224,7 +224,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
               key={notification.id}
               style={[
                 styles.notificationCard,
-                !notification.read && styles.unreadCard
+                !notification.is_read && styles.unreadCard
               ]}
             >
               <TouchableOpacity

@@ -12,13 +12,13 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   data JSONB DEFAULT '{}'::jsonb,
-  read BOOLEAN DEFAULT false,
+  is_read BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 2. Create index for fast user notifications lookup
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
 
 -- 3. Enable RLS on notifications
@@ -58,7 +58,7 @@ CREATE OR REPLACE FUNCTION public.mark_notification_read(p_notification_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
   UPDATE public.notifications
-  SET read = true
+  SET is_read = true
   WHERE id = p_notification_id AND user_id = auth.uid();
   
   RETURN FOUND;
@@ -70,8 +70,8 @@ CREATE OR REPLACE FUNCTION public.mark_all_notifications_read()
 RETURNS BOOLEAN AS $$
 BEGIN
   UPDATE public.notifications
-  SET read = true
-  WHERE user_id = auth.uid() AND read = false;
+  SET is_read = true
+  WHERE user_id = auth.uid() AND is_read = false;
   
   RETURN FOUND;
 END;

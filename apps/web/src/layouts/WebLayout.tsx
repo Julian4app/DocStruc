@@ -190,7 +190,7 @@ export function WebLayout() {
                 onPress={() => setShowNotifications(!showNotifications)}
               >
                 <Bell size={20} color="#475569" />
-                {notifications.filter((n: any) => !n.read).length > 0 && <View style={styles.notifDot} />}
+                {notifications.filter((n: any) => !n.is_read).length > 0 && <View style={styles.notifDot} />}
               </TouchableOpacity>
             </View>
             <View style={styles.headerDivider} />
