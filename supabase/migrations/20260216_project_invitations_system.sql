@@ -211,20 +211,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 10. Add RLS policies for notifications in complete_rls_overhaul
-DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='notifications') THEN
-    EXECUTE (
-      SELECT COALESCE(string_agg('DROP POLICY IF EXISTS ' || quote_ident(policyname) || ' ON public.notifications;', E'\n'), '')
-      FROM pg_policies WHERE schemaname = 'public' AND tablename = 'notifications'
-    );
-    EXECUTE 'CREATE POLICY "notifications_select" ON public.notifications FOR SELECT USING (user_id = auth.uid())';
-    EXECUTE 'CREATE POLICY "notifications_update" ON public.notifications FOR UPDATE USING (user_id = auth.uid())';
-    EXECUTE 'CREATE POLICY "notifications_delete" ON public.notifications FOR DELETE USING (user_id = auth.uid())';
-  END IF;
-END $$;
-
--- 11. Grant execute permissions
+-- 10. Grant execute permissions
 GRANT EXECUTE ON FUNCTION public.create_notification TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mark_notification_read TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mark_all_notifications_read TO authenticated;
