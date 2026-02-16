@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { LayoutContext } from './LayoutContext';
 import { ProfileDropdown } from '../components/ProfileDropdown';
 import { NotificationCenterWrapper } from '../components/NotificationCenterWrapper';
-import { Modal } from '@docstruc/ui';
+import { CustomModal } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { 
   LayoutDashboard, 
@@ -205,14 +205,13 @@ export function WebLayout() {
 
         {/* Notification Center Modal */}
         {showNotifications && (
-          <Modal
+          <CustomModal
             visible={showNotifications}
             onClose={() => setShowNotifications(false)}
             title=""
-            width={500}
           >
             <NotificationCenterWrapper onClose={() => setShowNotifications(false)} />
-          </Modal>
+          </CustomModal>
         )}
 
         {/* Page Header */}
