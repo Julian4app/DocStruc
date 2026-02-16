@@ -9,3 +9,4 @@ export * from "./StructureList";
 export * from "./TaskItem";
 export * from "./RoomDetailView";
 export * from "./TaskForm";
+export * from "./NotificationCenter";

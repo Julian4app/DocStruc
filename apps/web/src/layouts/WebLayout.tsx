@@ -4,6 +4,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LayoutContext } from './LayoutContext';
 import { ProfileDropdown } from '../components/ProfileDropdown';
+import { NotificationCenter, Modal } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { 
   LayoutDashboard, 
@@ -12,7 +13,7 @@ import {
   Search,
   Bell,
   Smartphone
-} from 'lucide-react';
+} from 'lucide-react-native';
 
 export function WebLayout() {
   const navigate = useNavigate();
@@ -189,24 +190,8 @@ export function WebLayout() {
                 onPress={() => setShowNotifications(!showNotifications)}
               >
                 <Bell size={20} color="#475569" />
-                {notifications.length > 0 && <View style={styles.notifDot} />}
+                {notifications.filter((n: any) => !n.read).length > 0 && <View style={styles.notifDot} />}
               </TouchableOpacity>
-              
-              {showNotifications && (
-                <View style={styles.notificationDropdown}>
-                  <Text style={styles.notifHeader}>Notifications</Text>
-                  {notifications.length === 0 ? (
-                    <Text style={styles.noNotifs}>No new notifications</Text>
-                  ) : (
-                    notifications.map((notif, i) => (
-                      <TouchableOpacity key={i} style={styles.notifItem}>
-                        <Text style={styles.notifTitle}>{notif.title || 'Notification'}</Text>
-                        <Text style={styles.notifText}>{notif.message || notif.description}</Text>
-                      </TouchableOpacity>
-                    ))
-                  )}
-                </View>
-              )}
             </View>
             <View style={styles.headerDivider} />
             <ProfileDropdown 
@@ -216,6 +201,18 @@ export function WebLayout() {
             />
           </View>
         </View>
+
+        {/* Notification Center Modal */}
+        {showNotifications && (
+          <Modal
+            visible={showNotifications}
+            onClose={() => setShowNotifications(false)}
+            title=""
+            width={500}
+          >
+            <NotificationCenter onClose={() => setShowNotifications(false)} />
+          </Modal>
+        )}
 
         {/* Page Header */}
         <View style={styles.pageHeader}>

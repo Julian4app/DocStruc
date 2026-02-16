@@ -299,27 +299,62 @@ export function ProjectManagementDetail() {
             accessor_id: accessorId,
             member_type: accessor.accessor_type || 'other',
             role: 'member',
-            status: 'open'
+            status: accessor.registered_user_id ? 'invited' : 'open'
           });
 
-          const { data: insertedMember, error: insertError } = await supabase
-            .from('project_members')
-            .insert({
-              project_id: id,
-              user_id: accessor.registered_user_id || null,
-              accessor_id: accessorId,
-              member_type: accessor.accessor_type || 'other',
-              role: 'viewer',
-              status: 'open'
-            })
-            .select()
-            .single();
+          // If accessor has a registered user, send invitation
+          if (accessor.registered_user_id) {
+            const { data: inviteData, error: inviteError } = await supabase.rpc('send_project_invitation', {
+              p_project_id: id,
+              p_user_id: accessor.registered_user_id,
+              p_role: 'viewer'
+            });
 
-          if (insertError) {
-            console.error('Error inserting member:', insertError);
-            throw insertError;
+            if (inviteError) {
+              console.error('Error sending invitation:', inviteError);
+              // Fall back to regular insert
+              const { data: insertedMember, error: insertError } = await supabase
+                .from('project_members')
+                .insert({
+                  project_id: id,
+                  user_id: accessor.registered_user_id,
+                  accessor_id: accessorId,
+                  member_type: accessor.accessor_type || 'other',
+                  role: 'viewer',
+                  status: 'invited'
+                })
+                .select()
+                .single();
+
+              if (insertError) {
+                console.error('Error inserting member:', insertError);
+                throw insertError;
+              }
+              console.log('Successfully inserted member (fallback):', insertedMember);
+            } else {
+              console.log('Successfully sent invitation:', inviteData);
+            }
+          } else {
+            // No registered user, just create member record
+            const { data: insertedMember, error: insertError } = await supabase
+              .from('project_members')
+              .insert({
+                project_id: id,
+                user_id: null,
+                accessor_id: accessorId,
+                member_type: accessor.accessor_type || 'other',
+                role: 'viewer',
+                status: 'open'
+              })
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error('Error inserting member:', insertError);
+              throw insertError;
+            }
+            console.log('Successfully inserted member:', insertedMember);
           }
-          console.log('Successfully inserted member:', insertedMember);
         }
       }
 

@@ -16,6 +16,7 @@ import { Datenschutz } from './pages/Datenschutz';
 import { Impressum } from './pages/Impressum';
 import { Feedback } from './pages/Feedback';
 import { Help } from './pages/Help';
+import { AcceptInvitation } from './pages/AcceptInvitation';
 import { ProjectDashboard } from './pages/project/ProjectDashboard';
 import { ProjectTasks } from './pages/project/ProjectTasks';
 import { ProjectGeneralInfo } from './pages/project/ProjectGeneralInfo';
@@ -122,6 +123,9 @@ function App() {
                 </div>
               ) : <Navigate to="/" />
             } />
+            
+            {/* Public invitation acceptance route */}
+            <Route path="/accept-invitation" element={<AcceptInvitation />} />
             
             <Route element={session ? <WebLayout /> : <Navigate to="/login" />}>
               <Route path="/" element={<Dashboard />} />
