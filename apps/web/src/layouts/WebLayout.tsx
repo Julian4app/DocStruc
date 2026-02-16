@@ -4,7 +4,8 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { LayoutContext } from './LayoutContext';
 import { ProfileDropdown } from '../components/ProfileDropdown';
-import { NotificationCenter, Modal } from '@docstruc/ui';
+import { NotificationCenterWrapper } from '../components/NotificationCenterWrapper';
+import { Modal } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { 
   LayoutDashboard, 
@@ -210,7 +211,7 @@ export function WebLayout() {
             title=""
             width={500}
           >
-            <NotificationCenter onClose={() => setShowNotifications(false)} />
+            <NotificationCenterWrapper onClose={() => setShowNotifications(false)} />
           </Modal>
         )}
 

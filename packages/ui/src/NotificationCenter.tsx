@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { Bell, X, Check, ExternalLink } from 'lucide-react-native';
-import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
 
 interface Notification {
   id: string;
@@ -15,144 +13,28 @@ interface Notification {
 }
 
 interface NotificationCenterProps {
+  notifications: Notification[];
+  loading: boolean;
   onClose?: () => void;
+  onMarkAsRead: (notificationId: string) => Promise<void>;
+  onMarkAllAsRead: () => Promise<void>;
+  onDelete: (notificationId: string) => Promise<void>;
+  onAcceptInvitation: (notification: Notification) => Promise<void>;
+  onNotificationClick: (notification: Notification) => Promise<void>;
+  acceptingId?: string | null;
 }
 
-export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose }) => {
-  const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadNotifications();
-    
-    // Subscribe to new notifications
-    const channel = supabase
-      .channel('notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${supabase.auth.getUser().then(({ data }) => data.user?.id)}`
-        },
-        () => {
-          loadNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const loadNotifications = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setNotifications(data || []);
-    } catch (error: any) {
-      console.error('Error loading notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const markAsRead = async (notificationId: string) => {
-    try {
-      const { error } = await supabase.rpc('mark_notification_read', {
-        p_notification_id: notificationId
-      });
-
-      if (error) throw error;
-      
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
-      );
-    } catch (error: any) {
-      console.error('Error marking notification as read:', error);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const { error } = await supabase.rpc('mark_all_notifications_read');
-      if (error) throw error;
-      
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    } catch (error: any) {
-      console.error('Error marking all as read:', error);
-    }
-  };
-
-  const deleteNotification = async (notificationId: string) => {
-    try {
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('id', notificationId);
-
-      if (error) throw error;
-      
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    } catch (error: any) {
-      console.error('Error deleting notification:', error);
-    }
-  };
-
-  const handleAcceptInvitation = async (notification: Notification) => {
-    setAccepting(notification.id);
-    try {
-      const { data, error } = await supabase.rpc('accept_project_invitation', {
-        p_invitation_token: notification.data.invitation_token
-      });
-
-      if (error) throw error;
-
-      if (data?.success) {
-        // Remove notification
-        await deleteNotification(notification.id);
-        
-        // Navigate to project
-        if (onClose) onClose();
-        navigate(`/projects/${data.project_id}`);
-        
-        // Reload notifications
-        loadNotifications();
-      } else {
-        alert(data?.error || 'Fehler beim Akzeptieren der Einladung');
-      }
-    } catch (error: any) {
-      console.error('Error accepting invitation:', error);
-      alert('Fehler beim Akzeptieren der Einladung');
-    } finally {
-      setAccepting(null);
-    }
-  };
-
-  const handleNotificationClick = async (notification: Notification) => {
-    // Mark as read
-    if (!notification.is_read) {
-      await markAsRead(notification.id);
-    }
-
-    // Handle different notification types
-    if (notification.type === 'project_invitation') {
-      // Don't navigate, let user click accept button
-      return;
-    } else if (notification.data?.project_id) {
-      if (onClose) onClose();
-      navigate(`/projects/${notification.data.project_id}`);
-    }
-  };
+export const NotificationCenter: React.FC<NotificationCenterProps> = ({
+  notifications,
+  loading,
+  onClose,
+  onMarkAsRead,
+  onMarkAllAsRead,
+  onDelete,
+  onAcceptInvitation,
+  onNotificationClick,
+  acceptingId
+}) => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -240,11 +122,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
                 {notification.type === 'project_invitation' && (
                   <View style={styles.invitationActions}>
                     <TouchableOpacity
-                      onPress={() => handleAcceptInvitation(notification)}
+                      onPress={() => onAcceptInvitation(notification)}
                       style={styles.acceptButton}
-                      disabled={accepting === notification.id}
+                      disabled={acceptingId === notification.id}
                     >
-                      {accepting === notification.id ? (
+                      {acceptingId === notification.id ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
                         <>
@@ -254,9 +136,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => deleteNotification(notification.id)}
+                      onPress={() => onDelete(notification.id)}
                       style={styles.declineButton}
-                      disabled={accepting === notification.id}
+                      disabled={acceptingId === notification.id}
                     >
                       <X size={16} color="#DC2626" />
                       <Text style={styles.declineButtonText}>Ablehnen</Text>
@@ -267,7 +149,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onClose 
 
               {notification.type !== 'project_invitation' && (
                 <TouchableOpacity
-                  onPress={() => deleteNotification(notification.id)}
+                  onPress={() => onDelete(notification.id)}
                   style={styles.deleteButton}
                 >
                   <X size={16} color="#9CA3AF" />
