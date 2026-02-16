@@ -3,6 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { NotificationCenter } from '@docstruc/ui';
 import { supabase } from '../lib/supabase';
 
+interface NotificationDB {
+  id: string;
+  notification_type: string;
+  title: string;
+  message: string;
+  data: any;
+  is_read: boolean;
+  created_at: string;
+}
+
 interface Notification {
   id: string;
   type: 'project_invitation' | 'task_assigned' | 'mention' | 'system';
@@ -49,14 +59,31 @@ export const NotificationCenterWrapper: React.FC<NotificationCenterWrapperProps>
 
   const loadNotifications = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Loading notifications for user:', user?.id);
+
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (error) throw error;
-      setNotifications(data || []);
+      console.log('Notifications loaded:', data);
+      if (error) {
+        console.error('Error loading notifications:', error);
+        throw error;
+      }
+      // Map DB column notification_type to frontend field type
+      const mapped: Notification[] = (data || []).map((n: any) => ({
+        id: n.id,
+        type: n.notification_type || 'system',
+        title: n.title || '',
+        message: n.message || '',
+        data: n.data || {},
+        is_read: n.is_read ?? false,
+        created_at: n.created_at,
+      }));
+      setNotifications(mapped);
     } catch (error: any) {
       console.error('Error loading notifications:', error);
     } finally {

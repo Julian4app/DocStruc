@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { DatePicker } from '../../components/DatePicker';
 import { TaskDetailModal } from './TaskModals';
 import { 
@@ -832,6 +833,8 @@ export function ProjectDocumentation() {
           editFormData={{}}
           docFormData={{}}
           isRecording={false}
+          canEditPerm={false}
+          canDeletePerm={false}
           onChangeEditFormData={() => {}}
           onToggleEditMode={() => {}}
           onSaveEdit={() => {}}

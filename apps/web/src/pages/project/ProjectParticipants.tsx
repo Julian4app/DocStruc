@@ -218,9 +218,14 @@ export function ProjectParticipants() {
 
   const updateMemberPermissions = async () => {
     if (!editingMember) return;
+    if (!useCustomPermissions && !selectedRoleId) {
+      showToast('Bitte wählen Sie eine Rolle aus', 'error');
+      return;
+    }
     try {
+      const newRoleId = useCustomPermissions ? null : (selectedRoleId || null);
       await supabase.from('project_members')
-        .update({ role_id: useCustomPermissions ? null : selectedRoleId })
+        .update({ role_id: newRoleId })
         .eq('id', editingMember.id);
 
       await supabase.from('project_member_permissions')
@@ -264,34 +269,47 @@ export function ProjectParticipants() {
 
     setInvitingMemberIds(prev => new Set(prev).add(member.id));
     try {
-      const { error } = await supabase.from('project_members')
-        .update({ status: 'invited', invited_at: new Date().toISOString() })
-        .eq('id', member.id);
-      if (error) throw error;
+      // Determine if user has a registered account
+      const registeredUserId = member.user_id || member.accessor?.registered_user_id;
+      const hasAccount = !!registeredUserId;
 
-      // Get project info and sender info for the email
-      const { data: project } = await supabase
-        .from('projects').select('name').eq('id', projectId).single();
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase
-        .from('profiles').select('display_name, email').eq('id', user?.id).single();
+      console.log('Inviting member:', {
+        member_id: member.id,
+        user_id: member.user_id,
+        accessor_registered_user_id: member.accessor?.registered_user_id,
+        registeredUserId,
+        hasAccount,
+        email: member.accessor.accessor_email,
+        projectId
+      });
 
-      // Try to send invitation email
-      try {
-        const inviteUrl = `${window.location.origin}/login?invite=${member.id}`;
-        await supabase.functions.invoke('send-invitation', {
-          body: {
-            to: member.accessor.accessor_email,
-            inviterName: profile?.display_name || profile?.email || 'Projektleiter',
-            projectName: project?.name || 'Projekt',
-            inviteUrl,
-            memberName: `${member.accessor.accessor_first_name || ''} ${member.accessor.accessor_last_name || ''}`.trim()
-          }
+      // Check auth status
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Auth session exists:', !!session);
+
+      // Call send_project_invitation RPC which handles:
+      // 1. Updating member status to 'invited'
+      // 2. Creating in-app notification (if user has account)
+      const { data: inviteResult, error: inviteError } = await supabase
+        .rpc('send_project_invitation', {
+          p_project_id: projectId,
+          p_user_id: registeredUserId || null,
+          p_email: member.accessor.accessor_email
         });
-        showToast(`Einladung an ${member.accessor.accessor_email} gesendet`, 'success');
-      } catch (e) {
-        console.warn('Email sending not configured:', e);
-        showToast(`Status "Eingeladen" gesetzt für ${member.accessor.accessor_email}. E-Mail-Versand noch nicht konfiguriert.`, 'success');
+
+      console.log('Invitation result:', { inviteResult, inviteError });
+
+      if (inviteError) throw inviteError;
+
+      if (!inviteResult?.success) {
+        throw new Error(inviteResult?.error || 'Fehler beim Senden der Einladung');
+      }
+
+      // Show success toast based on RPC result
+      if (inviteResult.notification_created) {
+        showToast(`Einladung & Benachrichtigung an ${member.accessor.accessor_email} gesendet`, 'success');
+      } else {
+        showToast(`Einladung für ${member.accessor.accessor_email} vorbereitet (Benutzer hat noch keinen Account)`, 'success');
       }
 
       loadMembers();
@@ -317,22 +335,28 @@ export function ProjectParticipants() {
     setInvitingMemberIds(prev => new Set(prev).add(member.id));
     setActionMenuMemberId(null);
     try {
-      await supabase.from('project_members')
-        .update({ status: 'invited', invited_at: new Date().toISOString() })
-        .eq('id', member.id);
-      try {
-        const { data: project } = await supabase.from('projects').select('name').eq('id', projectId).single();
-        const inviteUrl = `${window.location.origin}/login?invite=${member.id}`;
-        await supabase.functions.invoke('send-invitation', {
-          body: {
-            to: member.accessor.accessor_email,
-            projectName: project?.name || 'Projekt',
-            inviteUrl,
-            memberName: `${member.accessor.accessor_first_name || ''} ${member.accessor.accessor_last_name || ''}`.trim()
-          }
-        });
-      } catch (e) { console.warn('Email not configured:', e); }
-      showToast(`Einladung erneut gesendet`, 'success');
+      // Determine if user has a registered account
+      const registeredUserId = member.user_id || member.accessor?.registered_user_id;
+      const hasAccount = !!registeredUserId;
+
+      // Call send_project_invitation RPC to create new notification
+      const { data: inviteResult, error: inviteError } = await supabase.rpc('send_project_invitation', {
+        p_project_id: projectId,
+        p_user_id: registeredUserId || null,
+        p_email: member.accessor.accessor_email
+      });
+
+      if (inviteError) throw inviteError;
+      if (!inviteResult?.success) {
+        throw new Error(inviteResult?.error || 'Fehler beim Senden der Einladung');
+      }
+
+      // Show success toast based on RPC result
+      if (inviteResult.notification_created) {
+        showToast(`Einladung & Benachrichtigung erneut gesendet`, 'success');
+      } else {
+        showToast(`Einladung erneut vorbereitet (Benutzer hat noch keinen Account)`, 'success');
+      }
       loadMembers();
     } catch (error: any) {
       showToast('Fehler: ' + error.message, 'error');
@@ -535,7 +559,7 @@ export function ProjectParticipants() {
               const hasPerms = !!member.role_id || member.custom_permissions.length > 0;
 
               return (
-                <Card key={member.id} style={[styles.memberCard, member.status === 'inactive' && { opacity: 0.6 }]}>
+                <Card key={member.id} style={[styles.memberCard, member.status === 'inactive' && { opacity: 0.6 }, showMenu && { zIndex: 101 }]}>
                   <View style={styles.memberHeader}>
                     {/* Avatar */}
                     <View style={[styles.memberAvatar, { borderColor: sColor, borderWidth: 2 }]}>
@@ -790,11 +814,25 @@ export function ProjectParticipants() {
                           <Text style={[styles.permToggleText, p?.can_view && styles.permToggleTextActive]}>Sehen</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
+                          style={[styles.permToggle, p?.can_create && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_create')}
+                        >
+                          <Plus size={12} color={p?.can_create ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_create && styles.permToggleTextActive]}>Erstellen</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
                           style={[styles.permToggle, p?.can_edit && styles.permToggleActive]}
                           onPress={() => togglePermission(mod.module_key, 'can_edit')}
                         >
                           <Edit2 size={12} color={p?.can_edit ? '#fff' : '#64748b'} />
                           <Text style={[styles.permToggleText, p?.can_edit && styles.permToggleTextActive]}>Bearbeiten</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.permToggle, p?.can_delete && styles.permToggleActive]}
+                          onPress={() => togglePermission(mod.module_key, 'can_delete')}
+                        >
+                          <Trash2 size={12} color={p?.can_delete ? '#fff' : '#64748b'} />
+                          <Text style={[styles.permToggleText, p?.can_delete && styles.permToggleTextActive]}>Löschen</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -926,10 +964,10 @@ const styles = StyleSheet.create({
   permissionsSection: { marginTop: 8 },
   permsSectionTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
   permsList: { maxHeight: 300 },
-  permItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  permName: { fontSize: 13, fontWeight: '600', color: '#0f172a', flex: 1 },
-  permToggles: { flexDirection: 'row', gap: 6 },
-  permToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  permItem: { flexDirection: 'column', gap: 8, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  permName: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  permToggles: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  permToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   permToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   permToggleText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
   permToggleTextActive: { color: '#fff' },

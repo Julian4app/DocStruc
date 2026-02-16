@@ -326,6 +326,9 @@ export const TaskDetailModal: React.FC<{
   editFormData: any;
   docFormData: any;
   isRecording: boolean;
+  canEditPerm?: boolean;
+  canDeletePerm?: boolean;
+  canCreatePerm?: boolean;
   onChangeEditFormData: (field: string, value: string) => void;
   onToggleEditMode: () => void;
   onSaveEdit: () => void;
@@ -348,6 +351,9 @@ export const TaskDetailModal: React.FC<{
   editFormData,
   docFormData,
   isRecording,
+  canEditPerm = true,
+  canDeletePerm = true,
+  canCreatePerm = true,
   onChangeEditFormData,
   onToggleEditMode,
   onSaveEdit,
@@ -483,12 +489,16 @@ export const TaskDetailModal: React.FC<{
                 </>
               ) : (
                 <>
-                  <TouchableOpacity style={styles.detailIconButton} onPress={onToggleEditMode}>
-                    <Edit2 size={20} color="#64748b" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.detailIconButton} onPress={onDelete}>
-                    <Trash2 size={20} color="#ef4444" />
-                  </TouchableOpacity>
+                  {canEditPerm && (
+                    <TouchableOpacity style={styles.detailIconButton} onPress={onToggleEditMode}>
+                      <Edit2 size={20} color="#64748b" />
+                    </TouchableOpacity>
+                  )}
+                  {canDeletePerm && (
+                    <TouchableOpacity style={styles.detailIconButton} onPress={onDelete}>
+                      <Trash2 size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity style={styles.detailIconButton} onPress={onClose}>
                     <X size={20} color="#64748b" />
                   </TouchableOpacity>
@@ -707,6 +717,8 @@ export const TaskDetailModal: React.FC<{
                         <Text style={{ fontSize: 14, color: '#94a3b8', textAlign: 'center', marginBottom: 8 }}>
                           Noch keine Bilder vorhanden
                         </Text>
+                        {canCreatePerm && (
+                        <>
                         <Text style={{ fontSize: 12, color: '#cbd5e1', textAlign: 'center', marginBottom: 16 }}>
                           Ziehen Sie Bilder hierher oder klicken Sie unten
                         </Text>
@@ -734,6 +746,8 @@ export const TaskDetailModal: React.FC<{
                             onChange={onImageUpload}
                           />
                         </label>
+                        </>
+                        )}
                       </View>
                     ) : (
                       <View>
@@ -748,6 +762,7 @@ export const TaskDetailModal: React.FC<{
                             </View>
                           ))}
                         </View>
+                        {canCreatePerm && (
                         <label htmlFor="image-upload-additional" style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -774,6 +789,7 @@ export const TaskDetailModal: React.FC<{
                             onChange={onImageUpload}
                           />
                         </label>
+                        )}
                       </View>
                     )}
                   </div>
@@ -906,6 +922,7 @@ export const TaskDetailModal: React.FC<{
                 )}
 
                 {/* Add New Documentation */}
+                {canCreatePerm && (
                 <View style={{ backgroundColor: '#ffffff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, padding: 16 }}>
                   <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>➕ Neue Dokumentation hinzufügen</Text>
                   
@@ -1098,6 +1115,7 @@ export const TaskDetailModal: React.FC<{
                     </View>
                   )}
                 </View>
+                )}
               </View>
             )}
           </ScrollView>

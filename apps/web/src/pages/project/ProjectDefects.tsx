@@ -6,6 +6,7 @@ import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
@@ -63,6 +64,10 @@ interface ProjectMember {
 export function ProjectDefects() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('defects') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('defects') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('defects') || false;
   const [loading, setLoading] = useState(true);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -553,9 +558,11 @@ export function ProjectDefects() {
               Mängelverwaltung mit Prioritäten und Fristen
             </Text>
           </View>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus size={18} /> Mangel erfassen
-          </Button>
+          {pCanCreate && (
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus size={18} /> Mangel erfassen
+            </Button>
+          )}
         </View>
 
         {/* Priority Filter */}
@@ -605,7 +612,7 @@ export function ProjectDefects() {
                   ? 'Keine Mängel mit dieser Priorität'
                   : 'Noch keine Mängel erfasst'}
               </Text>
-              {priorityFilter === 'all' && (
+              {priorityFilter === 'all' && pCanCreate && (
                 <Button onClick={() => setIsCreateModalOpen(true)} style={{ marginTop: 16 }}>
                   Ersten Mangel erfassen
                 </Button>
@@ -891,30 +898,34 @@ export function ProjectDefects() {
                 </>
               ) : (
                 <>
-                  <TouchableOpacity
-                    onPress={handleToggleEditMode}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: '#E2E8F0',
-                      backgroundColor: '#F8FAFC',
-                    }}
-                  >
-                    <Edit2 size={20} color="#64748b" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleDeleteDefect}
-                    style={{
-                      padding: 8,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: '#fee2e2',
-                      backgroundColor: '#fef2f2',
-                    }}
-                  >
-                    <Trash2 size={20} color="#ef4444" />
-                  </TouchableOpacity>
+                  {pCanEdit && (
+                    <TouchableOpacity
+                      onPress={handleToggleEditMode}
+                      style={{
+                        padding: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        backgroundColor: '#F8FAFC',
+                      }}
+                    >
+                      <Edit2 size={20} color="#64748b" />
+                    </TouchableOpacity>
+                  )}
+                  {pCanDelete && (
+                    <TouchableOpacity
+                      onPress={handleDeleteDefect}
+                      style={{
+                        padding: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#fee2e2',
+                        backgroundColor: '#fef2f2',
+                      }}
+                    >
+                      <Trash2 size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
             </View>
@@ -1006,7 +1017,7 @@ export function ProjectDefects() {
                 )}
 
                 {/* Status Change (Not in Edit Mode) */}
-                {!isEditMode && (
+                {!isEditMode && pCanEdit && (
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Status ändern</Text>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1096,6 +1107,8 @@ export function ProjectDefects() {
                 <View style={styles.detailSection}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <Text style={styles.detailLabel}>📸 Fotos ({defectImages.length})</Text>
+                    {pCanEdit && (
+                    <>
                     <input
                       ref={imageFileInputRef}
                       type="file"
@@ -1121,6 +1134,8 @@ export function ProjectDefects() {
                         Hochladen
                       </Text>
                     </TouchableOpacity>
+                    </>
+                    )}
                   </View>
 
                   {defectImages.length > 0 ? (
@@ -1142,12 +1157,14 @@ export function ProjectDefects() {
                               borderRadius: 8,
                             }}
                           />
+                          {pCanDelete && (
                           <TouchableOpacity
                             onPress={() => handleDeleteImage(image.id, image.storage_path)}
                             style={styles.imageDeleteButton}
                           >
                             <Trash2 size={14} color="#ffffff" />
                           </TouchableOpacity>
+                          )}
                         </View>
                       );
                     })}
@@ -1246,6 +1263,7 @@ export function ProjectDefects() {
               )}
 
               {/* Add New Documentation */}
+              {pCanCreate && (
               <View style={{ marginTop: 16, gap: 16 }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: '#0f172a' }}>
                   Neue Dokumentation hinzufügen
@@ -1397,6 +1415,7 @@ export function ProjectDefects() {
                   </TouchableOpacity>
                 )}
               </View>
+              )}
             </View>
           )}
         </ScrollView>

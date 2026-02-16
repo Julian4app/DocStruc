@@ -5,6 +5,7 @@ import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { ModernModal } from '../../components/ModernModal';
 import { Select } from '../../components/Select';
 import { 
@@ -88,6 +89,10 @@ interface UnifiedDocument {
 export function ProjectFiles() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('files') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('files') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('files') || false;
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [loading, setLoading] = useState(true);
@@ -830,26 +835,30 @@ export function ProjectFiles() {
               >
                 <Upload size={16} color="#64748b" />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={() => {
-                  setEditingFolder(folder);
-                  setFolderFormData({
-                    name: folder.name,
-                    description: folder.description || '',
-                    parent_folder_id: folder.parent_folder_id
-                  });
-                  setIsFolderModalOpen(true);
-                }}
-              >
-                <Edit2 size={16} color="#64748b" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={() => handleDeleteFolder(folder)}
-              >
-                <Trash2 size={16} color="#DC2626" />
-              </TouchableOpacity>
+              {pCanEdit && (
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={() => {
+                    setEditingFolder(folder);
+                    setFolderFormData({
+                      name: folder.name,
+                      description: folder.description || '',
+                      parent_folder_id: folder.parent_folder_id
+                    });
+                    setIsFolderModalOpen(true);
+                  }}
+                >
+                  <Edit2 size={16} color="#64748b" />
+                </TouchableOpacity>
+              )}
+              {pCanDelete && (
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={() => handleDeleteFolder(folder)}
+                >
+                  <Trash2 size={16} color="#DC2626" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -913,6 +922,7 @@ export function ProjectFiles() {
           >
             <Share2 size={16} color="#8B5CF6" />
           </TouchableOpacity>
+          {pCanEdit && (
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => {
@@ -923,12 +933,15 @@ export function ProjectFiles() {
           >
             <Edit2 size={16} color="#64748b" />
           </TouchableOpacity>
+          )}
+          {pCanDelete && (
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => handleFileDelete(file)}
           >
             <Trash2 size={16} color="#DC2626" />
           </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -962,24 +975,28 @@ export function ProjectFiles() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setEditingFolder(null);
-              setFolderFormData({ name: '', description: '', parent_folder_id: null });
-              setIsFolderModalOpen(true);
-            }}
-          >
-            <FolderPlus size={18} /> Neuer Ordner
-          </Button>
-          <Button
-            onClick={() => {
-              setIsUploadingToFolder(null);
-              fileInputRef.current?.click();
-            }}
-          >
-            <Upload size={18} /> Datei hochladen
-          </Button>
+          {pCanCreate && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingFolder(null);
+                  setFolderFormData({ name: '', description: '', parent_folder_id: null });
+                  setIsFolderModalOpen(true);
+                }}
+              >
+                <FolderPlus size={18} /> Neuer Ordner
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsUploadingToFolder(null);
+                  fileInputRef.current?.click();
+                }}
+              >
+                <Upload size={18} /> Datei hochladen
+              </Button>
+            </>
+          )}
         </View>
       </View>
 

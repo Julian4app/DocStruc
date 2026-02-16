@@ -95,6 +95,7 @@ export function ProjectGeneralInfo() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const canEdit = permissions.canEdit('general_info') || permissions.isProjectOwner;
+  const canDelete = permissions.canDelete('general_info') || permissions.isProjectOwner;
   const canView = permissions.canView('general_info') || permissions.isProjectOwner;
 
   useEffect(() => {
@@ -947,27 +948,31 @@ export function ProjectGeneralInfo() {
                     style={styles.galleryImage}
                     resizeMode="cover"
                   />
-                  {canEdit && (
+                  {(canEdit || canDelete) && (
                     <View style={styles.imageActions}>
-                      <TouchableOpacity 
-                        onPress={() => {
-                          setSelectedImage(img);
-                          setImageEditModal(true);
-                        }}
-                        style={styles.imageActionButton}
-                      >
-                        <Edit2 size={14} color="#fff" />
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        onPress={() => {
-                          if (confirm('Bild wirklich löschen?')) {
-                            handleDeleteImage(img.id, img.storage_path);
-                          }
-                        }}
-                        style={[styles.imageActionButton, styles.deleteButton]}
-                      >
-                        <Trash2 size={14} color="#fff" />
-                      </TouchableOpacity>
+                      {canEdit && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            setSelectedImage(img);
+                            setImageEditModal(true);
+                          }}
+                          style={styles.imageActionButton}
+                        >
+                          <Edit2 size={14} color="#fff" />
+                        </TouchableOpacity>
+                      )}
+                      {canDelete && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            if (confirm('Bild wirklich löschen?')) {
+                              handleDeleteImage(img.id, img.storage_path);
+                            }
+                          }}
+                          style={[styles.imageActionButton, styles.deleteButton]}
+                        >
+                          <Trash2 size={14} color="#fff" />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )}
                   {img.caption && (

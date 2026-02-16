@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, XCircle, Mail } from 'lucide-react-native';
+import { CheckCircle, XCircle, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Button } from '@docstruc/ui';
 

@@ -54,6 +54,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
+  const markAllAsRead = async () => {
+    await onMarkAllAsRead();
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
+    await onNotificationClick(notification);
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -71,7 +79,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Bell size={20} color="#1F2937" />
           <Text style={styles.headerTitle}>Benachrichtigungen</Text>
           {unreadCount > 0 && (
             <View style={styles.badge}>
@@ -82,13 +89,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         <View style={styles.headerRight}>
           {unreadCount > 0 && (
             <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
-              <Check size={16} color="#3B82F6" />
               <Text style={styles.markAllText}>Alle lesen</Text>
-            </TouchableOpacity>
-          )}
-          {onClose && (
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={20} color="#6B7280" />
             </TouchableOpacity>
           )}
         </View>
@@ -97,22 +98,21 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       <ScrollView style={styles.scrollView}>
         {notifications.length === 0 ? (
           <View style={styles.emptyState}>
-            <Bell size={48} color="#D1D5DB" />
+            <Bell size={40} color="#D1D5DB" />
             <Text style={styles.emptyText}>Keine Benachrichtigungen</Text>
           </View>
         ) : (
           notifications.map((notification) => (
-            <View
+            <TouchableOpacity
               key={notification.id}
               style={[
                 styles.notificationCard,
                 !notification.is_read && styles.unreadCard
               ]}
+              onPress={() => handleNotificationClick(notification)}
+              activeOpacity={0.7}
             >
-              <TouchableOpacity
-                onPress={() => handleNotificationClick(notification)}
-                style={styles.notificationContent}
-              >
+              <View style={styles.notificationContent}>
                 <View style={styles.notificationHeader}>
                   <Text style={styles.notificationTitle}>{notification.title}</Text>
                   <Text style={styles.notificationTime}>{formatDate(notification.created_at)}</Text>
@@ -122,7 +122,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 {notification.type === 'project_invitation' && (
                   <View style={styles.invitationActions}>
                     <TouchableOpacity
-                      onPress={() => onAcceptInvitation(notification)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        onAcceptInvitation(notification);
+                      }}
                       style={styles.acceptButton}
                       disabled={acceptingId === notification.id}
                     >
@@ -130,32 +133,38 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
                         <>
-                          <Check size={16} color="#fff" />
+                          <Check size={14} color="#fff" />
                           <Text style={styles.acceptButtonText}>Akzeptieren</Text>
                         </>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => onDelete(notification.id)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        onDelete(notification.id);
+                      }}
                       style={styles.declineButton}
                       disabled={acceptingId === notification.id}
                     >
-                      <X size={16} color="#DC2626" />
+                      <X size={14} color="#DC2626" />
                       <Text style={styles.declineButtonText}>Ablehnen</Text>
                     </TouchableOpacity>
                   </View>
                 )}
-              </TouchableOpacity>
+              </View>
 
               {notification.type !== 'project_invitation' && (
                 <TouchableOpacity
-                  onPress={() => onDelete(notification.id)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onDelete(notification.id);
+                  }}
                   style={styles.deleteButton}
                 >
-                  <X size={16} color="#9CA3AF" />
+                  <X size={14} color="#9CA3AF" />
                 </TouchableOpacity>
               )}
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
@@ -167,12 +176,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    maxHeight: 500,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -182,7 +192,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '600',
     color: '#1F2937',
   },
@@ -191,31 +201,28 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    minWidth: 20,
+    minWidth: 18,
     alignItems: 'center',
   },
   badgeText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   markAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 6,
     backgroundColor: '#EFF6FF',
   },
   markAllText: {
     color: '#3B82F6',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
   closeButton: {
@@ -225,23 +232,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
   scrollView: {
     flex: 1,
   },
   emptyState: {
-    padding: 48,
+    padding: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyText: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: 12,
+    fontSize: 14,
     color: '#9CA3AF',
   },
   notificationCard: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
     backgroundColor: '#fff',
@@ -259,56 +267,56 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   notificationTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1F2937',
     flex: 1,
   },
   notificationTime: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9CA3AF',
     marginLeft: 8,
   },
   notificationMessage: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   invitationActions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginTop: 10,
   },
   acceptButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#10B981',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 6,
-    minWidth: 120,
+    minWidth: 100,
     justifyContent: 'center',
   },
   acceptButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   declineButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#DC2626',
   },
   declineButtonText: {
     color: '#DC2626',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   deleteButton: {

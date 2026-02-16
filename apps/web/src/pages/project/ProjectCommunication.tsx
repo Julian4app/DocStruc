@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { MessageSquare, Send, StickyNote, Users, Clock, Pin, Trash2, Edit2, X, PinOff, Plus } from 'lucide-react';
 
 interface Message {
@@ -36,6 +37,10 @@ interface CommunicationStats {
 export function ProjectCommunication() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('communication') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('communication') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('communication') || false;
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [notes, setNotes] = useState<Message[]>([]);
@@ -317,7 +322,7 @@ export function ProjectCommunication() {
           <Text style={styles.pageTitle}>Kommunikation</Text>
           <Text style={styles.pageSubtitle}>Nachrichten, Notizen und Kommunikation</Text>
         </View>
-        {activeTab === 'notes' && (
+        {activeTab === 'notes' && pCanCreate && (
           <TouchableOpacity 
             style={styles.addButton}
             onPress={() => {
@@ -404,7 +409,7 @@ export function ProjectCommunication() {
                     </TouchableOpacity>
                     {item.user_id === currentUserId && (
                       <>
-                        {activeTab === 'notes' && (
+                        {activeTab === 'notes' && pCanEdit && (
                           <TouchableOpacity 
                             style={styles.actionButton}
                             onPress={() => handleEditNote(item)}
@@ -412,12 +417,14 @@ export function ProjectCommunication() {
                             <Edit2 size={16} color="#64748b" />
                           </TouchableOpacity>
                         )}
-                        <TouchableOpacity 
-                          style={styles.actionButton}
-                          onPress={() => handleDeleteMessage(item)}
-                        >
-                          <Trash2 size={16} color="#ef4444" />
-                        </TouchableOpacity>
+                        {pCanDelete && (
+                          <TouchableOpacity 
+                            style={styles.actionButton}
+                            onPress={() => handleDeleteMessage(item)}
+                          >
+                            <Trash2 size={16} color="#ef4444" />
+                          </TouchableOpacity>
+                        )}
                       </>
                     )}
                   </View>
@@ -428,7 +435,7 @@ export function ProjectCommunication() {
           )}
         </ScrollView>
 
-        {activeTab === 'messages' && (
+        {activeTab === 'messages' && pCanCreate && (
           <View style={styles.inputContainer}>
             <TextInput 
               style={styles.messageInput} 

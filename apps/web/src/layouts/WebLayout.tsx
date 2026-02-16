@@ -30,8 +30,25 @@ export function WebLayout() {
   const [userAvatar, setUserAvatar] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const notificationRef = React.useRef<any>(null);
 
   useEffect(() => { checkUser(); }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+
+    if (showNotifications) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -185,7 +202,7 @@ export function WebLayout() {
           </View>
           
           <View style={styles.headerRight}>
-            <View style={{ position: 'relative' as any }}>
+            <View ref={notificationRef} style={{ position: 'relative' as any, zIndex: 100 }}>
               <TouchableOpacity 
                 style={styles.headerIconBtn}
                 onPress={() => setShowNotifications(!showNotifications)}
@@ -193,6 +210,13 @@ export function WebLayout() {
                 <Bell size={20} color="#475569" />
                 {notifications.filter((n: any) => !n.is_read).length > 0 && <View style={styles.notifDot} />}
               </TouchableOpacity>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <View style={styles.notificationDropdown}>
+                  <NotificationCenterWrapper onClose={() => setShowNotifications(false)} />
+                </View>
+              )}
             </View>
             <View style={styles.headerDivider} />
             <ProfileDropdown 
@@ -202,17 +226,6 @@ export function WebLayout() {
             />
           </View>
         </View>
-
-        {/* Notification Center Modal */}
-        {showNotifications && (
-          <CustomModal
-            visible={showNotifications}
-            onClose={() => setShowNotifications(false)}
-            title=""
-          >
-            <NotificationCenterWrapper onClose={() => setShowNotifications(false)} />
-          </CustomModal>
-        )}
 
         {/* Page Header */}
         <View style={styles.pageHeader}>
@@ -296,18 +309,19 @@ const styles = StyleSheet.create({
     top: '100%',
     right: 0,
     marginTop: 8,
-    width: 320,
+    width: 380,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#F1F5F9',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
     zIndex: 9999,
-    maxHeight: 400,
+    maxHeight: 500,
     elevation: 9999,
+    overflow: 'hidden' as any,
   },
   notifHeader: {
     fontSize: 16,

@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { DatePicker } from '../../components/DatePicker';
 import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { TaskDetailModal } from './TaskModals';
@@ -52,6 +53,10 @@ interface LinkedItem {
 export function ProjectSchedule() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('schedule') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('schedule') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('schedule') || false;
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'list' | 'timeline' | 'calendar'>('list');
   const [milestones, setMilestones] = useState<TimelineEvent[]>([]);
@@ -360,6 +365,12 @@ export function ProjectSchedule() {
   };
 
   const handleToggleMilestone = async (milestoneId: string, currentStatus: string) => {
+    // Check edit permission
+    if (!pCanEdit) {
+      showToast('Keine Berechtigung zum Bearbeiten', 'error');
+      return;
+    }
+    
     try {
       const newStatus = currentStatus === 'completed' ? 'scheduled' : 'completed';
       const { error } = await supabase
@@ -1345,9 +1356,11 @@ export function ProjectSchedule() {
               Terminplanung, Bauphasen und Meilensteine
             </Text>
           </View>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus size={18} /> Meilenstein
-          </Button>
+          {pCanCreate && (
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus size={18} /> Meilenstein
+            </Button>
+          )}
         </View>
 
         {/* Tab Navigation */}
@@ -1700,20 +1713,24 @@ export function ProjectSchedule() {
           <View style={styles.milestoneDetailContent}>
             {/* Action Buttons Row */}
             <View style={styles.modalActionButtons}>
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={handleEditMilestone}
-              >
-                <Edit2 size={16} color={colors.primary} />
-                <Text style={styles.editButtonText}>Bearbeiten</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.deleteButton}
-                onPress={handleDeleteMilestone}
-              >
-                <Trash2 size={16} color="#EF4444" />
-                <Text style={styles.deleteButtonText}>Löschen</Text>
-              </TouchableOpacity>
+              {pCanEdit && (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={handleEditMilestone}
+                >
+                  <Edit2 size={16} color={colors.primary} />
+                  <Text style={styles.editButtonText}>Bearbeiten</Text>
+                </TouchableOpacity>
+              )}
+              {pCanDelete && (
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={handleDeleteMilestone}
+                >
+                  <Trash2 size={16} color="#EF4444" />
+                  <Text style={styles.deleteButtonText}>Löschen</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Type Badge */}
@@ -2195,6 +2212,9 @@ export function ProjectSchedule() {
           editFormData={editFormData}
           docFormData={docFormData}
           isRecording={isRecording}
+          canEditPerm={pCanEdit}
+          canDeletePerm={pCanDelete}
+          canCreatePerm={pCanCreate}
           onChangeEditFormData={(field, value) => setEditFormData({ ...editFormData, [field]: value })}
           onToggleEditMode={() => setIsEditMode(!isEditMode)}
           onSaveEdit={async () => {

@@ -5,6 +5,7 @@ import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { DatePicker } from '../../components/DatePicker';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
@@ -40,6 +41,10 @@ interface ProjectMember {
 export function ProjectDiary() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('diary') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('diary') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('diary') || false;
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -507,9 +512,11 @@ export function ProjectDiary() {
             <Button variant="outline" onClick={() => setIsExportModalOpen(true)}>
               <Download size={18} /> Bericht
             </Button>
-            <Button onClick={() => setIsCreateModalOpen(true)}>
-              <Plus size={18} /> Eintrag
-            </Button>
+            {pCanCreate && (
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                <Plus size={18} /> Eintrag
+              </Button>
+            )}
           </View>
         </View>
 

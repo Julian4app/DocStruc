@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import {
   Building2, Layers, Home, Plus, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, X, Maximize2, Minimize2, Move, Square, Circle, Type, Minus,
@@ -913,6 +914,10 @@ const iconBtnStyle: React.CSSProperties = {
 export function ProjectObjektplan() {
   const { id: projectId } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('documentation') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('documentation') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('documentation') || false;
   const [loading, setLoading] = useState(true);
   const [staircases, setStaircases] = useState<Staircase[]>([]);
   const [standaloneApartments, setStandaloneApartments] = useState<Apartment[]>([]);
@@ -1067,10 +1072,12 @@ export function ProjectObjektplan() {
           <Text style={pageStyles.apartmentName}>{apt.name}</Text>
         </View>
         <View style={pageStyles.actionRow}>
-          <TouchableOpacity onPress={() => { if (apt.floor_id) { setEditingApartment(apt); setParentFloorId(apt.floor_id); setFormName(apt.name); setIsApartmentModalOpen(true); } else { setEditingStandaloneApt(apt); setFormName(apt.name); setIsStandaloneAptModalOpen(true); } }}>
-            <Edit2 size={14} color="#64748b" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDeleteApartment(apt)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>
+          {pCanEdit && (
+            <TouchableOpacity onPress={() => { if (apt.floor_id) { setEditingApartment(apt); setParentFloorId(apt.floor_id); setFormName(apt.name); setIsApartmentModalOpen(true); } else { setEditingStandaloneApt(apt); setFormName(apt.name); setIsStandaloneAptModalOpen(true); } }}>
+              <Edit2 size={14} color="#64748b" />
+            </TouchableOpacity>
+          )}
+          {pCanDelete && <TouchableOpacity onPress={() => handleDeleteApartment(apt)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
         </View>
       </View>
       <View style={pageStyles.planActions}>
@@ -1098,7 +1105,7 @@ export function ProjectObjektplan() {
               <Text style={pageStyles.attachmentName} numberOfLines={1}>{att.name}</Text>
               <Text style={pageStyles.attachmentSize}>{(att.size / 1024).toFixed(0)} KB</Text>
               <TouchableOpacity onPress={() => window.open(att.url, '_blank')}><Download size={14} color={colors.primary} /></TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>
+              {pCanDelete && <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
             </View>
           ))}
         </View>
@@ -1141,12 +1148,16 @@ export function ProjectObjektplan() {
           <Text style={pageStyles.pageSubtitle}>Treppenhäuser, Stockwerke, Wohnungen & Grundrisse</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button variant="outline" onClick={() => { setFormName(''); setEditingStandaloneApt(null); setIsStandaloneAptModalOpen(true); }}>
-            <Plus size={16} /> Einzelne Wohnung
-          </Button>
-          <Button onClick={() => { setFormName(''); setEditingStaircase(null); setIsStaircaseModalOpen(true); }}>
-            <Plus size={16} /> Treppenhaus
-          </Button>
+          {pCanCreate && (
+            <>
+              <Button variant="outline" onClick={() => { setFormName(''); setEditingStandaloneApt(null); setIsStandaloneAptModalOpen(true); }}>
+                <Plus size={16} /> Einzelne Wohnung
+              </Button>
+              <Button onClick={() => { setFormName(''); setEditingStaircase(null); setIsStaircaseModalOpen(true); }}>
+                <Plus size={16} /> Treppenhaus
+              </Button>
+            </>
+          )}
         </View>
       </View>
 
@@ -1157,10 +1168,12 @@ export function ProjectObjektplan() {
               <Building2 size={48} color="#cbd5e1" />
               <Text style={pageStyles.emptyTitle}>Noch kein Gebäudeplan</Text>
               <Text style={pageStyles.emptyText}>Erstellen Sie ein Treppenhaus mit Stockwerken und Wohnungen, oder fügen Sie direkt eine einzelne Wohnung hinzu.</Text>
+              {pCanCreate && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button variant="outline" onClick={() => { setFormName(''); setEditingStandaloneApt(null); setIsStandaloneAptModalOpen(true); }}><Plus size={16} /> Einzelne Wohnung</Button>
                 <Button onClick={() => { setFormName(''); setEditingStaircase(null); setIsStaircaseModalOpen(true); }}><Plus size={16} /> Treppenhaus</Button>
               </View>
+              )}
             </View>
           </Card>
         ) : (
@@ -1173,9 +1186,11 @@ export function ProjectObjektplan() {
                     <Text style={pageStyles.staircaseName}>Einzelne Wohnungen</Text>
                     <View style={[pageStyles.badge, { backgroundColor: '#f3e8ff' }]}><Text style={[pageStyles.badgeText, { color: '#7c3aed' }]}>{standaloneApartments.length}</Text></View>
                   </View>
+                  {pCanCreate && (
                   <TouchableOpacity style={pageStyles.smallBtn} onPress={() => { setFormName(''); setEditingStandaloneApt(null); setIsStandaloneAptModalOpen(true); }}>
                     <Plus size={14} color={colors.primary} /><Text style={pageStyles.smallBtnText}>Wohnung</Text>
                   </TouchableOpacity>
+                  )}
                 </View>
                 <View style={{ padding: 12 }}>{standaloneApartments.map(apt => renderApartmentCard(apt))}</View>
               </Card>
@@ -1190,11 +1205,13 @@ export function ProjectObjektplan() {
                     <View style={pageStyles.badge}><Text style={pageStyles.badgeText}>{sc.floors.length} Stockwerke</Text></View>
                   </View>
                   <View style={pageStyles.actionRow}>
-                    <TouchableOpacity style={pageStyles.smallBtn} onPress={() => { setParentStaircaseId(sc.id); setFormName(''); setFormLevel('0'); setEditingFloor(null); setIsFloorModalOpen(true); }}>
-                      <Plus size={14} color={colors.primary} /><Text style={pageStyles.smallBtnText}>Stockwerk</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { setEditingStaircase(sc); setFormName(sc.name); setIsStaircaseModalOpen(true); }}><Edit2 size={16} color="#64748b" /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteStaircase(sc)}><Trash2 size={16} color="#EF4444" /></TouchableOpacity>
+                    {pCanCreate && (
+                      <TouchableOpacity style={pageStyles.smallBtn} onPress={() => { setParentStaircaseId(sc.id); setFormName(''); setFormLevel('0'); setEditingFloor(null); setIsFloorModalOpen(true); }}>
+                        <Plus size={14} color={colors.primary} /><Text style={pageStyles.smallBtnText}>Stockwerk</Text>
+                      </TouchableOpacity>
+                    )}
+                    {pCanEdit && <TouchableOpacity onPress={() => { setEditingStaircase(sc); setFormName(sc.name); setIsStaircaseModalOpen(true); }}><Edit2 size={16} color="#64748b" /></TouchableOpacity>}
+                    {pCanDelete && <TouchableOpacity onPress={() => handleDeleteStaircase(sc)}><Trash2 size={16} color="#EF4444" /></TouchableOpacity>}
                   </View>
                 </TouchableOpacity>
                 {expandedStaircases.has(sc.id) && sc.floors.map(fl => (
@@ -1207,11 +1224,13 @@ export function ProjectObjektplan() {
                         <View style={[pageStyles.badge, { backgroundColor: '#FEF3C7' }]}><Text style={[pageStyles.badgeText, { color: '#92400E' }]}>{fl.apartments.length} Wohnungen</Text></View>
                       </View>
                       <View style={pageStyles.actionRow}>
-                        <TouchableOpacity style={pageStyles.smallBtn} onPress={() => { setParentFloorId(fl.id); setFormName(''); setEditingApartment(null); setIsApartmentModalOpen(true); }}>
-                          <Plus size={14} color={colors.primary} /><Text style={pageStyles.smallBtnText}>Wohnung</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => { setEditingFloor(fl); setParentStaircaseId(fl.staircase_id); setFormName(fl.name); setFormLevel(fl.level.toString()); setIsFloorModalOpen(true); }}><Edit2 size={14} color="#64748b" /></TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleDeleteFloor(fl)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>
+                        {pCanCreate && (
+                          <TouchableOpacity style={pageStyles.smallBtn} onPress={() => { setParentFloorId(fl.id); setFormName(''); setEditingApartment(null); setIsApartmentModalOpen(true); }}>
+                            <Plus size={14} color={colors.primary} /><Text style={pageStyles.smallBtnText}>Wohnung</Text>
+                          </TouchableOpacity>
+                        )}
+                        {pCanEdit && <TouchableOpacity onPress={() => { setEditingFloor(fl); setParentStaircaseId(fl.staircase_id); setFormName(fl.name); setFormLevel(fl.level.toString()); setIsFloorModalOpen(true); }}><Edit2 size={14} color="#64748b" /></TouchableOpacity>}
+                        {pCanDelete && <TouchableOpacity onPress={() => handleDeleteFloor(fl)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
                       </View>
                     </TouchableOpacity>
                     {expandedFloors.has(fl.id) && fl.apartments.map(apt => renderApartmentCard(apt))}
@@ -1282,7 +1301,7 @@ export function ProjectObjektplan() {
                 <View key={att.id} style={pageStyles.attachmentItem}>
                   <FileImage size={14} color="#64748b" />
                   <Text style={pageStyles.attachmentName} numberOfLines={1}>{att.name}</Text>
-                  <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>
+                  {pCanDelete && <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
                 </View>
               ))}
             </View>

@@ -37,6 +37,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ToastProvider } from './components/ToastProvider';
 import { WebLayout } from './layouts/WebLayout';
+import { PermissionGuard } from './components/PermissionGuard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -134,19 +135,18 @@ function App() {
               <Route path="/manage-projects/:id" element={<ProjectManagementDetail />} />
               <Route path="/project/:id" element={<ProjectDetail />}>
                 <Route index element={<ProjectDashboard />} />
-                <Route path="general-info" element={<ProjectGeneralInfo />} />
-                <Route path="tasks" element={<ProjectTasks />} />
-                <Route path="defects" element={<ProjectDefects />} />
-                <Route path="schedule" element={<ProjectSchedule />} />
-                <Route path="objektplan" element={<ProjectObjektplan />} />
-                <Route path="documentation" element={<ProjectDocumentation />} />
-                <Route path="files" element={<ProjectFiles />} />
-                <Route path="diary" element={<ProjectDiary />} />
-                <Route path="communication" element={<ProjectCommunication />} />
-                <Route path="participants" element={<ProjectParticipants />} />
-                <Route path="reports" element={<ProjectReports />} />
-                <Route path="activity" element={<ProjectActivity />} />
-
+                <Route path="general-info" element={<PermissionGuard><ProjectGeneralInfo /></PermissionGuard>} />
+                <Route path="tasks" element={<PermissionGuard><ProjectTasks /></PermissionGuard>} />
+                <Route path="defects" element={<PermissionGuard><ProjectDefects /></PermissionGuard>} />
+                <Route path="schedule" element={<PermissionGuard><ProjectSchedule /></PermissionGuard>} />
+                <Route path="objektplan" element={<PermissionGuard moduleKey="documentation"><ProjectObjektplan /></PermissionGuard>} />
+                <Route path="documentation" element={<PermissionGuard><ProjectDocumentation /></PermissionGuard>} />
+                <Route path="files" element={<PermissionGuard><ProjectFiles /></PermissionGuard>} />
+                <Route path="diary" element={<PermissionGuard><ProjectDiary /></PermissionGuard>} />
+                <Route path="communication" element={<PermissionGuard><ProjectCommunication /></PermissionGuard>} />
+                <Route path="participants" element={<PermissionGuard><ProjectParticipants /></PermissionGuard>} />
+                <Route path="reports" element={<PermissionGuard><ProjectReports /></PermissionGuard>} />
+                <Route path="activity" element={<PermissionGuard><ProjectActivity /></PermissionGuard>} />
               </Route>
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />

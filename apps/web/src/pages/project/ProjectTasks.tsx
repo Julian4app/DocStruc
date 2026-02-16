@@ -6,6 +6,7 @@ import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { TaskModal, TaskDetailModal } from './TaskModals';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
@@ -75,6 +76,10 @@ type ViewMode = 'kanban' | 'list' | 'calendar';
 export function ProjectTasks() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const ctx = useProjectPermissionContext();
+  const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('tasks') || false;
+  const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('tasks') || false;
+  const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('tasks') || false;
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -583,6 +588,13 @@ export function ProjectTasks() {
     e.preventDefault();
     setDragOverColumn(null);
     
+    // Check edit permission
+    if (!pCanEdit) {
+      showToast('Keine Berechtigung zum Bearbeiten', 'error');
+      setDragTaskId(null);
+      return;
+    }
+    
     const taskId = e.dataTransfer.getData('text/plain') || dragTaskId;
     if (!taskId) return;
     
@@ -717,7 +729,7 @@ export function ProjectTasks() {
                 {columnTasks.map((task) => (
                   <div
                     key={task.id}
-                    draggable
+                    draggable={pCanEdit}
                     onDragStart={(e) => handleTaskDragStart(e, task.id)}
                     onDragEnd={handleTaskDragEnd}
                     onClick={() => openTaskDetail(task)}
@@ -728,7 +740,7 @@ export function ProjectTasks() {
                       borderRadius: 12,
                       border: dragTaskId === task.id ? `2px solid ${colors.primary}` : '1px solid #E2E8F0',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                      cursor: 'grab',
+                      cursor: pCanEdit ? 'grab' : 'pointer',
                       transition: 'box-shadow 0.2s, transform 0.15s, opacity 0.2s',
                       userSelect: 'none' as const,
                     }}
@@ -1079,6 +1091,7 @@ export function ProjectTasks() {
             <Text style={styles.pageTitle}>Aufgaben</Text>
             <Text style={styles.pageSubtitle}>Scrum Board & Task Management</Text>
           </View>
+          {pCanCreate && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
             style={{
@@ -1101,6 +1114,7 @@ export function ProjectTasks() {
           >
             <Plus size={18} /> Neue Aufgabe
           </button>
+          )}
         </View>
 
         {/* View Switcher & Filters */}
@@ -1281,6 +1295,8 @@ export function ProjectTasks() {
         editFormData={editFormData}
         docFormData={docFormData}
         isRecording={isRecording}
+        canEditPerm={pCanEdit}
+        canDeletePerm={pCanDelete}
         onChangeEditFormData={(field, value) => setEditFormData({ ...editFormData, [field]: value })}
         onToggleEditMode={() => setIsEditMode(!isEditMode)}
         onSaveEdit={handleUpdateTask}
