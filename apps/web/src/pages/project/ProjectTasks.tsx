@@ -1234,11 +1234,13 @@ export function ProjectTasks() {
         mode={isCreateModalOpen ? 'create' : 'edit'}
         task={selectedTask ? { ...selectedTask, priority: selectedTask.priority || 'medium' } : null}
         projectId={id || ''}
-        projectMembers={projectMembers.map(m => ({
-          user_id: m.user_id,
-          email: m.profiles.email,
-          role: m.role || 'member'
-        }))}
+        projectMembers={projectMembers
+          .filter(m => m.profiles?.email)
+          .map(m => ({
+            user_id: m.user_id,
+            email: m.profiles.email,
+            role: m.role || 'member'
+          }))}
         formData={isCreateModalOpen ? createFormData : editFormData}
         onChangeFormData={(field, value) => {
           if (isCreateModalOpen) {
@@ -1268,11 +1270,13 @@ export function ProjectTasks() {
         task={selectedTask ? { ...selectedTask, priority: selectedTask.priority || 'medium' } : null}
         taskImages={taskImages}
         taskDocumentation={taskDocumentation}
-        projectMembers={projectMembers.map(m => ({
-          user_id: m.user_id,
-          email: m.profiles.email,
-          role: m.role || 'member'
-        }))}
+        projectMembers={projectMembers
+          .filter(m => m.profiles?.email)
+          .map(m => ({
+            user_id: m.user_id,
+            email: m.profiles.email,
+            role: m.role || 'member'
+          }))}
         isEditMode={isEditMode}
         editFormData={editFormData}
         docFormData={docFormData}

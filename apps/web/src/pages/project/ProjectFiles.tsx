@@ -1355,12 +1355,12 @@ export function ProjectFiles() {
             value={shareFormData.user_id}
             options={[
               { label: 'Benutzer auswählen', value: '' },
-              ...projectMembers.map((member) => ({
-                label: member.profiles
-                  ? `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email
-                  : 'Unbekannt',
-                value: member.user_id
-              }))
+              ...projectMembers
+                .filter((member) => member.profiles?.email)
+                .map((member) => ({
+                  label: `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email,
+                  value: member.user_id
+                }))
             ]}
             onChange={(value) => setShareFormData({ ...shareFormData, user_id: value as string })}
             placeholder="Benutzer auswählen"

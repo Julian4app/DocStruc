@@ -213,7 +213,7 @@ export function ProjectDiary() {
       const workerNames = selectedWorkers
         .map(userId => {
           const member = projectMembers.find(m => m.user_id === userId);
-          if (member?.profiles) {
+          if (member?.profiles?.email) {
             return `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email;
           }
           return null;
@@ -658,10 +658,12 @@ export function ProjectDiary() {
           
           <SearchableSelect
             label="Anwesende Projektmitarbeiter"
-            options={projectMembers.map(member => ({
-              label: `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email,
-              value: member.user_id
-            }))}
+            options={projectMembers
+              .filter(member => member.profiles?.email)
+              .map(member => ({
+                label: `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email,
+                value: member.user_id
+              }))}
             values={selectedWorkers}
             onChange={setSelectedWorkers}
             placeholder="Mitarbeiter auswählen..."
