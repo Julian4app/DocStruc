@@ -160,39 +160,38 @@ CREATE POLICY "companies_delete_policy" ON public.companies
   );
 
 -- ============================================================================
--- 5. INVOICES — Project-scoped
+-- 5. INVOICES — CRM company invoices (NOT project invoices)
+-- ============================================================================
+-- NOTE: invoices.company_id references companies(id), NOT projects
+-- These are billing invoices for CRM companies
 -- ============================================================================
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 
--- Project owner can see invoices
+-- All authenticated users can view invoices
 CREATE POLICY "invoices_select_policy" ON public.invoices
-  FOR SELECT USING (
-    auth.uid() IN (
-      SELECT owner_id FROM projects WHERE id = invoices.project_id
-    )
-  );
+  FOR SELECT USING (auth.role() = 'authenticated');
 
--- Project owner can create invoices
+-- Only superusers can create invoices
 CREATE POLICY "invoices_insert_policy" ON public.invoices
   FOR INSERT WITH CHECK (
-    auth.uid() IN (
-      SELECT owner_id FROM projects WHERE id = invoices.project_id
+    EXISTS (
+      SELECT 1 FROM profiles WHERE id = auth.uid() AND is_superuser = true
     )
   );
 
--- Project owner can update invoices
+-- Only superusers can update invoices
 CREATE POLICY "invoices_update_policy" ON public.invoices
   FOR UPDATE USING (
-    auth.uid() IN (
-      SELECT owner_id FROM projects WHERE id = invoices.project_id
+    EXISTS (
+      SELECT 1 FROM profiles WHERE id = auth.uid() AND is_superuser = true
     )
   );
 
--- Project owner can delete invoices
+-- Only superusers can delete invoices
 CREATE POLICY "invoices_delete_policy" ON public.invoices
   FOR DELETE USING (
-    auth.uid() IN (
-      SELECT owner_id FROM projects WHERE id = invoices.project_id
+    EXISTS (
+      SELECT 1 FROM profiles WHERE id = auth.uid() AND is_superuser = true
     )
   );
 
@@ -520,7 +519,7 @@ CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON project_members(user_i
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_creator_id ON tasks(creator_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
-CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_company_id ON invoices(company_id);
 CREATE INDEX IF NOT EXISTS idx_crm_notes_created_by ON crm_notes(created_by);
 CREATE INDEX IF NOT EXISTS idx_crm_notes_company_id ON crm_notes(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_files_company_id ON company_files(company_id);
