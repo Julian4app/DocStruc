@@ -855,7 +855,8 @@ export function ProjectDocumentation() {
           }}
           getUserName={(userId: string) => {
             const member = projectMembers.find(m => m.user_id === userId);
-            return member?.profiles?.name || 'Unbekannt';
+            const p = member?.profiles;
+            return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unbekannt' : 'Unbekannt';
           }}
         />
       )}
