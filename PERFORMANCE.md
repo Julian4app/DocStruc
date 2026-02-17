@@ -11,7 +11,7 @@
 |----------|-------------|--------|
 | 🔴 N+1 Queries | 1 critical (nested 4-level loop) | ✅ Fixed |
 | 🟠 Bundle Size | 621KB single JS bundle, no code splitting | ✅ Fixed (165KB initial) |
-| 🟠 Over-fetching | 87× SELECT * queries | ⏳ Backlog |
+| 🟠 Over-fetching | 87× SELECT * queries | ✅ Fixed (100% replaced) |
 | 🟡 Missing Optimization | No React.lazy, no Suspense, no memoization audit | ✅ Fixed |
 | ✅ Good | 121 database indexes defined, 0 npm vulnerabilities | ✅ |
 
@@ -75,16 +75,20 @@ const { data } = await supabase
 
 ---
 
-## 🟠 HIGH: 87× SELECT * Queries
+## 🟠 HIGH: 87× SELECT * Queries ✅ FIXED
 
 **Location:** Throughout codebase (87 occurrences)  
-**Impact:** Over-fetching columns increases payload size, bandwidth, and parse time
+**Impact:** Over-fetching columns increases payload size, bandwidth, and parse time  
+**Resolution:** Replaced ALL 87 `select('*')` calls with explicit column lists across 55+ files. Created `packages/api/src/columns.ts` with centralized `COLS` constant for 30+ tables.
 
-Top offenders:
-- `packages/api/src/structure.ts` — 5× `.select('*')`
-- `apps/web/src/pages/project/*` — dozens of `.select('*')` calls
+Top offenders (all fixed):
+- `packages/api/src/structure.ts` — 5× `.select('*')` → explicit columns
+- `apps/web/src/pages/project/*` — dozens of `.select('*')` calls → explicit columns
+- `apps/admin/src/pages/*` — all CRM pages → explicit columns
+- `packages/api/src/services/teamService.ts` — all team queries → explicit columns
+- Join queries (`*, joined_table(...)`) — all replaced with base table column lists
 
-**Recommendation:** Replace `.select('*')` with explicit column lists for tables with many columns, especially those containing large text/JSON fields.
+Only count-only queries (`{ head: true }`) retain `*` as required by Supabase API.
 
 ---
 
@@ -106,18 +110,23 @@ for (const cd of contentDefaults) {
 
 ---
 
-## 🟡 MEDIUM: No Pagination on Large Lists
+## 🟡 MEDIUM: No Pagination on Large Lists ✅ FIXED
 
 **Location:** Multiple pages  
-**Impact:** Loading all records at once will degrade as data grows
+**Impact:** Loading all records at once will degrade as data grows  
+**Resolution:** Added `.limit()` safety nets + created `usePaginatedQuery` hook.
 
-Tables likely to grow large:
-- `tasks` — per project
-- `diary_entries` — daily entries
-- `project_messages` — chat messages
-- `project_files` — file records
+- `usePaginatedQuery` hook created in `packages/hooks/src/usePaginatedQuery.ts` (cursor-based, load-more pattern)
+- `.limit(500)` added to: ProjectCommunication (msgs:500, notes:200), ProjectDiary (500), ProjectDocumentation (500), ProjectDefects (500), ProjectFiles (500), ProjectTasks (500)
+- ProjectActivity already had `.limit(200)`
+- NotificationCenterWrapper already had `.limit(50)`
 
-**Recommendation:** Add `.range(offset, offset + limit)` pagination or cursor-based pagination.
+Tables with limits:
+- `tasks` — 500 per project
+- `diary_entries` — 500 per project
+- `project_messages` — 500 messages, 200 notes per project
+- `project_files` — 500 per project
+- `task_documentation` — 500 per project
 
 ---
 
@@ -166,9 +175,9 @@ No Supabase Realtime subscriptions observed — all data is fetched on mount/nav
 | Vendor chunk splitting | Better caching across deploys | 🟢 Easy | ✅ Done |
 | Batch upserts | Fewer API round-trips | 🟢 Easy | ✅ Done |
 | Production console strip | Cleaner production builds | 🟢 Easy | ✅ Done |
-| SELECT column lists | Smaller payloads | 🟡 Medium | ⏳ Backlog |
-| Pagination on large lists | Constant load time as data grows | 🟡 Medium | ⏳ Backlog |
-| Migrate to useQuery hooks | Full caching + dedup | 🟠 High | ⏳ Backlog |
+| SELECT column lists | Smaller payloads | 🟡 Medium | ✅ Done (87 queries fixed) |
+| Pagination on large lists | Constant load time as data grows | 🟡 Medium | ✅ Done (limits + hook) |
+| Migrate to useQuery hooks | Full caching + dedup | 🟠 High | ⏳ Nice-to-have |
 
 ---
 
