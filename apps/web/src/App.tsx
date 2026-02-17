@@ -34,6 +34,32 @@ const ProjectParticipants = lazy(() => import('./pages/project/ProjectParticipan
 const ProjectReports = lazy(() => import('./pages/project/ProjectReports').then(m => ({ default: m.ProjectReports })));
 const ProjectActivity = lazy(() => import('./pages/project/ProjectActivity').then(m => ({ default: m.ProjectActivity })));
 
+// ─── Prefetch project sub-page chunks when user enters a project ───────────
+// Vite dynamic imports are cached — calling import() again is a no-op after first load.
+let _projectChunksPrefetched = false;
+export function prefetchProjectChunks() {
+  if (_projectChunksPrefetched) return;
+  _projectChunksPrefetched = true;
+  // Use requestIdleCallback (or setTimeout fallback) so prefetching doesn't
+  // compete with the current page's critical rendering path.
+  const schedule = typeof requestIdleCallback === 'function' ? requestIdleCallback : (cb: () => void) => setTimeout(cb, 200);
+  schedule(() => {
+    import('./pages/project/ProjectDashboard');
+    import('./pages/project/ProjectTasks');
+    import('./pages/project/ProjectGeneralInfo');
+    import('./pages/project/ProjectDefects');
+    import('./pages/project/ProjectSchedule');
+    import('./pages/project/ProjectDocumentation');
+    import('./pages/project/ProjectFiles');
+    import('./pages/project/ProjectDiary');
+    import('./pages/project/ProjectCommunication');
+    import('./pages/project/ProjectParticipants');
+    import('./pages/project/ProjectReports');
+    import('./pages/project/ProjectActivity');
+    import('./pages/project/ProjectObjektplan');
+  });
+}
+
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 

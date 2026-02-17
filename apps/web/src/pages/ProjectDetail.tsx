@@ -6,6 +6,7 @@ import { Project } from '@docstruc/logic';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLayout } from '../layouts/LayoutContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { prefetchProjectChunks } from '../App';
 import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Building2, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity, Lock } from 'lucide-react';
 
 // Map route paths to permission module_keys
@@ -54,6 +55,9 @@ export function ProjectDetail() {
   useEffect(() => {
     if (id) {
       loadProject(id);
+      // Prefetch all project sub-page JS chunks in the background
+      // so switching tabs within the project is instant (no lazy-load delay)
+      prefetchProjectChunks();
     }
   }, [id]);
 
