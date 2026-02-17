@@ -14,7 +14,7 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 -- Project owners and members can see their projects
 CREATE POLICY "projects_select_policy" ON public.projects
   FOR SELECT USING (
-    auth.uid() = created_by
+    auth.uid() = owner_id
     OR auth.uid() IN (
       SELECT user_id FROM project_members WHERE project_id = id
     )
@@ -22,12 +22,12 @@ CREATE POLICY "projects_select_policy" ON public.projects
 
 -- Only project creator can insert
 CREATE POLICY "projects_insert_policy" ON public.projects
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (auth.uid() = owner_id);
 
 -- Owner and admins can update
 CREATE POLICY "projects_update_policy" ON public.projects
   FOR UPDATE USING (
-    auth.uid() = created_by
+    auth.uid() = owner_id
     OR auth.uid() IN (
       SELECT user_id FROM project_members WHERE project_id = id AND role IN ('admin', 'owner')
     )
@@ -35,7 +35,7 @@ CREATE POLICY "projects_update_policy" ON public.projects
 
 -- Only owner can delete
 CREATE POLICY "projects_delete_policy" ON public.projects
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (auth.uid() = owner_id);
 
 -- ============================================================================
 -- 2. TASKS — Per-project tasks
@@ -61,7 +61,7 @@ CREATE POLICY "tasks_insert_policy" ON public.tasks
 -- Creator or assigned user or admin can update
 CREATE POLICY "tasks_update_policy" ON public.tasks
   FOR UPDATE USING (
-    auth.uid() = created_by
+    auth.uid() = creator_id
     OR auth.uid() = assigned_to
     OR auth.uid() IN (
       SELECT user_id FROM project_members WHERE project_id = tasks.project_id AND role IN ('admin', 'owner')
@@ -71,7 +71,7 @@ CREATE POLICY "tasks_update_policy" ON public.tasks
 -- Creator or admin can delete
 CREATE POLICY "tasks_delete_policy" ON public.tasks
   FOR DELETE USING (
-    auth.uid() = created_by
+    auth.uid() = creator_id
     OR auth.uid() IN (
       SELECT user_id FROM project_members WHERE project_id = tasks.project_id AND role IN ('admin', 'owner')
     )
@@ -98,7 +98,7 @@ CREATE POLICY "project_members_insert_policy" ON public.project_members
       SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
     )
     OR auth.uid() IN (
-      SELECT created_by FROM projects WHERE id = project_members.project_id
+      SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
   );
 
@@ -108,7 +108,7 @@ CREATE POLICY "project_members_update_policy" ON public.project_members
       SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
     )
     OR auth.uid() IN (
-      SELECT created_by FROM projects WHERE id = project_members.project_id
+      SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
   );
 
@@ -119,7 +119,7 @@ CREATE POLICY "project_members_delete_policy" ON public.project_members
       SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
     )
     OR auth.uid() IN (
-      SELECT created_by FROM projects WHERE id = project_members.project_id
+      SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
   );
 
@@ -128,23 +128,33 @@ CREATE POLICY "project_members_delete_policy" ON public.project_members
 -- ============================================================================
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 
--- Users can see their own company
+-- Users can see their own company and companies they belong to
 CREATE POLICY "companies_select_policy" ON public.companies
   FOR SELECT USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = companies.id
     )
   );
 
+-- Any authenticated user can create a company
 CREATE POLICY "companies_insert_policy" ON public.companies
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (true);
 
+-- Users in the company can update it
 CREATE POLICY "companies_update_policy" ON public.companies
-  FOR UPDATE USING (auth.uid() = created_by);
+  FOR UPDATE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = companies.id
+    )
+  );
 
+-- Users in the company can delete it
 CREATE POLICY "companies_delete_policy" ON public.companies
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = companies.id
+    )
+  );
 
 -- ============================================================================
 -- 5. INVOICES — Financial data
@@ -184,27 +194,37 @@ CREATE POLICY "invoices_delete_policy" ON public.invoices
 -- ============================================================================
 ALTER TABLE public.crm_contacts ENABLE ROW LEVEL SECURITY;
 
+-- Users can see contacts from their company
 CREATE POLICY "crm_contacts_select_policy" ON public.crm_contacts
   FOR SELECT USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = crm_contacts.company_id
     )
   );
 
+-- Users can create contacts in their company
 CREATE POLICY "crm_contacts_insert_policy" ON public.crm_contacts
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = crm_contacts.company_id
+    )
+  );
 
+-- Users can update contacts in their company
 CREATE POLICY "crm_contacts_update_policy" ON public.crm_contacts
   FOR UPDATE USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = crm_contacts.company_id
     )
   );
 
+-- Users can delete contacts in their company
 CREATE POLICY "crm_contacts_delete_policy" ON public.crm_contacts
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = crm_contacts.company_id
+    )
+  );
 
 -- ============================================================================
 -- 7. CRM_NOTES
@@ -213,8 +233,7 @@ ALTER TABLE public.crm_notes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "crm_notes_select_policy" ON public.crm_notes
   FOR SELECT USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = (
         SELECT company_id FROM crm_contacts WHERE id = crm_notes.contact_id
       )
@@ -222,13 +241,31 @@ CREATE POLICY "crm_notes_select_policy" ON public.crm_notes
   );
 
 CREATE POLICY "crm_notes_insert_policy" ON public.crm_notes
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM crm_contacts WHERE id = crm_notes.contact_id
+      )
+    )
+  );
 
 CREATE POLICY "crm_notes_update_policy" ON public.crm_notes
-  FOR UPDATE USING (auth.uid() = created_by);
+  FOR UPDATE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM crm_contacts WHERE id = crm_notes.contact_id
+      )
+    )
+  );
 
 CREATE POLICY "crm_notes_delete_policy" ON public.crm_notes
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM crm_contacts WHERE id = crm_notes.contact_id
+      )
+    )
+  );
 
 -- ============================================================================
 -- 8. CONTACT_PERSONS
@@ -237,20 +274,31 @@ ALTER TABLE public.contact_persons ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "contact_persons_select_policy" ON public.contact_persons
   FOR SELECT USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = contact_persons.company_id
     )
   );
 
 CREATE POLICY "contact_persons_insert_policy" ON public.contact_persons
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = contact_persons.company_id
+    )
+  );
 
 CREATE POLICY "contact_persons_update_policy" ON public.contact_persons
-  FOR UPDATE USING (auth.uid() = created_by);
+  FOR UPDATE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = contact_persons.company_id
+    )
+  );
 
 CREATE POLICY "contact_persons_delete_policy" ON public.contact_persons
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = contact_persons.company_id
+    )
+  );
 
 -- ============================================================================
 -- 9. COMPANY_FILES
@@ -300,14 +348,14 @@ CREATE POLICY "company_subscriptions_select_policy" ON public.company_subscripti
 CREATE POLICY "company_subscriptions_insert_policy" ON public.company_subscriptions
   FOR INSERT WITH CHECK (
     auth.uid() IN (
-      SELECT created_by FROM companies WHERE id = company_subscriptions.company_id
+      SELECT id FROM profiles WHERE company_id = company_subscriptions.company_id
     )
   );
 
 CREATE POLICY "company_subscriptions_update_policy" ON public.company_subscriptions
   FOR UPDATE USING (
     auth.uid() IN (
-      SELECT created_by FROM companies WHERE id = company_subscriptions.company_id
+      SELECT id FROM profiles WHERE company_id = company_subscriptions.company_id
     )
   );
 
@@ -318,20 +366,31 @@ ALTER TABLE public.subcontractors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "subcontractors_select_policy" ON public.subcontractors
   FOR SELECT USING (
-    auth.uid() = created_by
-    OR auth.uid() IN (
+    auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = subcontractors.company_id
     )
   );
 
 CREATE POLICY "subcontractors_insert_policy" ON public.subcontractors
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  FOR INSERT WITH CHECK (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = subcontractors.company_id
+    )
+  );
 
 CREATE POLICY "subcontractors_update_policy" ON public.subcontractors
-  FOR UPDATE USING (auth.uid() = created_by);
+  FOR UPDATE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = subcontractors.company_id
+    )
+  );
 
 CREATE POLICY "subcontractors_delete_policy" ON public.subcontractors
-  FOR DELETE USING (auth.uid() = created_by);
+  FOR DELETE USING (
+    auth.uid() IN (
+      SELECT id FROM profiles WHERE company_id = subcontractors.company_id
+    )
+  );
 
 -- ============================================================================
 -- 12. SUBCONTRACTOR_CONTACTS
@@ -341,9 +400,6 @@ ALTER TABLE public.subcontractor_contacts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "subcontractor_contacts_select_policy" ON public.subcontractor_contacts
   FOR SELECT USING (
     auth.uid() IN (
-      SELECT created_by FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
-    )
-    OR auth.uid() IN (
       SELECT id FROM profiles WHERE company_id = (
         SELECT company_id FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
       )
@@ -353,21 +409,27 @@ CREATE POLICY "subcontractor_contacts_select_policy" ON public.subcontractor_con
 CREATE POLICY "subcontractor_contacts_insert_policy" ON public.subcontractor_contacts
   FOR INSERT WITH CHECK (
     auth.uid() IN (
-      SELECT created_by FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      )
     )
   );
 
 CREATE POLICY "subcontractor_contacts_update_policy" ON public.subcontractor_contacts
   FOR UPDATE USING (
     auth.uid() IN (
-      SELECT created_by FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      )
     )
   );
 
 CREATE POLICY "subcontractor_contacts_delete_policy" ON public.subcontractor_contacts
   FOR DELETE USING (
     auth.uid() IN (
-      SELECT created_by FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      SELECT id FROM profiles WHERE company_id = (
+        SELECT company_id FROM subcontractors WHERE id = subcontractor_contacts.subcontractor_id
+      )
     )
   );
 
@@ -429,20 +491,17 @@ CREATE POLICY "tags_delete_policy" ON public.tags
 CREATE INDEX IF NOT EXISTS idx_project_members_user_project ON project_members(user_id, project_id);
 CREATE INDEX IF NOT EXISTS idx_project_members_project_role ON project_members(project_id, role);
 CREATE INDEX IF NOT EXISTS idx_profiles_company_id ON profiles(company_id);
-CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
+CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
+CREATE INDEX IF NOT EXISTS idx_tasks_creator_id ON tasks(creator_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id);
 CREATE INDEX IF NOT EXISTS idx_crm_contacts_company_id ON crm_contacts(company_id);
-CREATE INDEX IF NOT EXISTS idx_crm_contacts_created_by ON crm_contacts(created_by);
 CREATE INDEX IF NOT EXISTS idx_crm_notes_contact_id ON crm_notes(contact_id);
-CREATE INDEX IF NOT EXISTS idx_crm_notes_created_by ON crm_notes(created_by);
 CREATE INDEX IF NOT EXISTS idx_contact_persons_company_id ON contact_persons(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_files_company_id ON company_files(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_subscriptions_company_id ON company_subscriptions(company_id);
 CREATE INDEX IF NOT EXISTS idx_subcontractors_company_id ON subcontractors(company_id);
-CREATE INDEX IF NOT EXISTS idx_subcontractors_created_by ON subcontractors(created_by);
 CREATE INDEX IF NOT EXISTS idx_subcontractor_contacts_subcontractor ON subcontractor_contacts(subcontractor_id);
 CREATE INDEX IF NOT EXISTS idx_tags_company_id ON tags(company_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
