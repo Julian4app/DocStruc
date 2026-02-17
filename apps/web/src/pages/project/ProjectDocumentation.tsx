@@ -94,8 +94,7 @@ export function ProjectDocumentation() {
           tasks!inner(title, task_type, status, assigned_to, due_date, priority)
         `)
         .eq('project_id', id)
-        .order('created_at', { ascending: false })
-        .limit(500);
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -105,13 +104,13 @@ export function ProjectDocumentation() {
       // Load user profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, name')
+        .select('id, first_name, last_name')
         .in('id', userIds);
 
       if (profilesError) console.error('Error loading profiles:', profilesError);
 
       // Create a map for quick profile lookup
-      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.name]));
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unbekannt']));
 
       // Transform data
       const transformed: DocumentationEntry[] = (data || []).map((entry: any) => ({
@@ -146,7 +145,7 @@ export function ProjectDocumentation() {
     try {
       const { data: task, error: taskError } = await supabase
         .from('tasks')
-        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
+        .select('*')
         .eq('id', taskId)
         .single();
 
@@ -155,21 +154,21 @@ export function ProjectDocumentation() {
 
       const { data: images } = await supabase
         .from('task_images')
-        .select('id, task_id, image_url, display_order, created_at')
+        .select('*')
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
       setTaskImages(images || []);
 
       const { data: docs } = await supabase
         .from('task_documentation')
-        .select('id, task_id, user_id, documentation_type, content, file_name, storage_path, file_size, mime_type, created_at')
+        .select('*')
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
       setTaskDocumentation(docs || []);
 
       const { data: members } = await supabase
         .from('project_members')
-        .select('id, project_id, user_id, role, status, profiles(first_name, last_name, email)')
+        .select('*, profiles(first_name, last_name)')
         .eq('project_id', id);
       setProjectMembers(members || []);
     } catch (error) {

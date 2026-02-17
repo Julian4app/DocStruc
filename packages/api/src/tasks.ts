@@ -4,7 +4,7 @@ import { Task, TaskStatus } from '@docstruc/logic';
 export const getTasks = async (client: SupabaseClient, roomId: string): Promise<Task[]> => {
   const { data, error } = await client
     .from('tasks')
-    .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, images')
+    .select('*')
     .eq('room_id', roomId)
     .order('created_at', { ascending: false });
 
@@ -78,7 +78,7 @@ export const updateTaskStatus = async (client: SupabaseClient, taskId: string, s
 export const getProjectTasks = async (client: SupabaseClient, projectId: string): Promise<Task[]> => {
   const { data, error } = await client
     .from('tasks')
-    .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, images')
+    .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
 

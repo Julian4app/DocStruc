@@ -16,7 +16,7 @@ export default function Profile() {
              if (user) {
                  // Try to fetch profile from public.profiles or meta
                  // We will use meta as fallback or if profiles table is empty/RLS restricted
-                 const { data } = await supabase.from('profiles').select('id, email, first_name, last_name, company_name, avatar_url, phone, is_superuser, team_id, team_role').eq('id', user.id).single();
+                 const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
                  if (data) {
                      setProfile(data);
                  } else {

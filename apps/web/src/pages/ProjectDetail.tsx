@@ -62,7 +62,7 @@ export function ProjectDetail() {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date')
+        .select('*')
         .eq('id', projectId)
         .single();
 

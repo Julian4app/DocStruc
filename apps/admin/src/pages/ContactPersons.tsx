@@ -21,7 +21,7 @@ export default function ContactPersons() {
       setLoading(true);
       const { data, error } = await supabase
         .from('contact_persons')
-        .select('id, first_name, surname, company, department, email, phone, tags, created_at')
+        .select('*')
         .order('surname');
       
       if (error) throw error;

@@ -72,7 +72,7 @@ export async function getPermissionModules() {
   try {
     const { data, error } = await supabase
       .from('permission_modules')
-      .select('id, module_key, module_name, description, display_order, is_active')
+      .select('*')
       .eq('is_active', true)
       .order('display_order');
 
@@ -95,7 +95,7 @@ export async function getUserRoles() {
     const { data, error } = await supabase
       .from('roles')
       .select(`
-        id, user_id, role_name, role_description, is_system_role, is_active, created_at, updated_at,
+        *,
         role_permissions (
           module_key,
           can_view,
@@ -253,7 +253,7 @@ export async function getUserAccessors() {
 
     const { data, error } = await supabase
       .from('user_accessors')
-      .select('id, owner_id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type, notes, registered_user_id, is_active, created_at, updated_at')
+      .select('*')
       .eq('owner_id', user.id)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
@@ -366,7 +366,7 @@ export async function addProjectMember(
     // Get accessor details
     const { data: accessor } = await supabase
       .from('user_accessors')
-      .select('id, owner_id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type, notes, registered_user_id, is_active, created_at, updated_at')
+      .select('*')
       .eq('id', accessorId)
       .single();
 
@@ -487,7 +487,7 @@ export async function getPermissionAuditLog(projectId?: string, limit = 50) {
 
     let query = supabase
       .from('permission_audit_log')
-      .select('id, user_id, project_id, action, details, created_at')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
 

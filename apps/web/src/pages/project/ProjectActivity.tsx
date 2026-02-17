@@ -73,7 +73,7 @@ export function ProjectActivity() {
       const { data, error } = await supabase
         .from('activity_logs')
         .select(`
-          id, project_id, user_id, action, entity_type, entity_id, details, created_at,
+          *,
           profiles!activity_logs_user_id_fkey(email, first_name, last_name, avatar_url)
         `)
         .eq('project_id', id)

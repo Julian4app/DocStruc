@@ -28,7 +28,7 @@ export default function SubscriptionTypeDetail() {
 
   const fetchType = async () => {
     try {
-      const { data, error } = await supabase.from('subscription_types').select('id, title, price, currency, discount, features, description, created_at').eq('id', id).single();
+      const { data, error } = await supabase.from('subscription_types').select('*').eq('id', id).single();
       if (error) throw error;
       setForm({
           ...data, 

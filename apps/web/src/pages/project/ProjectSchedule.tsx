@@ -130,7 +130,7 @@ export function ProjectSchedule() {
       // Load milestones/timeline events
       const { data: timelineData, error: timelineError } = await supabase
         .from('timeline_events')
-        .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
+        .select('*')
         .eq('project_id', id)
         .order('start_date', { ascending: true });
 
@@ -544,7 +544,7 @@ export function ProjectSchedule() {
       // Load full task details
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
-        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
+        .select('*')
         .eq('id', task.id)
         .single();
 
@@ -555,7 +555,7 @@ export function ProjectSchedule() {
       // Load task images
       const { data: imagesData } = await supabase
         .from('task_images')
-        .select('id, task_id, image_url, display_order, created_at')
+        .select('*')
         .eq('task_id', task.id)
         .order('created_at', { ascending: false });
 
@@ -564,7 +564,7 @@ export function ProjectSchedule() {
       // Load task documentation
       const { data: docsData } = await supabase
         .from('task_documentation')
-        .select('id, task_id, user_id, documentation_type, content, file_name, storage_path, file_size, mime_type, created_at')
+        .select('*')
         .eq('task_id', task.id)
         .order('created_at', { ascending: false });
 

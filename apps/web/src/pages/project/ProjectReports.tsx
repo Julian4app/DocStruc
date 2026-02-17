@@ -62,7 +62,7 @@ export function ProjectReports() {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date')
+        .select('*')
         .eq('id', id)
         .single();
       
@@ -149,11 +149,11 @@ export function ProjectReports() {
 
   const fetchCompleteProjectData = async () => {
     const [tasks, members, diary, messages, milestones] = await Promise.all([
-      supabase.from('tasks').select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, created_at, updated_at, task_type, priority, profiles!tasks_assigned_to_fkey(first_name, last_name, email)').eq('project_id', id).order('created_at', { ascending: false }),
-      supabase.from('project_members').select('id, project_id, user_id, role, status, role_id, profiles!project_members_user_id_fkey(first_name, last_name, email)').eq('project_id', id),
-      supabase.from('diary_entries').select('id, project_id, created_by, entry_date, content, weather, temperature, wind, notes, work_done, issues, created_at, profiles!diary_entries_created_by_fkey(first_name, last_name, email)').eq('project_id', id).order('entry_date', { ascending: false }),
-      supabase.from('project_messages').select('id, project_id, user_id, content, message_type, is_pinned, is_deleted, created_at, profiles!project_messages_user_id_fkey(first_name, last_name, email)').eq('project_id', id).eq('is_deleted', false).order('created_at', { ascending: false }),
-      supabase.from('timeline_events').select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at').eq('project_id', id).order('start_date', { ascending: true })
+      supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)').eq('project_id', id).order('created_at', { ascending: false }),
+      supabase.from('project_members').select('*, profiles!project_members_user_id_fkey(first_name, last_name, email)').eq('project_id', id),
+      supabase.from('diary_entries').select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)').eq('project_id', id).order('entry_date', { ascending: false }),
+      supabase.from('project_messages').select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)').eq('project_id', id).eq('is_deleted', false).order('created_at', { ascending: false }),
+      supabase.from('timeline_events').select('*').eq('project_id', id).order('start_date', { ascending: true })
     ]);
 
     return {
@@ -169,7 +169,7 @@ export function ProjectReports() {
   const fetchTasksData = async () => {
     const { data, error } = await supabase
       .from('tasks')
-      .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, created_at, updated_at, task_type, priority, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
+      .select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
       .eq('project_id', id)
       .eq('task_type', 'task')
       .order('created_at', { ascending: false });
@@ -181,7 +181,7 @@ export function ProjectReports() {
   const fetchDefectsData = async () => {
     const { data, error } = await supabase
       .from('tasks')
-      .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, created_at, updated_at, task_type, priority, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
+      .select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
       .eq('project_id', id)
       .eq('task_type', 'defect')
       .order('created_at', { ascending: false });
@@ -193,7 +193,7 @@ export function ProjectReports() {
   const fetchDiaryData = async () => {
     const { data, error } = await supabase
       .from('diary_entries')
-      .select('id, project_id, created_by, entry_date, content, weather, temperature, wind, notes, work_done, issues, created_at, profiles!diary_entries_created_by_fkey(first_name, last_name, email)')
+      .select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)')
       .eq('project_id', id)
       .order('entry_date', { ascending: false });
     
@@ -204,7 +204,7 @@ export function ProjectReports() {
   const fetchDocumentationData = async () => {
     const { data, error } = await supabase
       .from('project_messages')
-      .select('id, project_id, user_id, content, message_type, is_pinned, is_deleted, created_at, profiles!project_messages_user_id_fkey(first_name, last_name, email)')
+      .select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)')
       .eq('project_id', id)
       .eq('message_type', 'note')
       .eq('is_deleted', false)
@@ -217,7 +217,7 @@ export function ProjectReports() {
   const fetchParticipantsData = async () => {
     const { data, error } = await supabase
       .from('project_members')
-      .select('id, project_id, user_id, role, status, role_id, profiles!project_members_user_id_fkey(first_name, last_name, email, phone)')
+      .select('*, profiles!project_members_user_id_fkey(first_name, last_name, email, phone)')
       .eq('project_id', id);
     
     if (error) throw error;
@@ -227,7 +227,7 @@ export function ProjectReports() {
   const fetchTimelineData = async () => {
     const { data, error } = await supabase
       .from('timeline_events')
-      .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
+      .select('*')
       .eq('project_id', id)
       .order('start_date', { ascending: true });
     

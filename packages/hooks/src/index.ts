@@ -12,9 +12,6 @@ import {
 import { Task, AppRole } from '@docstruc/logic';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-export { usePaginatedQuery, DEFAULT_PAGE_SIZE } from './usePaginatedQuery';
-export type { PaginatedResult } from './usePaginatedQuery';
-
 // Query Keys
 export const keys = {
   currentRole: (projectId: string, userId: string) => ['role', projectId, userId], 

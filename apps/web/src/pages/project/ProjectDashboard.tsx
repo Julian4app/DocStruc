@@ -108,7 +108,7 @@ export function ProjectDashboard() {
       // Load all tasks
       const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
-        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
+        .select('*')
         .eq('project_id', id)
         .order('created_at', { ascending: false });
 
@@ -153,7 +153,7 @@ export function ProjectDashboard() {
       // Load upcoming milestones
       const { data: milestonesData, error: milestonesError } = await supabase
         .from('timeline_events')
-        .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
+        .select('*')
         .eq('project_id', id)
         .gte('event_date', new Date().toISOString().split('T')[0])
         .order('event_date', { ascending: true })
@@ -180,7 +180,7 @@ export function ProjectDashboard() {
       // Load upcoming events
       const { data: events, error: eventsError } = await supabase
         .from('timeline_events')
-        .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
+        .select('*')
         .eq('project_id', id)
         .gte('start_date', new Date().toISOString())
         .lte('start_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())

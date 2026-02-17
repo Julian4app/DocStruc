@@ -8,7 +8,7 @@ export class TeamService {
   static async getAllTeams(): Promise<Team[]> {
     const { data, error } = await supabase
       .from('teams')
-      .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
+      .select('*')
       .eq('is_active', true)
       .order('name');
 
@@ -22,7 +22,7 @@ export class TeamService {
   static async getTeam(teamId: string): Promise<Team | null> {
     const { data, error } = await supabase
       .from('teams')
-      .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
+      .select('*')
       .eq('id', teamId)
       .single();
 
@@ -36,7 +36,7 @@ export class TeamService {
   static async getMyTeam(): Promise<Team | null> {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('team_id, teams(id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at)')
+      .select('team_id, teams(*)')
       .eq('id', (await supabase.auth.getUser()).data.user?.id!)
       .single();
 
@@ -207,7 +207,7 @@ export class TeamService {
   static async getTeamInvitations(teamId: string): Promise<TeamInvitation[]> {
     const { data, error } = await supabase
       .from('team_invitations')
-      .select('id, team_id, email, team_role, invited_by, token, status, invited_at, accepted_at')
+      .select('*')
       .eq('team_id', teamId)
       .order('invited_at', { ascending: false });
 
@@ -224,7 +224,7 @@ export class TeamService {
     // Get invitation
     const { data: invitation, error: invError } = await supabase
       .from('team_invitations')
-      .select('id, team_id, email, team_role, status')
+      .select('*')
       .eq('id', invitationId)
       .single();
 
@@ -293,7 +293,7 @@ export class TeamService {
   static async getProjectTeams(projectId: string): Promise<Team[]> {
     const { data, error } = await supabase
       .from('team_project_access')
-      .select('team_id, teams(id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at)')
+      .select('team_id, teams(*)')
       .eq('project_id', projectId);
 
     if (error) throw error;

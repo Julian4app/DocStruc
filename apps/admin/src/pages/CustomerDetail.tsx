@@ -86,28 +86,28 @@ export default function CustomerDetail() {
     try {
         setLoading(true);
         // 1. Fetch Company
-        const { data: comp, error: compErr } = await supabase.from('companies').select('id, name, address, contact_person_id, status, employees_count, bought_accounts, superuser_id, logo_url, email, tax_id, created_at, updated_at').eq('id', id).single();
+        const { data: comp, error: compErr } = await supabase.from('companies').select('*').eq('id', id).single();
         if (compErr) throw compErr;
         setCompany(comp);
 
         // 2. Fetch Contacts (for dropdowns)
-        const { data: cont } = await supabase.from('contact_persons').select('id, first_name, surname, company, department, email, created_at');
+        const { data: cont } = await supabase.from('contact_persons').select('*');
         setContacts(cont || []);
 
         // 3. Fetch Subscription Types
-        const { data: subs } = await supabase.from('subscription_types').select('id, title, price, currency, discount, features, description, created_at');
+        const { data: subs } = await supabase.from('subscription_types').select('*');
         setSubTypes(subs || []);
 
         // 4. Fetch Notes
-        const { data: n } = await supabase.from('crm_notes').select('id, company_id, content, created_by, created_at, updated_at').eq('company_id', id).order('created_at', { ascending: false });
+        const { data: n } = await supabase.from('crm_notes').select('*').eq('company_id', id).order('created_at', { ascending: false });
         setNotes(n || []);
 
         // 5. Fetch Files
-        const { data: f } = await supabase.from('company_files').select('id, company_id, file_url, file_name, uploaded_at, tags').eq('company_id', id);
+        const { data: f } = await supabase.from('company_files').select('*').eq('company_id', id);
         setFiles(f || []);
         
         // 6. Fetch Active Subscription
-        const { data: s, error: subError } = await supabase.from('company_subscriptions').select('id, company_id, subscription_type_id, payment_cycle, payment_deadline_days, recipes_url, start_date, end_date, invoice_amount, status, created_at').eq('company_id', id).maybeSingle();
+        const { data: s, error: subError } = await supabase.from('company_subscriptions').select('*').eq('company_id', id).maybeSingle();
         if (!subError) {
              setSubscription(s || { company_id: id }); 
         } else {
@@ -117,7 +117,7 @@ export default function CustomerDetail() {
         }
 
         // 7. Fetch History
-        const { data: h } = await supabase.from('company_history').select('id, company_id, action, old_state, new_state, changed_by, created_at').eq('company_id', id).order('created_at', { ascending: false });
+        const { data: h } = await supabase.from('company_history').select('*').eq('company_id', id).order('created_at', { ascending: false });
         // Use real history if available, else show a default 'Created' entry derived from company data
         const realHistory = h || [];
         if (realHistory.length === 0 && comp.created_at) {
@@ -126,7 +126,7 @@ export default function CustomerDetail() {
         setHistory(realHistory);
 
         // 8. Fetch Invoices
-        const { data: inv } = await supabase.from('invoices').select('id, subscription_id, company_id, amount, due_date, paid_at, status, period_start, period_end, created_at, notes, tags').eq('company_id', id).order('due_date', { ascending: false });
+        const { data: inv } = await supabase.from('invoices').select('*').eq('company_id', id).order('due_date', { ascending: false });
         setInvoices(inv || []);
 
         // 9. Fetch Available Tags

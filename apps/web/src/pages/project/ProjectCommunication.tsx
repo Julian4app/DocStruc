@@ -108,14 +108,13 @@ export function ProjectCommunication() {
       const { data: messagesData, error: messagesError } = await supabase
         .from('project_messages')
         .select(`
-          id, project_id, user_id, content, message_type, is_pinned, pinned_by, pinned_at, parent_message_id, is_edited, edited_at, is_deleted, created_at, updated_at,
+          *,
           profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
         `)
         .eq('project_id', id)
         .eq('message_type', 'message')
         .eq('is_deleted', false)
-        .order('created_at', { ascending: true })
-        .limit(500);
+        .order('created_at', { ascending: true });
 
       if (messagesError) throw messagesError;
 
@@ -123,15 +122,14 @@ export function ProjectCommunication() {
       const { data: notesData, error: notesError } = await supabase
         .from('project_messages')
         .select(`
-          id, project_id, user_id, content, message_type, is_pinned, pinned_by, pinned_at, parent_message_id, is_edited, edited_at, is_deleted, created_at, updated_at,
+          *,
           profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
         `)
         .eq('project_id', id)
         .eq('message_type', 'note')
         .eq('is_deleted', false)
         .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .order('created_at', { ascending: false });
 
       if (notesError) throw notesError;
 

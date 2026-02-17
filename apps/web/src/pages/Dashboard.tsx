@@ -159,7 +159,7 @@ export function Dashboard() {
     // Fetch full project data
     const { data, error } = await supabase
       .from('projects')
-      .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date')
+      .select('*')
       .in('id', projectIds)
       .order('created_at', { ascending: false });
     
@@ -180,7 +180,7 @@ export function Dashboard() {
     
     const { data, error } = await supabase
       .from('timeline_events')
-      .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
+      .select('*')
       .gte('start_date', today.toISOString())
       .eq('status', 'pending')
       .order('start_date', { ascending: true })

@@ -129,11 +129,10 @@ export function ProjectDefects() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
+        .select('*')
         .eq('project_id', id)
         .eq('task_type', 'defect')
-        .order('created_at', { ascending: false })
-        .limit(500);
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       
@@ -293,7 +292,7 @@ export function ProjectDefects() {
       // Load images
       const { data: images, error: imagesError } = await supabase
         .from('task_images')
-        .select('id, task_id, image_url, display_order, created_at')
+        .select('*')
         .eq('task_id', defectId)
         .order('display_order', { ascending: true });
 
@@ -303,7 +302,7 @@ export function ProjectDefects() {
       // Load documentation
       const { data: docs, error: docsError } = await supabase
         .from('task_documentation')
-        .select('id, task_id, user_id, documentation_type, content, file_name, storage_path, file_size, mime_type, created_at')
+        .select('*')
         .eq('task_id', defectId)
         .order('created_at', { ascending: false });
 
@@ -363,7 +362,7 @@ export function ProjectDefects() {
       // Update selected defect
       const { data: updatedDefect } = await supabase
         .from('tasks')
-        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
+        .select('*')
         .eq('id', selectedDefect.id)
         .single();
       

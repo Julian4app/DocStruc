@@ -194,7 +194,7 @@ export function ProjectParticipants() {
       // Load permission modules
       const { data: modulesData, error: modulesError } = await supabase
         .from('permission_modules')
-        .select('id, module_key, module_name, description, display_order, is_active')
+        .select('*')
         .eq('is_active', true)
         .order('display_order');
 
@@ -254,8 +254,8 @@ export function ProjectParticipants() {
       const { data: membersData, error: membersError } = await supabase
         .from('project_members')
         .select(`
-          id, project_id, user_id, role, invited_at, joined_at, status, role_id, accessor_id,
-          accessor:user_accessors(id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type),
+          *,
+          accessor:user_accessors(*),
           role:roles(id, role_name, role_description)
         `)
         .eq('project_id', projectId);
@@ -317,7 +317,7 @@ export function ProjectParticipants() {
     } else if (member.role_id) {
       console.log('📊 Member has role:', member.role_id);
       const { data: rolePerms } = await supabase
-        .from('role_permissions').select('id, role_id, module_key, can_view, can_create, can_edit, can_delete').eq('role_id', member.role_id);
+        .from('role_permissions').select('*').eq('role_id', member.role_id);
       (rolePerms || []).forEach(perm => {
         const mod = availableModules.find(m => m.module_key === perm.module_key);
         if (mod) {

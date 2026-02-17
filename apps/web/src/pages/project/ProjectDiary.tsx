@@ -184,12 +184,11 @@ export function ProjectDiary() {
       const { data, error } = await supabase
         .from('diary_entries')
         .select(`
-          id, project_id, created_by, entry_date, content, weather, temperature, wind, notes, work_done, issues, materials_used, workers_count, created_at, updated_at,
+          *,
           profiles!diary_entries_created_by_fkey(first_name, last_name, email)
         `)
         .eq('project_id', id)
-        .order('entry_date', { ascending: false })
-        .limit(500);
+        .order('entry_date', { ascending: false });
 
       if (error) throw error;
 

@@ -124,7 +124,7 @@ export function Accessors() {
       // Load permission modules
       const { data: modulesData, error: modulesError } = await supabase
         .from('permission_modules')
-        .select('id, module_key, module_name, description, display_order, is_active')
+        .select('*')
         .eq('is_active', true)
         .order('display_order');
 
@@ -153,7 +153,7 @@ export function Accessors() {
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
         .select(`
-          id, user_id, role_name, role_description, is_system_role, is_active, created_at, updated_at,
+          *,
           role_permissions (
             module_key,
             can_view,
@@ -186,7 +186,7 @@ export function Accessors() {
 
       const { data: accessorsData, error: accessorsError } = await supabase
         .from('user_accessors')
-        .select('id, owner_id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type, notes, registered_user_id, is_active, created_at, updated_at')
+        .select('*')
         .eq('owner_id', user.id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -206,7 +206,7 @@ export function Accessors() {
       // Load all teams
       const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
-        .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
+        .select('*')
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 

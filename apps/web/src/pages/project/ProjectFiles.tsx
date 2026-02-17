@@ -169,7 +169,7 @@ export function ProjectFiles() {
     
     const { data, error } = await supabase
       .from('project_folders')
-      .select('id, project_id, name, description, parent_folder_id, created_by, created_at')
+      .select('*')
       .eq('project_id', id)
       .order('name');
 
@@ -189,13 +189,12 @@ export function ProjectFiles() {
     const { data, error } = await supabase
       .from('project_files')
       .select(`
-        id, project_id, folder_id, name, storage_path, file_size, mime_type, uploaded_by, uploaded_at, is_latest_version, version,
+        *,
         profiles!project_files_uploaded_by_fkey(email, first_name, last_name)
       `)
       .eq('project_id', id)
       .eq('is_latest_version', true)
-      .order('uploaded_at', { ascending: false })
-      .limit(500);
+      .order('uploaded_at', { ascending: false });
 
     if (error) {
       console.error('Error loading files:', error);
@@ -223,7 +222,7 @@ export function ProjectFiles() {
     
     const { data } = await supabase
       .from('project_members')
-      .select('id, project_id, user_id, role, status, profiles(email, first_name, last_name)')
+      .select('*, profiles(email, first_name, last_name)')
       .eq('project_id', id);
 
     setProjectMembers(data || []);
@@ -238,7 +237,7 @@ export function ProjectFiles() {
       // 1. Load task documentation (images, videos, documents)
       const { data: taskDocs } = await supabase
         .from('task_documentation')
-        .select('id, task_id, user_id, documentation_type, file_name, storage_path, file_size, mime_type, created_at, tasks(title), profiles(email, first_name, last_name)')
+        .select('*, tasks(title), profiles(email, first_name, last_name)')
         .eq('project_id', id)
         .not('storage_path', 'is', null)
         .order('created_at', { ascending: false });
@@ -269,7 +268,7 @@ export function ProjectFiles() {
       // 2. Load project files
       const { data: projectFiles } = await supabase
         .from('project_files')
-        .select('id, project_id, folder_id, name, storage_path, file_size, mime_type, uploaded_by, uploaded_at, is_latest_version, version, profiles(email, first_name, last_name), project_folders(name)')
+        .select('*, profiles(email, first_name, last_name), project_folders(name)')
         .eq('project_id', id)
         .order('uploaded_at', { ascending: false });
 
@@ -622,7 +621,7 @@ export function ProjectFiles() {
     const { data, error } = await supabase
       .from('project_file_versions')
       .select(`
-        id, file_id, version, storage_path, file_size, uploaded_by, uploaded_at,
+        *,
         profiles!project_file_versions_uploaded_by_fkey(email, first_name, last_name)
       `)
       .eq('file_id', fileId)
@@ -686,7 +685,7 @@ export function ProjectFiles() {
   const loadFileShares = async (fileId: string) => {
     const { data, error } = await supabase
       .from('project_file_shares')
-      .select('id, file_id, shared_with_user_id, permission_level, can_download, can_edit, can_delete, can_share, shared_by, created_at')
+      .select('*')
       .eq('file_id', fileId);
 
     if (error) {

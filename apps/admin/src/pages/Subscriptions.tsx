@@ -54,7 +54,7 @@ export default function Subscriptions() {
             if (error) throw error;
             setData(subs || []);
         } else {
-            const { data: t, error } = await supabase.from('subscription_types').select('id, title, price, currency, discount, features, description, created_at').order('price');
+            const { data: t, error } = await supabase.from('subscription_types').select('*').order('price');
             if (error) throw error;
             setTypes(t || []);
         }
