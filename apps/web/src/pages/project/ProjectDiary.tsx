@@ -12,6 +12,7 @@ import { DatePicker } from '../../components/DatePicker';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../contexts/AuthContext';
+import { LoadMoreButton } from '../../components/LoadMoreButton';
 import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock } from 'lucide-react';
 
 interface DiaryEntry {
@@ -56,6 +57,12 @@ export function ProjectDiary() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Pagination state
+  const DIARY_PAGE_SIZE = 30;
+  const [hasMoreEntries, setHasMoreEntries] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalEntries, setTotalEntries] = useState<number | null>(null);
   
   // Form state
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -183,14 +190,15 @@ export function ProjectDiary() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from('diary_entries')
         .select(`
           *,
           profiles!diary_entries_created_by_fkey(first_name, last_name, email)
-        `)
+        `, { count: 'exact' })
         .eq('project_id', id)
-        .order('entry_date', { ascending: false });
+        .order('entry_date', { ascending: false })
+        .range(0, DIARY_PAGE_SIZE - 1);
 
       if (error) throw error;
 
@@ -210,11 +218,56 @@ export function ProjectDiary() {
       }
 
       setEntries(visibleEntries);
+      setHasMoreEntries((data || []).length === DIARY_PAGE_SIZE);
+      if (count !== null) setTotalEntries(count);
     } catch (error: any) {
       console.error('Error loading diary entries:', error);
       showToast('Fehler beim Laden der Einträge', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreEntries = async () => {
+    if (!id || loadingMore || !hasMoreEntries) return;
+    setLoadingMore(true);
+
+    try {
+      const from = entries.length;
+      const to = from + DIARY_PAGE_SIZE - 1;
+
+      const { data, error } = await supabase
+        .from('diary_entries')
+        .select(`
+          *,
+          profiles!diary_entries_created_by_fkey(first_name, last_name, email)
+        `)
+        .eq('project_id', id)
+        .order('entry_date', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      const transformed: DiaryEntry[] = (data || []).map((entry: any) => ({
+        ...entry,
+        creator_name: entry.profiles 
+          ? `${entry.profiles.first_name || ''} ${entry.profiles.last_name || ''}`.trim() || entry.profiles.email
+          : 'Unbekannt'
+      }));
+
+      let visibleMore = transformed;
+      try {
+        visibleMore = await filterVisibleItems(transformed);
+      } catch (err) {
+        console.error('Error filtering visible diary entries:', err);
+      }
+
+      setEntries(prev => [...prev, ...visibleMore]);
+      setHasMoreEntries((data || []).length === DIARY_PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error loading more diary entries:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -639,6 +692,16 @@ export function ProjectDiary() {
               ))}
             </View>
           )}
+
+          {/* Load More */}
+          <LoadMoreButton
+            onLoadMore={loadMoreEntries}
+            loading={loadingMore}
+            hasMore={hasMoreEntries}
+            loadedCount={entries.length}
+            totalCount={totalEntries}
+            label="Ältere Einträge laden"
+          />
         </ScrollView>
       </View>
 

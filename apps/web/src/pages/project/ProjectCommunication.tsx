@@ -10,6 +10,7 @@ import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { useAuth } from '../../contexts/AuthContext';
+import { LoadMoreButton } from '../../components/LoadMoreButton';
 import { MessageSquare, Send, StickyNote, Users, Clock, Pin, Trash2, Edit2, X, PinOff, Plus } from 'lucide-react';
 
 interface Message {
@@ -59,6 +60,16 @@ export function ProjectCommunication() {
   const [sending, setSending] = useState(false);
   const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
 
+  // Pagination state
+  const MESSAGES_PAGE_SIZE = 50;
+  const NOTES_PAGE_SIZE = 30;
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [hasMoreNotes, setHasMoreNotes] = useState(true);
+  const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+  const [loadingMoreNotes, setLoadingMoreNotes] = useState(false);
+  const [totalMessages, setTotalMessages] = useState<number | null>(null);
+  const [totalNotes, setTotalNotes] = useState<number | null>(null);
+
   useEffect(() => {
     if (id) {
       loadCommunication();
@@ -99,42 +110,44 @@ export function ProjectCommunication() {
     setLoading(true);
     
     try {
-      // Parallelize messages + notes queries
+      // Parallelize messages (latest page) + notes (latest page) queries
       const [messagesResult, notesResult] = await Promise.all([
         supabase
           .from('project_messages')
           .select(`
             *,
             profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
-          `)
+          `, { count: 'exact' })
           .eq('project_id', id)
           .eq('message_type', 'message')
           .eq('is_deleted', false)
-          .order('created_at', { ascending: true }),
+          .order('created_at', { ascending: false })
+          .range(0, MESSAGES_PAGE_SIZE - 1),
         supabase
           .from('project_messages')
           .select(`
             *,
             profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
-          `)
+          `, { count: 'exact' })
           .eq('project_id', id)
           .eq('message_type', 'note')
           .eq('is_deleted', false)
           .order('is_pinned', { ascending: false })
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .range(0, NOTES_PAGE_SIZE - 1),
       ]);
 
       if (messagesResult.error) throw messagesResult.error;
       if (notesResult.error) throw notesResult.error;
 
-      // Transform messages
+      // Transform messages — reverse to show oldest first for chat view
       const transformedMessages: Message[] = (messagesResult.data || []).map((msg: any) => ({
         ...msg,
         user_name: msg.profiles 
           ? `${msg.profiles.first_name || ''} ${msg.profiles.last_name || ''}`.trim() || msg.profiles.email
           : 'Unbekannt',
         user_avatar: msg.profiles?.avatar_url
-      }));
+      })).reverse();
 
       const transformedNotes: Message[] = (notesResult.data || []).map((note: any) => ({
         ...note,
@@ -150,15 +163,23 @@ export function ProjectCommunication() {
       setMessages(visibleMessages);
       setNotes(visibleNotes);
 
-      // Calculate stats from visible items
+      // Pagination tracking
+      setHasMoreMessages((messagesResult.data || []).length === MESSAGES_PAGE_SIZE);
+      setHasMoreNotes((notesResult.data || []).length === NOTES_PAGE_SIZE);
+      if (messagesResult.count !== null) setTotalMessages(messagesResult.count);
+      if (notesResult.count !== null) setTotalNotes(notesResult.count);
+
+      // Calculate stats
+      const msgCount = messagesResult.count ?? visibleMessages.length;
+      const noteCount = notesResult.count ?? visibleNotes.length;
       const uniqueUsers = new Set([
         ...visibleMessages.map(m => m.user_id),
         ...visibleNotes.map(n => n.user_id)
       ]);
 
       setStats({
-        totalMessages: visibleMessages.length,
-        totalNotes: visibleNotes.length,
+        totalMessages: msgCount,
+        totalNotes: noteCount,
         activeUsers: uniqueUsers.size
       });
     } catch (error: any) {
@@ -166,6 +187,88 @@ export function ProjectCommunication() {
       showToast('Fehler beim Laden der Kommunikation', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreMessages = async () => {
+    if (!id || loadingMoreMessages || !hasMoreMessages) return;
+    setLoadingMoreMessages(true);
+    
+    try {
+      const from = messages.length;
+      const to = from + MESSAGES_PAGE_SIZE - 1;
+
+      const { data, error } = await supabase
+        .from('project_messages')
+        .select(`
+          *,
+          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+        `)
+        .eq('project_id', id)
+        .eq('message_type', 'message')
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      
+      const older: Message[] = (data || []).map((msg: any) => ({
+        ...msg,
+        user_name: msg.profiles 
+          ? `${msg.profiles.first_name || ''} ${msg.profiles.last_name || ''}`.trim() || msg.profiles.email
+          : 'Unbekannt',
+        user_avatar: msg.profiles?.avatar_url
+      })).reverse();
+
+      const visibleOlder = await filterVisibleItems(older);
+      // Prepend older messages at the beginning (they're older)
+      setMessages(prev => [...visibleOlder, ...prev]);
+      setHasMoreMessages((data || []).length === MESSAGES_PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setLoadingMoreMessages(false);
+    }
+  };
+
+  const loadMoreNotes = async () => {
+    if (!id || loadingMoreNotes || !hasMoreNotes) return;
+    setLoadingMoreNotes(true);
+    
+    try {
+      const from = notes.length;
+      const to = from + NOTES_PAGE_SIZE - 1;
+
+      const { data, error } = await supabase
+        .from('project_messages')
+        .select(`
+          *,
+          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+        `)
+        .eq('project_id', id)
+        .eq('message_type', 'note')
+        .eq('is_deleted', false)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      
+      const moreNotes: Message[] = (data || []).map((note: any) => ({
+        ...note,
+        user_name: note.profiles 
+          ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() || note.profiles.email
+          : 'Unbekannt',
+        user_avatar: note.profiles?.avatar_url
+      }));
+
+      const visibleMore = await filterVisibleItems(moreNotes);
+      setNotes(prev => [...prev, ...visibleMore]);
+      setHasMoreNotes((data || []).length === NOTES_PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error loading more notes:', error);
+    } finally {
+      setLoadingMoreNotes(false);
     }
   };
 
@@ -374,6 +477,18 @@ export function ProjectCommunication() {
 
       <Card style={styles.contentCard}>
         <ScrollView style={styles.messagesList} showsVerticalScrollIndicator={false}>
+          {/* Load older messages button (at top for messages) */}
+          {activeTab === 'messages' && hasMoreMessages && (
+            <LoadMoreButton
+              onLoadMore={loadMoreMessages}
+              loading={loadingMoreMessages}
+              hasMore={hasMoreMessages}
+              loadedCount={messages.length}
+              totalCount={totalMessages}
+              label="Ältere Nachrichten laden"
+            />
+          )}
+
           {currentItems.length === 0 ? (
             <View style={styles.emptyState}>
               {activeTab === 'messages' ? <MessageSquare size={48} color="#94a3b8" /> : <StickyNote size={48} color="#94a3b8" />}
@@ -438,6 +553,18 @@ export function ProjectCommunication() {
                 <Text style={styles.messageContent}>{item.content}</Text>
               </View>
             ))
+          )}
+
+          {/* Load more notes button (at bottom for notes) */}
+          {activeTab === 'notes' && (
+            <LoadMoreButton
+              onLoadMore={loadMoreNotes}
+              loading={loadingMoreNotes}
+              hasMore={hasMoreNotes}
+              loadedCount={notes.length}
+              totalCount={totalNotes}
+              label="Mehr Notizen laden"
+            />
           )}
         </ScrollView>
 

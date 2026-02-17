@@ -134,7 +134,8 @@ export function ProjectDefects() {
         .select('*')
         .eq('project_id', id)
         .eq('task_type', 'defect')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (error) throw error;
       

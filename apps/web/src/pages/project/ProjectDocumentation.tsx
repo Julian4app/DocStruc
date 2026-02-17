@@ -14,6 +14,7 @@ import {
   FileText, Search, Filter, Download, Image as ImageIcon, Video, 
   Calendar, Clock, User, CheckSquare, AlertTriangle, ChevronDown, X 
 } from 'lucide-react';
+import { LoadMoreButton } from '../../components/LoadMoreButton';
 
 interface DocumentationEntry {
   id: string;
@@ -60,6 +61,12 @@ export function ProjectDocumentation() {
   const [exportEndDate, setExportEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
 
+  // Pagination state
+  const DOCS_PAGE_SIZE = 50;
+  const [hasMoreDocs, setHasMoreDocs] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalDocs, setTotalDocs] = useState<number | null>(null);
+
   useEffect(() => {
     if (id) loadDocumentation();
   }, [id]);
@@ -79,8 +86,8 @@ export function ProjectDocumentation() {
     setLoading(true);
 
     try {
-      // Load all documentation entries for the project with task info and user info
-      const { data, error } = await supabase
+      // Load first page of documentation entries
+      const { data, error, count } = await supabase
         .from('task_documentation')
         .select(`
           id,
@@ -92,9 +99,10 @@ export function ProjectDocumentation() {
           file_name,
           user_id,
           tasks(title, task_type, status, assigned_to, due_date, priority)
-        `)
+        `, { count: 'exact' })
         .eq('project_id', id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, DOCS_PAGE_SIZE - 1);
 
       if (error) throw error;
 
@@ -102,10 +110,9 @@ export function ProjectDocumentation() {
       const userIds = [...new Set((data || []).map((entry: any) => entry.user_id))];
       
       // Load user profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name')
-        .in('id', userIds);
+      const { data: profiles, error: profilesError } = userIds.length > 0
+        ? await supabase.from('profiles').select('id, first_name, last_name').in('id', userIds)
+        : { data: [], error: null };
 
       if (profilesError) console.error('Error loading profiles:', profilesError);
 
@@ -133,11 +140,74 @@ export function ProjectDocumentation() {
       // Apply visibility filtering
       const visibleEntries = await filterVisibleItems(transformed);
       setEntries(visibleEntries);
+      setHasMoreDocs((data || []).length === DOCS_PAGE_SIZE);
+      if (count !== null) setTotalDocs(count);
     } catch (error: any) {
       console.error('Error loading documentation:', error);
       showToast('Fehler beim Laden der Dokumentation', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreDocs = async () => {
+    if (!id || loadingMore || !hasMoreDocs) return;
+    setLoadingMore(true);
+
+    try {
+      const from = entries.length;
+      const to = from + DOCS_PAGE_SIZE - 1;
+
+      const { data, error } = await supabase
+        .from('task_documentation')
+        .select(`
+          id,
+          task_id,
+          content,
+          documentation_type,
+          created_at,
+          storage_path,
+          file_name,
+          user_id,
+          tasks(title, task_type, status, assigned_to, due_date, priority)
+        `)
+        .eq('project_id', id)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      const userIds = [...new Set((data || []).map((entry: any) => entry.user_id))];
+      const { data: profiles } = userIds.length > 0
+        ? await supabase.from('profiles').select('id, first_name, last_name').in('id', userIds)
+        : { data: [] };
+
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unbekannt']));
+
+      const transformed: DocumentationEntry[] = (data || []).map((entry: any) => ({
+        id: entry.id,
+        task_id: entry.task_id,
+        task_title: entry.tasks?.title || 'Gelöschte Aufgabe',
+        task_type: entry.tasks?.task_type === 'defect' ? 'defect' : 'task',
+        content: entry.content || '',
+        documentation_type: entry.documentation_type,
+        created_at: entry.created_at,
+        user_name: profileMap.get(entry.user_id) || 'Unbekannt',
+        storage_path: entry.storage_path,
+        file_name: entry.file_name,
+        task_status: entry.tasks?.status,
+        task_assigned_to: entry.tasks?.assigned_to,
+        task_due_date: entry.tasks?.due_date,
+        task_priority: entry.tasks?.priority
+      }));
+
+      const visibleMore = await filterVisibleItems(transformed);
+      setEntries(prev => [...prev, ...visibleMore]);
+      setHasMoreDocs((data || []).length === DOCS_PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error loading more documentation:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -728,6 +798,16 @@ export function ProjectDocumentation() {
             </View>
           ))
         )}
+
+        {/* Load More */}
+        <LoadMoreButton
+          onLoadMore={loadMoreDocs}
+          loading={loadingMore}
+          hasMore={hasMoreDocs}
+          loadedCount={entries.length}
+          totalCount={totalDocs}
+          label="Mehr Dokumentation laden"
+        />
       </ScrollView>
 
       {/* Export Modal */}

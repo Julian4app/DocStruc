@@ -196,7 +196,8 @@ export function ProjectFiles() {
       `)
       .eq('project_id', id)
       .eq('is_latest_version', true)
-      .order('uploaded_at', { ascending: false });
+      .order('uploaded_at', { ascending: false })
+      .limit(500);
 
     if (error) {
       console.error('Error loading files:', error);

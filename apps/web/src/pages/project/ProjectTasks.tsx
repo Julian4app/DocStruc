@@ -13,6 +13,7 @@ import { TaskModal, TaskDetailModal } from './TaskModals';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
 import { useAuth } from '../../contexts/AuthContext';
+import { LoadMoreButton } from '../../components/LoadMoreButton';
 import { 
   Plus, Search, Filter, CheckCircle, Clock, XCircle, AlertCircle, 
   Calendar, List, LayoutGrid, Edit, Trash2, Image as ImageIcon, 
@@ -96,6 +97,12 @@ export function ProjectTasks() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   
+  // Pagination state
+  const TASKS_PAGE_SIZE = 100;
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalTasks, setTotalTasks] = useState<number | null>(null);
+  
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -174,16 +181,17 @@ export function ProjectTasks() {
     setLoading(true);
 
     try {
-      // Parallelize tasks + members
+      // Parallelize tasks (first page) + members
       const [tasksResult, membersResult] = await Promise.all([
         supabase
           .from('tasks')
           .select(`
             *,
             profiles:assigned_to(id, email, first_name, last_name)
-          `)
+          `, { count: 'exact' })
           .eq('project_id', id)
-          .order('board_position', { ascending: true }),
+          .order('board_position', { ascending: true })
+          .range(0, TASKS_PAGE_SIZE - 1),
         supabase
           .from('project_members')
           .select(`
@@ -195,7 +203,10 @@ export function ProjectTasks() {
       ]);
 
       if (tasksResult.error) throw tasksResult.error;
-      setTasks(tasksResult.data || []);
+      const page = tasksResult.data || [];
+      setTasks(page);
+      setHasMoreTasks(page.length === TASKS_PAGE_SIZE);
+      if (tasksResult.count !== null) setTotalTasks(tasksResult.count);
       setProjectMembers((membersResult.data || []) as any);
     } catch (error: any) {
       console.error('Error loading tasks:', error);
@@ -205,22 +216,58 @@ export function ProjectTasks() {
     }
   };
 
+  const loadMoreTasks = async () => {
+    if (!id || loadingMore || !hasMoreTasks) return;
+    setLoadingMore(true);
+
+    try {
+      const from = tasks.length;
+      const to = from + TASKS_PAGE_SIZE - 1;
+
+      const { data, error, count } = await supabase
+        .from('tasks')
+        .select(`
+          *,
+          profiles:assigned_to(id, email, first_name, last_name)
+        `, { count: 'exact' })
+        .eq('project_id', id)
+        .order('board_position', { ascending: true })
+        .range(from, to);
+
+      if (error) throw error;
+      const page = data || [];
+      setTasks(prev => [...prev, ...page]);
+      setHasMoreTasks(page.length === TASKS_PAGE_SIZE);
+      if (count !== null) setTotalTasks(count);
+    } catch (error: any) {
+      console.error('Error loading more tasks:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const loadTasks = async () => {
     if (!id) return;
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      // After CRUD, reload up to the current loaded amount (or first page)
+      const limit = Math.max(tasks.length, TASKS_PAGE_SIZE);
+      const { data, error, count } = await supabase
         .from('tasks')
         .select(`
           *,
           profiles:assigned_to(id, email, first_name, last_name)
-        `)
+        `, { count: 'exact' })
         .eq('project_id', id)
-        .order('board_position', { ascending: true });
+        .order('board_position', { ascending: true })
+        .range(0, limit - 1);
 
       if (error) throw error;
-      setTasks(data || []);
+      const all = data || [];
+      setTasks(all);
+      setHasMoreTasks(count !== null ? all.length < count : all.length === limit);
+      if (count !== null) setTotalTasks(count);
     } catch (error: any) {
       console.error('Error loading tasks:', error);
       showToast('Fehler beim Laden der Aufgaben', 'error');
@@ -1304,6 +1351,16 @@ export function ProjectTasks() {
         {viewMode === 'kanban' && renderKanbanView()}
         {viewMode === 'list' && renderListView()}
         {viewMode === 'calendar' && renderCalendarView()}
+
+        {/* Load More */}
+        <LoadMoreButton
+          onLoadMore={loadMoreTasks}
+          loading={loadingMore}
+          hasMore={hasMoreTasks}
+          loadedCount={tasks.length}
+          totalCount={totalTasks}
+          label="Mehr Aufgaben laden"
+        />
       </View>
 
       {/* Create/Edit Task Modal */}
