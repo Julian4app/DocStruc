@@ -36,7 +36,7 @@ export class TeamService {
   static async getMyTeam(): Promise<Team | null> {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('team_id, teams(*)')
+      .select('team_id, teams(id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at)')
       .eq('id', (await supabase.auth.getUser()).data.user?.id!)
       .single();
 
@@ -293,7 +293,7 @@ export class TeamService {
   static async getProjectTeams(projectId: string): Promise<Team[]> {
     const { data, error } = await supabase
       .from('team_project_access')
-      .select('team_id, teams(*)')
+      .select('team_id, teams(id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at)')
       .eq('project_id', projectId);
 
     if (error) throw error;

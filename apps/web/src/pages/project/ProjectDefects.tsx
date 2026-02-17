@@ -132,7 +132,8 @@ export function ProjectDefects() {
         .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
         .eq('project_id', id)
         .eq('task_type', 'defect')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (error) throw error;
       

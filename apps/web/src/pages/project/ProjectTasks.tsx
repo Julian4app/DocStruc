@@ -176,11 +176,12 @@ export function ProjectTasks() {
       const { data, error } = await supabase
         .from('tasks')
         .select(`
-          *,
+          id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority, board_position,
           profiles:assigned_to(id, email, first_name, last_name)
         `)
         .eq('project_id', id)
-        .order('board_position', { ascending: true });
+        .order('board_position', { ascending: true })
+        .limit(500);
 
       if (error) throw error;
       setTasks(data || []);
@@ -226,7 +227,7 @@ export function ProjectTasks() {
       const { data: docs } = await supabase
         .from('task_documentation')
         .select(`
-          *,
+          id, task_id, user_id, documentation_type, content, file_name, storage_path, file_size, mime_type, created_at,
           user:user_id(email, first_name, last_name)
         `)
         .eq('task_id', taskId)

@@ -86,7 +86,7 @@ export function Accessors() {
 
     let query;
     if (activeTab === 'subcontractors') {
-      query = supabase.from('subcontractors').select('*, contacts:subcontractor_contacts(*)');
+      query = supabase.from('subcontractors').select('id, company_name, name, first_name, last_name, phone, notes, detailed_address, profile_picture_url, trade, street, zip, city, country, website, logo_url, created_at, contacts:subcontractor_contacts(id, first_name, last_name, email, phone, department)');
     } else if (activeTab === 'employees') {
       query = supabase.from('crm_contacts').select('id, type, first_name, last_name, email, phone, avatar_url, personal_number, detailed_address, notes, linked_user_id, created_at, updated_at').eq('type', 'employee');
     } else {

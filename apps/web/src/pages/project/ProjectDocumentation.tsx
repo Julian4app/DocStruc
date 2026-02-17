@@ -94,7 +94,8 @@ export function ProjectDocumentation() {
           tasks!inner(title, task_type, status, assigned_to, due_date, priority)
         `)
         .eq('project_id', id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (error) throw error;
 
@@ -168,7 +169,7 @@ export function ProjectDocumentation() {
 
       const { data: members } = await supabase
         .from('project_members')
-        .select('*, profiles(name)')
+        .select('id, project_id, user_id, role, status, profiles(first_name, last_name, email)')
         .eq('project_id', id);
       setProjectMembers(members || []);
     } catch (error) {

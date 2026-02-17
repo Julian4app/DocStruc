@@ -254,8 +254,8 @@ export function ProjectParticipants() {
       const { data: membersData, error: membersError } = await supabase
         .from('project_members')
         .select(`
-          *,
-          accessor:user_accessors(*),
+          id, project_id, user_id, role, invited_at, joined_at, status, role_id, accessor_id,
+          accessor:user_accessors(id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type),
           role:roles(id, role_name, role_description)
         `)
         .eq('project_id', projectId);

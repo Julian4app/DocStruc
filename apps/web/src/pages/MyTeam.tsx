@@ -318,7 +318,7 @@ export function MyTeam() {
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
         .select(`
-          *,
+          id, user_id, role_name, role_description, is_system_role, is_active, created_at, updated_at,
           role_permissions (
             module_key,
             can_view,
