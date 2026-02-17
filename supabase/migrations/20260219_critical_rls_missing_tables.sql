@@ -24,13 +24,10 @@ CREATE POLICY "projects_select_policy" ON public.projects
 CREATE POLICY "projects_insert_policy" ON public.projects
   FOR INSERT WITH CHECK (auth.uid() = owner_id);
 
--- Owner and admins can update
+-- Owner can update
 CREATE POLICY "projects_update_policy" ON public.projects
   FOR UPDATE USING (
     auth.uid() = owner_id
-    OR auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = id AND role IN ('admin', 'owner')
-    )
   );
 
 -- Only owner can delete
@@ -58,22 +55,22 @@ CREATE POLICY "tasks_insert_policy" ON public.tasks
     )
   );
 
--- Creator or assigned user or admin can update
+-- Creator or assigned user or project owner can update
 CREATE POLICY "tasks_update_policy" ON public.tasks
   FOR UPDATE USING (
     auth.uid() = creator_id
     OR auth.uid() = assigned_to
     OR auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = tasks.project_id AND role IN ('admin', 'owner')
+      SELECT owner_id FROM projects WHERE id = tasks.project_id
     )
   );
 
--- Creator or admin can delete
+-- Creator or project owner can delete
 CREATE POLICY "tasks_delete_policy" ON public.tasks
   FOR DELETE USING (
     auth.uid() = creator_id
     OR auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = tasks.project_id AND role IN ('admin', 'owner')
+      SELECT owner_id FROM projects WHERE id = tasks.project_id
     )
   );
 
@@ -91,13 +88,10 @@ CREATE POLICY "project_members_select_policy" ON public.project_members
     )
   );
 
--- Project owner/admin can manage members
+-- Project owner can manage members
 CREATE POLICY "project_members_insert_policy" ON public.project_members
   FOR INSERT WITH CHECK (
     auth.uid() IN (
-      SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
-    )
-    OR auth.uid() IN (
       SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
   );
@@ -105,9 +99,6 @@ CREATE POLICY "project_members_insert_policy" ON public.project_members
 CREATE POLICY "project_members_update_policy" ON public.project_members
   FOR UPDATE USING (
     auth.uid() IN (
-      SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
-    )
-    OR auth.uid() IN (
       SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
   );
@@ -115,9 +106,6 @@ CREATE POLICY "project_members_update_policy" ON public.project_members
 CREATE POLICY "project_members_delete_policy" ON public.project_members
   FOR DELETE USING (
     auth.uid() = user_id  -- Can remove yourself
-    OR auth.uid() IN (
-      SELECT user_id FROM project_members pm2 WHERE pm2.project_id = project_members.project_id AND pm2.role IN ('admin', 'owner')
-    )
     OR auth.uid() IN (
       SELECT owner_id FROM projects WHERE id = project_members.project_id
     )
@@ -171,21 +159,21 @@ CREATE POLICY "invoices_select_policy" ON public.invoices
 CREATE POLICY "invoices_insert_policy" ON public.invoices
   FOR INSERT WITH CHECK (
     auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = invoices.project_id AND role IN ('admin', 'owner')
+      SELECT owner_id FROM projects WHERE id = invoices.project_id
     )
   );
 
 CREATE POLICY "invoices_update_policy" ON public.invoices
   FOR UPDATE USING (
     auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = invoices.project_id AND role IN ('admin', 'owner')
+      SELECT owner_id FROM projects WHERE id = invoices.project_id
     )
   );
 
 CREATE POLICY "invoices_delete_policy" ON public.invoices
   FOR DELETE USING (
     auth.uid() IN (
-      SELECT user_id FROM project_members WHERE project_id = invoices.project_id AND role IN ('admin', 'owner')
+      SELECT owner_id FROM projects WHERE id = invoices.project_id
     )
   );
 
