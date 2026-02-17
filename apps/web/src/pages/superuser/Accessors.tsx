@@ -222,7 +222,9 @@ export function Accessors() {
   };  const handleDelete = async (id: string) => {
       if (!confirm('Are you sure you want to delete this entry?')) return;
       
+      const ALLOWED_TABLES = ['subcontractors', 'crm_contacts'] as const;
       const table = activeTab === 'subcontractors' ? 'subcontractors' : 'crm_contacts';
+      if (!ALLOWED_TABLES.includes(table)) return;
       const { error } = await supabase.from(table).delete().eq('id', id);
       
       if (error) {

@@ -950,32 +950,56 @@ export function ProjectObjektplan() {
     if (!projectId) return;
     setLoading(true);
     try {
-      const { data: scData, error: scError } = await supabase.from('building_staircases').select('*').eq('project_id', projectId).order('order', { ascending: true });
+      // Single nested query replaces N+1 waterfall (was 200+ sequential queries)
+      const { data: scData, error: scError } = await supabase
+        .from('building_staircases')
+        .select(`
+          id, name, "order",
+          building_floors (
+            id, name, level, staircase_id,
+            building_apartments (
+              id, name, floor_id, project_id, floor_plan_data, technical_plan_data,
+              building_attachments ( id, name, url, type, size, uploaded_at )
+            )
+          )
+        `)
+        .eq('project_id', projectId)
+        .order('order', { ascending: true });
       if (scError) throw scError;
-      const staircasesWithFloors: Staircase[] = [];
-      for (const sc of (scData || [])) {
-        const { data: flData } = await supabase.from('building_floors').select('*').eq('staircase_id', sc.id).order('level', { ascending: true });
-        const floorsWithApts: Floor[] = [];
-        for (const fl of (flData || [])) {
-          const { data: aptData } = await supabase.from('building_apartments').select('*').eq('floor_id', fl.id).order('name', { ascending: true });
-          const apartments: Apartment[] = [];
-          for (const apt of (aptData || [])) {
-            const { data: attData } = await supabase.from('building_attachments').select('*').eq('apartment_id', apt.id).order('uploaded_at', { ascending: false });
-            apartments.push({ ...apt, attachments: attData || [] });
-          }
-          floorsWithApts.push({ ...fl, apartments });
-        }
-        staircasesWithFloors.push({ ...sc, floors: floorsWithApts });
-      }
+
+      const staircasesWithFloors: Staircase[] = (scData || []).map((sc: any) => ({
+        ...sc,
+        floors: (sc.building_floors || [])
+          .sort((a: any, b: any) => a.level - b.level)
+          .map((fl: any) => ({
+            ...fl,
+            apartments: (fl.building_apartments || [])
+              .sort((a: any, b: any) => a.name.localeCompare(b.name))
+              .map((apt: any) => ({
+                ...apt,
+                attachments: (apt.building_attachments || [])
+                  .sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()),
+              })),
+          })),
+      }));
       setStaircases(staircasesWithFloors);
 
-      // Standalone apartments
-      const { data: saData } = await supabase.from('building_apartments').select('*').eq('project_id', projectId).is('floor_id', null).order('name', { ascending: true });
-      const standaloneApts: Apartment[] = [];
-      for (const apt of (saData || [])) {
-        const { data: attData } = await supabase.from('building_attachments').select('*').eq('apartment_id', apt.id).order('uploaded_at', { ascending: false });
-        standaloneApts.push({ ...apt, attachments: attData || [] });
-      }
+      // Standalone apartments (single query with nested attachments)
+      const { data: saData } = await supabase
+        .from('building_apartments')
+        .select(`
+          id, name, floor_id, project_id, floor_plan_data, technical_plan_data,
+          building_attachments ( id, name, url, type, size, uploaded_at )
+        `)
+        .eq('project_id', projectId)
+        .is('floor_id', null)
+        .order('name', { ascending: true });
+
+      const standaloneApts: Apartment[] = (saData || []).map((apt: any) => ({
+        ...apt,
+        attachments: (apt.building_attachments || [])
+          .sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()),
+      }));
       setStandaloneApartments(standaloneApts);
     } catch (error) { console.error('Error loading building data:', error); } finally { setLoading(false); }
   };

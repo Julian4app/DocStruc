@@ -20,4 +20,16 @@ export default defineConfig({
       '@docstruc/theme': path.resolve(__dirname, '../../packages/theme/src/index.ts'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-query': ['@tanstack/react-query', '@tanstack/react-query-persist-client', '@tanstack/query-sync-storage-persister'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
 })

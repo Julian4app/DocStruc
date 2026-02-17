@@ -1,36 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginForm, RegisterData } from '@docstruc/ui';
 import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { colors } from '@docstruc/theme';
 import { View, ActivityIndicator, Text } from 'react-native';
-import { Dashboard } from './pages/Dashboard';
-import { ProjectDetail } from './pages/ProjectDetail';
-import { Accessors } from './pages/Accessors';
-import { MyTeam } from './pages/MyTeam';
-import { ManageProjects } from './pages/superuser/ManageProjects';
-import { ProjectManagementDetail } from './pages/superuser/ProjectManagementDetail';
-import { Profile } from './pages/Profile';
-import { Settings } from './pages/Settings';
-import { Datenschutz } from './pages/Datenschutz';
-import { Impressum } from './pages/Impressum';
-import { Feedback } from './pages/Feedback';
-import { Help } from './pages/Help';
-import { AcceptInvitation } from './pages/AcceptInvitation';
-import { ProjectDashboard } from './pages/project/ProjectDashboard';
-import { ProjectTasks } from './pages/project/ProjectTasks';
-import { ProjectGeneralInfo } from './pages/project/ProjectGeneralInfo';
-import { ProjectDefects } from './pages/project/ProjectDefects';
-import { ProjectSchedule } from './pages/project/ProjectSchedule';
-import { ProjectObjektplan } from './pages/project/ProjectObjektplan';
-import { ProjectDocumentation } from './pages/project/ProjectDocumentation';
-import { ProjectFiles } from './pages/project/ProjectFiles';
-import { ProjectDiary } from './pages/project/ProjectDiary';
-import { ProjectCommunication } from './pages/project/ProjectCommunication';
-import { ProjectParticipants } from './pages/project/ProjectParticipants';
-import { ProjectReports } from './pages/project/ProjectReports';
-import { ProjectActivity } from './pages/project/ProjectActivity';
+
+// ─── Lazy-loaded page components (code splitting) ──────────────────────────
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
+const Accessors = lazy(() => import('./pages/Accessors').then(m => ({ default: m.Accessors })));
+const MyTeam = lazy(() => import('./pages/MyTeam').then(m => ({ default: m.MyTeam })));
+const ManageProjects = lazy(() => import('./pages/superuser/ManageProjects').then(m => ({ default: m.ManageProjects })));
+const ProjectManagementDetail = lazy(() => import('./pages/superuser/ProjectManagementDetail').then(m => ({ default: m.ProjectManagementDetail })));
+const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Datenschutz = lazy(() => import('./pages/Datenschutz').then(m => ({ default: m.Datenschutz })));
+const Impressum = lazy(() => import('./pages/Impressum').then(m => ({ default: m.Impressum })));
+const Feedback = lazy(() => import('./pages/Feedback').then(m => ({ default: m.Feedback })));
+const Help = lazy(() => import('./pages/Help').then(m => ({ default: m.Help })));
+const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })));
+const ProjectDashboard = lazy(() => import('./pages/project/ProjectDashboard').then(m => ({ default: m.ProjectDashboard })));
+const ProjectTasks = lazy(() => import('./pages/project/ProjectTasks').then(m => ({ default: m.ProjectTasks })));
+const ProjectGeneralInfo = lazy(() => import('./pages/project/ProjectGeneralInfo').then(m => ({ default: m.ProjectGeneralInfo })));
+const ProjectDefects = lazy(() => import('./pages/project/ProjectDefects').then(m => ({ default: m.ProjectDefects })));
+const ProjectSchedule = lazy(() => import('./pages/project/ProjectSchedule').then(m => ({ default: m.ProjectSchedule })));
+const ProjectObjektplan = lazy(() => import('./pages/project/ProjectObjektplan').then(m => ({ default: m.ProjectObjektplan })));
+const ProjectDocumentation = lazy(() => import('./pages/project/ProjectDocumentation').then(m => ({ default: m.ProjectDocumentation })));
+const ProjectFiles = lazy(() => import('./pages/project/ProjectFiles').then(m => ({ default: m.ProjectFiles })));
+const ProjectDiary = lazy(() => import('./pages/project/ProjectDiary').then(m => ({ default: m.ProjectDiary })));
+const ProjectCommunication = lazy(() => import('./pages/project/ProjectCommunication').then(m => ({ default: m.ProjectCommunication })));
+const ProjectParticipants = lazy(() => import('./pages/project/ProjectParticipants').then(m => ({ default: m.ProjectParticipants })));
+const ProjectReports = lazy(() => import('./pages/project/ProjectReports').then(m => ({ default: m.ProjectReports })));
+const ProjectActivity = lazy(() => import('./pages/project/ProjectActivity').then(m => ({ default: m.ProjectActivity })));
 
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -157,6 +159,11 @@ function App() {
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
       <ToastProvider>
         <BrowserRouter>
+          <Suspense fallback={
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%', backgroundColor: colors.background }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          }>
           <Routes>
             <Route path="/login" element={
               !session ? (
@@ -198,6 +205,7 @@ function App() {
 
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </ToastProvider>
     </PersistQueryClientProvider>

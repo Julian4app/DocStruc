@@ -707,22 +707,23 @@ export function ProjectParticipants() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Upsert all content defaults
-      for (const cd of contentDefaults) {
-        const { error } = await supabase
-          .from('project_content_defaults')
-          .upsert({
-            project_id: projectId,
-            module_key: cd.module_key,
-            default_visibility: cd.default_visibility,
-            updated_by: user.id,
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'project_id,module_key'
-          });
+      // Batch upsert all content defaults in a single query
+      const now = new Date().toISOString();
+      const upsertPayload = contentDefaults.map(cd => ({
+        project_id: projectId,
+        module_key: cd.module_key,
+        default_visibility: cd.default_visibility,
+        updated_by: user.id,
+        updated_at: now,
+      }));
 
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from('project_content_defaults')
+        .upsert(upsertPayload, {
+          onConflict: 'project_id,module_key'
+        });
+
+      if (error) throw error;
 
       showToast('Freigabe-Einstellungen gespeichert', 'success');
       await loadContentDefaults();
