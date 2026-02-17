@@ -10,7 +10,7 @@ import { MapDisplay } from '../../components/MapDisplay';
 import { VoiceRecorder, VoicePlayer } from '../../components/VoicePlayer';
 import { useToast } from '../../components/ToastProvider';
 import { Info, MapPin, Image as ImageIcon, Mic, Save, ExternalLink, Plus, Trash2, Edit2, Upload } from 'lucide-react';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import DOMPurify from 'dompurify';
 
 interface VoiceMessage {
@@ -61,11 +61,13 @@ interface Project {
 export function ProjectGeneralInfo() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
-  const permissions = usePermissions(id);
+  const permissions = useProjectPermissionContext();
+  // Use project from outlet context — already loaded by ProjectDetail, no extra query needed
+  const ctxProject = (permissions as any).project;
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [project, setProject] = useState<Project | null>(null);
+  const [project, setProject] = useState<Project | null>(ctxProject || null);
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
   const [images, setImages] = useState<ProjectInfoImage[]>([]);
   const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
@@ -109,14 +111,17 @@ export function ProjectGeneralInfo() {
     setLoading(true);
 
     try {
-      // Load project basic info
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (projectError) throw projectError;
+      // Use project from context if available, otherwise fetch (fallback)
+      let projectData = ctxProject;
+      if (!projectData) {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (error) throw error;
+        projectData = data;
+      }
       setProject(projectData);
 
       // Load or create project_info

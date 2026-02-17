@@ -65,24 +65,11 @@ function App() {
   const [loginLockUntil, setLoginLockUntil] = useState<number | null>(null);
 
   useEffect(() => {
-    console.log('App mounting, checking session...');
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('Error getting session:', error);
-        setAuthError(error.message);
-      } else {
-        console.log('Session retrieved:', data.session ? 'Found' : 'None');
-        setSession(data.session);
-      }
-    }).catch(err => {
-      console.error('Unexpected error getting session:', err);
-      setAuthError(err.message || 'Unknown error');
-    }).finally(() => {
-      setLoading(false);
-    });
-
+    // Use onAuthStateChange as the SINGLE source of truth.
+    // It fires an INITIAL_SESSION event synchronously from the local storage cache
+    // before any network request, so the app unblocks immediately.
+    // This avoids the duplicate getSession() call that AuthContext also performs.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event);
       setSession(session);
       setLoading(false);
     });

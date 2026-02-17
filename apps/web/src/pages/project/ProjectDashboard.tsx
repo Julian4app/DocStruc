@@ -5,7 +5,7 @@ import { Card } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { CheckCircle, Clock, AlertTriangle, TrendingUp, AlertCircle, Calendar, Flag, ArrowRight } from 'lucide-react';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface DashboardStats {
@@ -49,7 +49,7 @@ interface Milestone {
 export function ProjectDashboard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const permissions = usePermissions(id);
+  const permissions = useProjectPermissionContext();
   const { userId, profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
@@ -81,20 +81,22 @@ export function ProjectDashboard() {
       const todayStr = now.toISOString().split('T')[0];
       const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      // Parallelize ALL independent queries in a single batch
-      const [projectResult, tasksResult, milestonesResult, eventsResult] = await Promise.all([
-        // Load project info
-        supabase
-          .from('projects')
-          .select('status, status_date')
-          .eq('id', id)
-          .single(),
-        // Load all tasks (needed for stats + recent tasks)
+      // Use project from outlet context (already loaded by ProjectDetail) — skip duplicate query
+      const ctxProject = (permissions as any).project;
+      if (ctxProject) {
+        setProjectStatus(ctxProject.status || 'active');
+        setStatusDate(ctxProject.status_date || null);
+      }
+
+      // Parallelize remaining independent queries in a single batch
+      const [tasksResult, milestonesResult, eventsResult] = await Promise.all([
+        // Load tasks (needed for stats + recent tasks)
         supabase
           .from('tasks')
-          .select('*')
+          .select('id, title, status, task_type, priority, created_at, created_by, assigned_to')
           .eq('project_id', id)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .limit(500),
         // Load upcoming milestones
         supabase
           .from('timeline_events')
@@ -114,12 +116,6 @@ export function ProjectDashboard() {
           .order('start_date', { ascending: true })
           .limit(5),
       ]);
-
-      // Process project data
-      if (!projectResult.error && projectResult.data) {
-        setProjectStatus(projectResult.data.status || 'active');
-        setStatusDate(projectResult.data.status_date);
-      }
 
       // Process tasks
       const allTasks = tasksResult.data || [];

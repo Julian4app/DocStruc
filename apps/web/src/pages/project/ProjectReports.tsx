@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
@@ -31,6 +32,7 @@ interface ExportOptions {
 export function ProjectReports() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const permCtx = useProjectPermissionContext();
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -60,6 +62,12 @@ export function ProjectReports() {
   const loadProjectData = async () => {
     if (!id) return;
     try {
+      // Use project from outlet context if available — skip duplicate query
+      const ctxProject = (permCtx as any)?.project;
+      if (ctxProject) {
+        setProjectData(ctxProject);
+        return;
+      }
       const { data, error } = await supabase
         .from('projects')
         .select('*')

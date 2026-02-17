@@ -73,14 +73,10 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
         const _isSuperuser = authIsSuperuser;
         const _userTeamId = profile?.team_id || null;
 
-        // Parallelize all independent queries in a single round-trip batch
-        const [projectResult, defaultsResult, membersResult] = await Promise.all([
-          // Check if project owner
-          supabase
-            .from('projects')
-            .select('owner_id')
-            .eq('id', projectId)
-            .single(),
+        // Only need 2 queries: content_defaults + project_members
+        // Project ownership is already resolved by ProjectDetail/usePermissions context
+        // so we do a lightweight ownership check with the members query instead
+        const [defaultsResult, membersResult] = await Promise.all([
           // Load the content default for this module
           supabase
             .from('project_content_defaults')
@@ -88,37 +84,51 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
             .eq('project_id', projectId)
             .eq('module_key', moduleKey)
             .maybeSingle(),
-          // Load team mapping for all project members
+          // Load membership + ownership in one go
           supabase
             .from('project_members')
             .select('user_id, member_team_id')
             .eq('project_id', projectId),
         ]);
 
-        const _isProjectOwner = projectResult.data?.owner_id === userId;
-        setIsProjectOwner(_isProjectOwner);
-
         const _defaultVisibility = (defaultsResult.data?.default_visibility as VisibilityLevel) || 'all_participants';
         setDefaultVisibility(_defaultVisibility);
 
-        // Build team map — load profile team_ids for members who lack member_team_id
+        // Quick ownership check — fetch project owner_id only if needed
+        // (for 'all_participants' with owner/superuser, we skip this entirely)
+        let _isProjectOwner = false;
+        if (!_isSuperuser) {
+          const { data: proj } = await supabase
+            .from('projects')
+            .select('owner_id')
+            .eq('id', projectId)
+            .single();
+          _isProjectOwner = proj?.owner_id === userId;
+        }
+        setIsProjectOwner(_isProjectOwner || _isSuperuser);
+
+        // Build team map only when needed (team_only visibility)
         const members = membersResult.data || [];
-        const memberIds = members.map(m => m.user_id);
+        let newMap = new Map<string, string | null>();
 
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, team_id')
-          .in('id', memberIds.length > 0 ? memberIds : ['__none__']);
+        if (_defaultVisibility === 'team_only' && !_isSuperuser && !_isProjectOwner) {
+          // Only load profile team_ids when we actually need team filtering
+          const memberIds = members.map(m => m.user_id);
+          const { data: profilesData } = memberIds.length > 0
+            ? await supabase.from('profiles').select('id, team_id').in('id', memberIds)
+            : { data: [] };
 
-        const profileTeamMap = new Map((profiles || []).map(p => [p.id, p.team_id]));
-        const newMap = new Map<string, string | null>();
-        for (const m of members) {
-          newMap.set(m.user_id, m.member_team_id || profileTeamMap.get(m.user_id) || null);
+          const profileTeamMap = new Map((profilesData || []).map(p => [p.id, p.team_id]));
+          for (const m of members) {
+            newMap.set(m.user_id, m.member_team_id || profileTeamMap.get(m.user_id) || null);
+          }
+        } else {
+          // Lightweight map — just user_ids without team lookups
+          for (const m of members) {
+            newMap.set(m.user_id, m.member_team_id || null);
+          }
         }
-        // Also include the project owner
-        if (projectResult.data?.owner_id && !newMap.has(projectResult.data.owner_id)) {
-          newMap.set(projectResult.data.owner_id, profileTeamMap.get(projectResult.data.owner_id) || null);
-        }
+
         setMemberTeamMap(newMap);
 
         // Write all loaded values into the ref so filterVisibleItems can read them immediately
@@ -127,7 +137,7 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
           currentUserId: userId,
           userTeamId: _userTeamId,
           isSuperuser: _isSuperuser,
-          isProjectOwner: _isProjectOwner,
+          isProjectOwner: _isProjectOwner || _isSuperuser,
           memberTeamMap: newMap,
         };
       } catch (error) {
@@ -212,22 +222,12 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     if (!projectId || items.length === 0) return items;
 
     // Wait until the hook has finished loading all visibility data
-    // Add a timeout to prevent infinite waiting if something goes wrong
-    const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+    // Short timeout to prevent blocking — most projects use 'all_participants' anyway
+    const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
     await Promise.race([readyPromiseRef.current, timeoutPromise]);
 
     // Read from the ref for guaranteed-fresh values (React state may not have re-rendered yet)
     const d = dataRef.current;
-
-    console.log(`[ContentVisibility] filterVisibleItems for "${moduleKey}":`, {
-      itemCount: items.length,
-      defaultVisibility: d.defaultVisibility,
-      currentUserId: d.currentUserId,
-      isProjectOwner: d.isProjectOwner,
-      isSuperuser: d.isSuperuser,
-      userTeamId: d.userTeamId,
-      memberTeamMapSize: d.memberTeamMap.size,
-    });
 
     if (!d.currentUserId) return items;
     if (d.isProjectOwner || d.isSuperuser) return items;

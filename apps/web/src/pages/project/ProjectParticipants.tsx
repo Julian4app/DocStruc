@@ -66,6 +66,7 @@ export function ProjectParticipants() {
   const { id: projectId } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const { userId, profile, isSuperuser, isTeamAdmin } = useAuth();
+  const outletCtx = useOutletContext<any>();
   const [loading, setLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
   const [hasTeamAccess, setHasTeamAccess] = useState(false);
@@ -113,14 +114,18 @@ export function ProjectParticipants() {
     try {
       if (!userId) return;
 
-      // Check if user is project owner (single query — profile from AuthContext)
-      const { data: project } = await supabase
-        .from('projects')
-        .select('owner_id')
-        .eq('id', projectId)
-        .single();
-
-      setIsProjectOwner(project?.owner_id === userId);
+      // Use project from outlet context if available — skip duplicate query
+      if (outletCtx?.project?.owner_id) {
+        setIsProjectOwner(outletCtx.project.owner_id === userId);
+      } else {
+        // Fallback: Check if user is project owner
+        const { data: project } = await supabase
+          .from('projects')
+          .select('owner_id')
+          .eq('id', projectId)
+          .single();
+        setIsProjectOwner(project?.owner_id === userId);
+      }
       
       const userTeamId = profile?.team_id || null;
 
@@ -177,7 +182,7 @@ export function ProjectParticipants() {
       }
 
       // Load Freigaben (content defaults) for superuser/owner
-      if (isSuperuser || project?.owner_id === userId) {
+      if (isSuperuser || isProjectOwner) {
         await loadContentDefaults();
         await loadProjectTeams();
       }

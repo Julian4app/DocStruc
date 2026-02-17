@@ -115,16 +115,26 @@ export function ProjectSchedule() {
     setLoading(true);
 
     try {
-      // Load project dates
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('start_date, target_end_date')
-        .eq('id', id)
-        .single();
-      
-      if (!projectError && projectData) {
-        setProjectStartDate(projectData.start_date);
-        setProjectEndDate(projectData.target_end_date);
+      // Use project from outlet context if available — skip duplicate query
+      const ctxProject = (ctx as any)?.project;
+      let _targetEndDate: string | null = null;
+      if (ctxProject) {
+        setProjectStartDate(ctxProject.start_date || null);
+        setProjectEndDate(ctxProject.target_end_date || null);
+        _targetEndDate = ctxProject.target_end_date || null;
+      } else {
+        // Fallback: load project dates
+        const { data: projectData, error: projectError } = await supabase
+          .from('projects')
+          .select('start_date, target_end_date')
+          .eq('id', id)
+          .single();
+        
+        if (!projectError && projectData) {
+          setProjectStartDate(projectData.start_date);
+          setProjectEndDate(projectData.target_end_date);
+          _targetEndDate = projectData.target_end_date;
+        }
       }
 
       // Load milestones/timeline events
@@ -141,7 +151,7 @@ export function ProjectSchedule() {
       setMilestones(visibleMilestones);
 
       // Calculate schedule status
-      calculateScheduleStatus(visibleMilestones, projectData?.target_end_date);
+      calculateScheduleStatus(visibleMilestones, _targetEndDate);
 
       // Load milestones with linked tasks/defects for timeline view
       await loadMilestonesWithLinkedItems(visibleMilestones);

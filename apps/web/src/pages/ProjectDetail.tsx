@@ -110,7 +110,9 @@ export function ProjectDetail() {
     return () => {setActions(null);setSubtitle('');};
   }, [setActions, setSubtitle]);
 
-  if (loading || permissionsLoading) {
+  // Only block if project itself hasn't loaded yet — let children mount and start their own data fetching
+  // while permissions are still loading (they check permissionsLoading themselves)
+  if (loading && !project) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -120,7 +122,7 @@ export function ProjectDetail() {
 
   if (!project) return null;
 
-  return <Outlet context={{ permissions, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete, permissionsLoading }} />;
+  return <Outlet context={{ permissions, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete, permissionsLoading, project }} />;
 }
 
 const styles = StyleSheet.create({
