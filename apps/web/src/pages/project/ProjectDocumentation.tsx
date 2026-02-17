@@ -91,7 +91,7 @@ export function ProjectDocumentation() {
           storage_path,
           file_name,
           user_id,
-          tasks!inner(title, task_type, status, assigned_to, due_date, priority)
+          tasks(title, task_type, status, assigned_to, due_date, priority)
         `)
         .eq('project_id', id)
         .order('created_at', { ascending: false });
@@ -116,18 +116,18 @@ export function ProjectDocumentation() {
       const transformed: DocumentationEntry[] = (data || []).map((entry: any) => ({
         id: entry.id,
         task_id: entry.task_id,
-        task_title: entry.tasks.title,
-        task_type: entry.tasks.task_type === 'defect' ? 'defect' : 'task',
+        task_title: entry.tasks?.title || 'Gelöschte Aufgabe',
+        task_type: entry.tasks?.task_type === 'defect' ? 'defect' : 'task',
         content: entry.content || '',
         documentation_type: entry.documentation_type,
         created_at: entry.created_at,
         user_name: profileMap.get(entry.user_id) || 'Unbekannt',
         storage_path: entry.storage_path,
         file_name: entry.file_name,
-        task_status: entry.tasks.status,
-        task_assigned_to: entry.tasks.assigned_to,
-        task_due_date: entry.tasks.due_date,
-        task_priority: entry.tasks.priority
+        task_status: entry.tasks?.status,
+        task_assigned_to: entry.tasks?.assigned_to,
+        task_due_date: entry.tasks?.due_date,
+        task_priority: entry.tasks?.priority
       }));
 
       // Apply visibility filtering
