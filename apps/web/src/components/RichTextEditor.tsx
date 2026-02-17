@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from 'react-native';
 import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Heading1, Heading2, Heading3, Strikethrough, Link, ChevronDown } from 'lucide-react';
 import { colors } from '@docstruc/theme';
+import DOMPurify from 'dompurify';
 
 interface RichTextEditorProps {
   value: string;
@@ -21,13 +22,13 @@ export function RichTextEditor({ value, onChange, placeholder = '', disabled }: 
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value || '';
+      editorRef.current.innerHTML = DOMPurify.sanitize(value || '', { ALLOWED_TAGS: ['b', 'i', 'u', 'em', 'strong', 's', 'strike', 'a', 'p', 'br', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'font', 'blockquote'], ALLOWED_ATTR: ['href', 'target', 'style', 'color', 'face', 'size', 'class'] });
     }
   }, [value]);
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+      onChange(DOMPurify.sanitize(editorRef.current.innerHTML, { ALLOWED_TAGS: ['b', 'i', 'u', 'em', 'strong', 's', 'strike', 'a', 'p', 'br', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'font', 'blockquote'], ALLOWED_ATTR: ['href', 'target', 'style', 'color', 'face', 'size', 'class'] }));
     }
   }, [onChange]);
 

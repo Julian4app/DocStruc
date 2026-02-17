@@ -12,6 +12,27 @@ interface ImageUploaderProps {
     single?: boolean;
 }
 
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+function validateImageFile(file: File): string | null {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        return `Dateityp "${file.type}" nicht erlaubt. Erlaubt: JPEG, PNG, GIF, WebP, SVG`;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+        return `Datei "${file.name}" ist zu groß (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum: 10 MB`;
+    }
+    return null;
+}
+
+function sanitizeFilename(name: string): string {
+    return name
+        .replace(/[\/\\:*?"<>|]/g, '_')
+        .replace(/\.\./g, '_')
+        .replace(/^\./, '_')
+        .substring(0, 255);
+}
+
 export function ImageUploader({ value = [], onChange, bucketName = 'project-images', label = "Upload Images", single = false }: ImageUploaderProps) {
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,8 +46,12 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
             
             for (let i = 0; i < event.target.files.length; i++) {
                 const file = event.target.files[i];
-                // Keep original filename
-                const fileName = file.name;
+                const validationError = validateImageFile(file);
+                if (validationError) {
+                    console.error(validationError);
+                    continue;
+                }
+                const fileName = sanitizeFilename(file.name);
                 const filePath = `${Date.now()}-${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
@@ -76,8 +101,12 @@ export function ImageUploader({ value = [], onChange, bucketName = 'project-imag
                  const newUrls: string[] = [];
                  for (let i = 0; i < files.length; i++) {
                      const file = files[i];
-                     // Keep original filename
-                     const fileName = file.name;
+                     const validationError = validateImageFile(file);
+                     if (validationError) {
+                         console.error(validationError);
+                         continue;
+                     }
+                     const fileName = sanitizeFilename(file.name);
                      const filePath = `${Date.now()}-${fileName}`;
                      const { error } = await supabase.storage.from(bucketName).upload(filePath, file);
                      if (error) throw error;

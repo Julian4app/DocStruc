@@ -58,6 +58,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [loginLockUntil, setLoginLockUntil] = useState<number | null>(null);
 
   useEffect(() => {
     console.log('App mounting, checking session...');
@@ -86,11 +88,34 @@ function App() {
   }, []);
 
   const handleLogin = async (email: string, pass: string) => {
+    // Client-side rate limiting: max 5 attempts, then 60s lockout
+    if (loginLockUntil && Date.now() < loginLockUntil) {
+      const remainingSec = Math.ceil((loginLockUntil - Date.now()) / 1000);
+      setAuthError(`Zu viele Login-Versuche. Bitte warten Sie ${remainingSec} Sekunden.`);
+      return;
+    }
+    if (loginLockUntil && Date.now() >= loginLockUntil) {
+      setLoginAttempts(0);
+      setLoginLockUntil(null);
+    }
+
     setLoading(true);
     setAuthError(null);
     setAuthSuccess(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) setAuthError(error.message);
+    if (error) {
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= 5) {
+        setLoginLockUntil(Date.now() + 60_000);
+        setAuthError('Zu viele fehlgeschlagene Login-Versuche. Bitte warten Sie 60 Sekunden.');
+      } else {
+        setAuthError(error.message);
+      }
+    } else {
+      setLoginAttempts(0);
+      setLoginLockUntil(null);
+    }
     setLoading(false);
   };
 

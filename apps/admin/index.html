@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>DocStruc Admin</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/logo.svg" />
@@ -20,7 +23,15 @@
         div.style.top = '0';
         div.style.left = '0';
         div.style.width = '100%';
-        div.innerHTML = '<h3>Global Runtime Error</h3><p>' + message + '</p><p>Source: ' + source + ':' + lineno + '</p>';
+        var h3 = document.createElement('h3');
+        h3.textContent = 'Global Runtime Error';
+        var p1 = document.createElement('p');
+        p1.textContent = String(message);
+        var p2 = document.createElement('p');
+        p2.textContent = 'Source: ' + String(source) + ':' + String(lineno);
+        div.appendChild(h3);
+        div.appendChild(p1);
+        div.appendChild(p2);
         document.body.appendChild(div);
         console.error('Captured by global handler:', error);
       };
@@ -40,7 +51,7 @@
       }
       // Polyfill __DEV__
       if (typeof __DEV__ === 'undefined') {
-        window.__DEV__ = true;
+        window.__DEV__ = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       }
     </script>
   </head>
