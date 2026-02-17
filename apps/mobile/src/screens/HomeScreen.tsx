@@ -22,7 +22,7 @@ export function HomeScreen({ navigation }: Props) {
   const fetchProjects = async () => {
     const { data, error } = await supabase
       .from('projects')
-      .select('*')
+      .select('id, owner_id, name, status, created_at, picture_url, address')
       .order('created_at', { ascending: false });
     
     if (error) console.error(error);

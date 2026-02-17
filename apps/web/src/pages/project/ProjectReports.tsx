@@ -62,7 +62,7 @@ export function ProjectReports() {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date')
         .eq('id', id)
         .single();
       
@@ -153,7 +153,7 @@ export function ProjectReports() {
       supabase.from('project_members').select('*, profiles!project_members_user_id_fkey(first_name, last_name, email)').eq('project_id', id),
       supabase.from('diary_entries').select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)').eq('project_id', id).order('entry_date', { ascending: false }),
       supabase.from('project_messages').select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)').eq('project_id', id).eq('is_deleted', false).order('created_at', { ascending: false }),
-      supabase.from('timeline_events').select('*').eq('project_id', id).order('start_date', { ascending: true })
+      supabase.from('timeline_events').select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at').eq('project_id', id).order('start_date', { ascending: true })
     ]);
 
     return {
@@ -227,7 +227,7 @@ export function ProjectReports() {
   const fetchTimelineData = async () => {
     const { data, error } = await supabase
       .from('timeline_events')
-      .select('*')
+      .select('id, project_id, title, description, start_date, end_date, status, event_type, color, created_at')
       .eq('project_id', id)
       .order('start_date', { ascending: true });
     

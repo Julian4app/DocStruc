@@ -29,7 +29,7 @@ export default function SubscriptionTypes() {
       setLoading(true);
       const { data, error } = await supabase
         .from('subscription_types')
-        .select('*')
+        .select('id, title, price, currency, discount, features, description, created_at')
         .order('price');
       
       if (error) throw error;

@@ -50,9 +50,9 @@ export function ProjectCreateModal({ isOpen, onClose, onProjectCreated, userId }
 
     const fetchResources = async () => {
         const [empRes, ownRes, subRes] = await Promise.all([
-            supabase.from('crm_contacts').select('*').eq('type', 'employee'),
-            supabase.from('crm_contacts').select('*').eq('type', 'owner'),
-            supabase.from('subcontractors').select('*')
+            supabase.from('crm_contacts').select('id, type, first_name, last_name, email, phone, avatar_url, personal_number, detailed_address, notes, linked_user_id, created_at, updated_at').eq('type', 'employee'),
+            supabase.from('crm_contacts').select('id, type, first_name, last_name, email, phone, avatar_url, personal_number, detailed_address, notes, linked_user_id, created_at, updated_at').eq('type', 'owner'),
+            supabase.from('subcontractors').select('id, company_name, name, first_name, last_name, phone, notes, detailed_address, profile_picture_url, trade, street, zip, city, country, website, logo_url, created_at')
         ]);
         if (empRes.data) setEmployees(empRes.data);
         if (ownRes.data) setOwners(ownRes.data);

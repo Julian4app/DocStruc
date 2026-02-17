@@ -13,7 +13,7 @@ export const getProjectStructure = async (client: SupabaseClient, projectId: str
   // 1. Get Buildings
   const { data: buildings, error: buildingsError } = await client
     .from('buildings')
-    .select('*')
+    .select('id, project_id, name, created_at')
     .eq('project_id', projectId)
     .order('created_at');
 
@@ -26,7 +26,7 @@ export const getProjectStructure = async (client: SupabaseClient, projectId: str
 
   const { data: floors, error: floorsError } = await client
     .from('floors')
-    .select('*')
+    .select('id, building_id, name, level_index')
     .in('building_id', buildingIds)
     .order('level_index');
   
@@ -38,7 +38,7 @@ export const getProjectStructure = async (client: SupabaseClient, projectId: str
   if (floorIds.length > 0) {
     const { data: roomsData, error: roomsError } = await client
       .from('rooms')
-      .select('*')
+      .select('id, floor_id, name, type, area_sqm')
       .in('floor_id', floorIds)
       .order('name');
     
@@ -79,7 +79,7 @@ export const createRoom = async (client: SupabaseClient, floorId: string, name: 
 export const getRoomComponents = async (client: SupabaseClient, roomId: string): Promise<any[]> => {
   const { data, error } = await client
     .from('room_components')
-    .select('*')
+    .select('id, room_id, name, type, description, status, created_at')
     .eq('room_id', roomId)
     .order('created_at');
 
@@ -110,7 +110,7 @@ export interface TimelineEvent {
 export const getProjectTimeline = async (client: SupabaseClient, projectId: string): Promise<TimelineEvent[]> => {
   const { data, error } = await client
     .from('project_timeline')
-    .select('*')
+    .select('id, project_id, title, event_date, eventType, completed')
     .eq('project_id', projectId)
     .order('event_date', { ascending: true });
 

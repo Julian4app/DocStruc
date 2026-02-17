@@ -44,7 +44,7 @@ export function ProjectSettings() {
     if (!id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
+      const { data, error } = await supabase.from('projects').select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date').eq('id', id).single();
       if (error) throw error;
       if (data) {
         setProject(data);

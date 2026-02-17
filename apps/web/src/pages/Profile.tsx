@@ -30,7 +30,7 @@ export function Profile() {
             setUser(user);
             if (user) {
                 // Try to fetch profile from database
-                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                const { data } = await supabase.from('profiles').select('id, email, first_name, last_name, company_name, avatar_url, phone, is_superuser, team_id, team_role').eq('id', user.id).single();
                 if (data) {
                     setProfile({
                         first_name: data.first_name || '',

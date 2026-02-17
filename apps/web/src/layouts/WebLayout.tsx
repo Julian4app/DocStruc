@@ -110,7 +110,7 @@ export function WebLayout() {
         // Fetch notifications (example - adjust based on your schema)
         const { data: notifs } = await supabase
           .from('notifications')
-          .select('*')
+          .select('id, user_id, type, title, body, data, read, created_at, notification_type')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(5);

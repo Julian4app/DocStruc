@@ -28,7 +28,7 @@ export default function TagDetail() {
 
   const fetchTag = async () => {
     try {
-      const { data, error } = await supabase.from('tags').select('*').eq('id', id).single();
+      const { data, error } = await supabase.from('tags').select('id, title, color, description, created_at').eq('id', id).single();
       if (error) throw error;
       setForm(data);
       if (data.title) {

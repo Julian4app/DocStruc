@@ -50,7 +50,7 @@ export function ManageProjects() {
 
     const fetchProjects = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('projects').select('id, owner_id, name, status, created_at, picture_url, address').order('created_at', { ascending: false });
         if (error) console.error(error);
         else setProjects(data || []);
         setLoading(false);

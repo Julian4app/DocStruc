@@ -86,7 +86,7 @@ export function MyTeam() {
   const loadModules = async () => {
     const { data: modulesData } = await supabase
       .from('permission_modules')
-      .select('*')
+      .select('id, module_key, module_name, description, display_order, is_active')
       .eq('is_active', true)
       .order('display_order');
     setModules(modulesData || []);
@@ -120,7 +120,7 @@ export function MyTeam() {
       // Load team info
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
-        .select('*')
+        .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
         .eq('id', profile.team_id)
         .single();
 

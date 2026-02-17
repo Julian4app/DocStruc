@@ -169,7 +169,7 @@ export function ProjectFiles() {
     
     const { data, error } = await supabase
       .from('project_folders')
-      .select('*')
+      .select('id, project_id, name, description, parent_folder_id, created_by, created_at')
       .eq('project_id', id)
       .order('name');
 
@@ -685,7 +685,7 @@ export function ProjectFiles() {
   const loadFileShares = async (fileId: string) => {
     const { data, error } = await supabase
       .from('project_file_shares')
-      .select('*')
+      .select('id, file_id, shared_with_user_id, permission_level, can_download, can_edit, can_delete, can_share, shared_by, created_at')
       .eq('file_id', fileId);
 
     if (error) {

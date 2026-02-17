@@ -8,7 +8,7 @@ export class TeamService {
   static async getAllTeams(): Promise<Team[]> {
     const { data, error } = await supabase
       .from('teams')
-      .select('*')
+      .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
       .eq('is_active', true)
       .order('name');
 
@@ -22,7 +22,7 @@ export class TeamService {
   static async getTeam(teamId: string): Promise<Team | null> {
     const { data, error } = await supabase
       .from('teams')
-      .select('*')
+      .select('id, name, description, company_info, contact_email, contact_phone, address, logo_url, created_by, is_active, created_at, updated_at')
       .eq('id', teamId)
       .single();
 
@@ -207,7 +207,7 @@ export class TeamService {
   static async getTeamInvitations(teamId: string): Promise<TeamInvitation[]> {
     const { data, error } = await supabase
       .from('team_invitations')
-      .select('*')
+      .select('id, team_id, email, team_role, invited_by, token, status, invited_at, accepted_at')
       .eq('team_id', teamId)
       .order('invited_at', { ascending: false });
 
@@ -224,7 +224,7 @@ export class TeamService {
     // Get invitation
     const { data: invitation, error: invError } = await supabase
       .from('team_invitations')
-      .select('*')
+      .select('id, team_id, email, team_role, status')
       .eq('id', invitationId)
       .single();
 

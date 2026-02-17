@@ -112,7 +112,7 @@ export function ProjectGeneralInfo() {
       // Load project basic info
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date')
         .eq('id', id)
         .single();
 
@@ -122,7 +122,7 @@ export function ProjectGeneralInfo() {
       // Load or create project_info
       let { data: infoData, error: infoError } = await supabase
         .from('project_info')
-        .select('*')
+        .select('id, project_id, detailed_description, notes, formatted_address, created_at, updated_at')
         .eq('project_id', id)
         .single();
 
@@ -151,7 +151,7 @@ export function ProjectGeneralInfo() {
       if (infoData.id) {
         const { data: imagesData, error: imagesError } = await supabase
           .from('project_info_images')
-          .select('*')
+          .select('id, project_info_id, image_url, display_order, created_at')
           .eq('project_info_id', infoData.id)
           .order('display_order');
 
@@ -161,7 +161,7 @@ export function ProjectGeneralInfo() {
         // Load voice messages
         const { data: voiceData, error: voiceError } = await supabase
           .from('project_voice_messages')
-          .select('*')
+          .select('id, project_info_id, audio_url, duration, transcript, created_by, created_at')
           .eq('project_info_id', infoData.id)
           .order('created_at', { ascending: false });
 

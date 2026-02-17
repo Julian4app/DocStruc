@@ -88,9 +88,9 @@ export function Accessors() {
     if (activeTab === 'subcontractors') {
       query = supabase.from('subcontractors').select('*, contacts:subcontractor_contacts(*)');
     } else if (activeTab === 'employees') {
-      query = supabase.from('crm_contacts').select('*').eq('type', 'employee');
+      query = supabase.from('crm_contacts').select('id, type, first_name, last_name, email, phone, avatar_url, personal_number, detailed_address, notes, linked_user_id, created_at, updated_at').eq('type', 'employee');
     } else {
-      query = supabase.from('crm_contacts').select('*').eq('type', 'owner');
+      query = supabase.from('crm_contacts').select('id, type, first_name, last_name, email, phone, avatar_url, personal_number, detailed_address, notes, linked_user_id, created_at, updated_at').eq('type', 'owner');
     }
 
     const { data: res, error } = await query;

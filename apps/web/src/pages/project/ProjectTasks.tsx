@@ -216,7 +216,7 @@ export function ProjectTasks() {
       // Load images
       const { data: images } = await supabase
         .from('task_images')
-        .select('*')
+        .select('id, task_id, image_url, display_order, created_at')
         .eq('task_id', taskId)
         .order('display_order', { ascending: true });
       

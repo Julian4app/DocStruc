@@ -35,7 +35,7 @@ export default function Customers() {
     try {
         const { data, error } = await supabase
             .from('companies')
-            .select('*')
+            .select('id, name, status, employees_count, logo_url, email, created_at')
             .order('name');
         
         if (error) throw error;

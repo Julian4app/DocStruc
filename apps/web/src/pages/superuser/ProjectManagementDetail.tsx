@@ -94,7 +94,7 @@ export function ProjectManagementDetail() {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, owner_id, name, description, address, status, created_at, updated_at, subtitle, picture_url, detailed_address, start_date, target_end_date, status_date, street, zip, city, country, images')
         .eq('id', id)
         .single();
 
@@ -135,7 +135,7 @@ export function ProjectManagementDetail() {
       // Load all user_accessors (the actual users that can be added to projects)
       const { data: accessorsData, error: accessorsError } = await supabase
         .from('user_accessors')
-        .select('*')
+        .select('id, owner_id, accessor_email, accessor_first_name, accessor_last_name, accessor_phone, accessor_company, accessor_type, notes, registered_user_id, is_active, created_at, updated_at')
         .eq('owner_id', user.id)
         .eq('is_active', true);
 

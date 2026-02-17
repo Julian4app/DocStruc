@@ -145,7 +145,7 @@ export function ProjectDocumentation() {
     try {
       const { data: task, error: taskError } = await supabase
         .from('tasks')
-        .select('*')
+        .select('id, project_id, room_id, creator_id, assigned_to, title, description, status, due_date, planned_duration_minutes, actual_duration_minutes, created_at, updated_at, images, task_type, priority')
         .eq('id', taskId)
         .single();
 
@@ -154,14 +154,14 @@ export function ProjectDocumentation() {
 
       const { data: images } = await supabase
         .from('task_images')
-        .select('*')
+        .select('id, task_id, image_url, display_order, created_at')
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
       setTaskImages(images || []);
 
       const { data: docs } = await supabase
         .from('task_documentation')
-        .select('*')
+        .select('id, task_id, user_id, documentation_type, content, file_name, storage_path, file_size, mime_type, created_at')
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
       setTaskDocumentation(docs || []);

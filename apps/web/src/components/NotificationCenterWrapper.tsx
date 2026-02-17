@@ -64,7 +64,7 @@ export const NotificationCenterWrapper: React.FC<NotificationCenterWrapperProps>
 
       const { data, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select('id, user_id, type, title, body, data, read, created_at, notification_type')
         .order('created_at', { ascending: false })
         .limit(50);
 

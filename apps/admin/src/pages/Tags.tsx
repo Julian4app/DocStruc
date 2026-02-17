@@ -21,7 +21,7 @@ export default function Tags() {
       // 1. Fetch defined tags
       const { data: tagData, error: tagError } = await supabase
         .from('tags')
-        .select('*')
+        .select('id, title, color, description, created_at')
         .order('title');
       
       if (tagError) throw tagError;

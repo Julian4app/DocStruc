@@ -47,7 +47,7 @@ export default function ContactPersonDetail() {
 
   const fetchContact = async () => {
     try {
-      const { data, error } = await supabase.from('contact_persons').select('*').eq('id', id).single();
+      const { data, error } = await supabase.from('contact_persons').select('id, first_name, surname, company, department, email, phone, tags, notes, created_at, updated_at').eq('id', id).single();
       if (error) throw error;
       setForm({ ...data, tags: data.tags || [] });
     } catch (e) {
