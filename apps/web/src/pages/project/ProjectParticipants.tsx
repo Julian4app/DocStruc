@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useOutletContext } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Card, Button, Input } from '@docstruc/ui';
 import { SearchableSelect } from '../../components/SearchableSelect';
@@ -9,8 +9,18 @@ import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { 
   Users, Plus, Trash2, Edit2, Shield, Eye, Check, Mail, Building, 
-  Phone, UserPlus, Send, UserX, UserCheck, RefreshCw, MoreVertical 
+  Phone, UserPlus, Send, UserX, UserCheck, RefreshCw, MoreVertical, UsersRound,
+  Share2, Globe, Lock, Building2, Info
 } from 'lucide-react';
+
+type VisibilityLevel = 'all_participants' | 'team_only' | 'owner_only';
+
+interface ContentDefault {
+  module_key: string;
+  module_name: string;
+  default_visibility: VisibilityLevel;
+  has_custom_default: boolean;
+}
 
 interface PermissionModule {
   module_key: string;
@@ -56,11 +66,23 @@ export function ProjectParticipants() {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
+  const [isSuperuser, setIsSuperuser] = useState(false);
+  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
+  const [hasTeamAccess, setHasTeamAccess] = useState(false);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'members' | 'freigaben'>('members');
   
   // Data states
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [availableModules, setAvailableModules] = useState<PermissionModule[]>([]);
+  
+  // Freigaben states
+  const [contentDefaults, setContentDefaults] = useState<ContentDefault[]>([]);
+  const [savingFreigaben, setSavingFreigaben] = useState(false);
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   
   // Modal states
   const [isEditPermissionsModalOpen, setIsEditPermissionsModalOpen] = useState(false);
@@ -75,6 +97,11 @@ export function ProjectParticipants() {
 
   // Status filter
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  
+  // Team functionality
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [isAddTeamMemberModalOpen, setIsAddTeamMemberModalOpen] = useState(false);
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (projectId) {
@@ -96,6 +123,52 @@ export function ProjectParticipants() {
         .single();
 
       setIsProjectOwner(project?.owner_id === user.id);
+      
+      // Check if user is team admin and check access to this project
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('team_id, team_role, is_superuser')
+        .eq('id', user.id)
+        .single();
+      
+      const userIsSuperuser = userProfile?.is_superuser === true;
+      setIsSuperuser(userIsSuperuser);
+      
+      if (userProfile?.team_role === 'team_admin' && userProfile?.team_id) {
+        console.log('🔍 ProjectParticipants: User is team admin', { team_id: userProfile.team_id });
+        setIsTeamAdmin(true);
+        setUserTeamId(userProfile.team_id);
+        
+        // Check if team admin has access:
+        // 1. Via team_project_access (team has access to project)
+        const { data: teamAccess } = await supabase
+          .from('team_project_access')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('team_id', userProfile.team_id)
+          .maybeSingle();
+        
+        console.log('📊 ProjectParticipants: Team access check', { teamAccess });
+        
+        // 2. OR is a member of the project themselves
+        const { data: isMember } = await supabase
+          .from('project_members')
+          .select('id, role_id')
+          .eq('project_id', projectId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        console.log('📊 ProjectParticipants: Member check', { isMember });
+        
+        if (teamAccess || isMember) {
+          console.log('✅ ProjectParticipants: Team admin has access!');
+          setHasTeamAccess(true);
+          // Load team members for adding
+          await loadTeamMembers(userProfile.team_id);
+        } else {
+          console.log('❌ ProjectParticipants: Team admin has NO access to this project');
+        }
+      }
 
       // Load project members
       await loadMembers();
@@ -128,10 +201,51 @@ export function ProjectParticipants() {
       if (modulesError) throw modulesError;
       setAvailableModules(modulesData || []);
 
+      // Load Freigaben (content defaults) for superuser/owner
+      if (userIsSuperuser || project?.owner_id === user.id) {
+        await loadContentDefaults();
+        await loadProjectTeams();
+      }
+
     } catch (error: any) {
       showToast('Fehler beim Laden: ' + error.message, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadContentDefaults = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_project_content_defaults', {
+        p_project_id: projectId
+      });
+      if (error) throw error;
+      setContentDefaults((data || []).map((d: any) => ({
+        module_key: d.module_key,
+        module_name: d.module_name,
+        default_visibility: d.default_visibility as VisibilityLevel,
+        has_custom_default: d.has_custom_default,
+      })));
+    } catch (error: any) {
+      console.error('Error loading content defaults:', error);
+    }
+  };
+
+  const loadProjectTeams = async () => {
+    try {
+      // Load teams that have access to this project
+      const { data: teamAccessData, error } = await supabase
+        .from('team_project_access')
+        .select('team_id, team:teams(id, name)')
+        .eq('project_id', projectId);
+      if (error) throw error;
+      const projectTeams = (teamAccessData || [])
+        .map(ta => ta.team)
+        .filter(Boolean)
+        .map((t: any) => ({ id: t.id, name: t.name }));
+      setTeams(projectTeams);
+    } catch (error: any) {
+      console.error('Error loading teams:', error);
     }
   };
 
@@ -169,12 +283,28 @@ export function ProjectParticipants() {
       showToast('Fehler beim Laden der Mitglieder: ' + error.message, 'error');
     }
   };
+  
+  const loadTeamMembers = async (teamId: string) => {
+    try {
+      const { data: teamMembersData, error } = await supabase
+        .from('profiles')
+        .select('id, email, first_name, last_name, team_role')
+        .eq('team_id', teamId);
+      
+      if (error) throw error;
+      setTeamMembers(teamMembersData || []);
+    } catch (error: any) {
+      console.error('Error loading team members:', error);
+    }
+  };
 
   // ==========================================
   // MODAL HELPERS
   // ==========================================
 
   const openEditPermissionsModal = async (member: ProjectMember) => {
+    console.log('🔍 openEditPermissionsModal called for:', member.accessor.accessor_email);
+    
     setEditingMember(member);
     setSelectedRoleId(member.role_id || '');
     setUseCustomPermissions(member.custom_permissions.length > 0);
@@ -182,8 +312,10 @@ export function ProjectParticipants() {
     const permsObj: Record<string, PermissionModule> = {};
     
     if (member.custom_permissions.length > 0) {
+      console.log('📊 Member has custom permissions:', member.custom_permissions.length);
       member.custom_permissions.forEach(perm => { permsObj[perm.module_key] = perm; });
     } else if (member.role_id) {
+      console.log('📊 Member has role:', member.role_id);
       const { data: rolePerms } = await supabase
         .from('role_permissions').select('*').eq('role_id', member.role_id);
       (rolePerms || []).forEach(perm => {
@@ -208,6 +340,7 @@ export function ProjectParticipants() {
     });
 
     setCustomPermissions(permsObj);
+    console.log('✅ Opening edit permissions modal');
     setIsEditPermissionsModalOpen(true);
     setActionMenuMemberId(null);
   };
@@ -217,19 +350,51 @@ export function ProjectParticipants() {
   // ==========================================
 
   const updateMemberPermissions = async () => {
-    if (!editingMember) return;
+    if (!editingMember) {
+      console.log('❌ updateMemberPermissions: No editing member');
+      return;
+    }
     if (!useCustomPermissions && !selectedRoleId) {
       showToast('Bitte wählen Sie eine Rolle aus', 'error');
       return;
     }
+    
+    console.log('🔍 updateMemberPermissions: Starting update', {
+      member_id: editingMember.id,
+      useCustomPermissions,
+      selectedRoleId,
+      customPermissions: Object.keys(customPermissions).length
+    });
+    
     try {
       const newRoleId = useCustomPermissions ? null : (selectedRoleId || null);
-      await supabase.from('project_members')
+      
+      console.log('📝 Updating project_members table...');
+      const { data: updateData, error: updateError } = await supabase.from('project_members')
         .update({ role_id: newRoleId })
-        .eq('id', editingMember.id);
+        .eq('id', editingMember.id)
+        .select();
 
-      await supabase.from('project_member_permissions')
+      console.log('📊 Update result:', { updateData, updateError, rowsAffected: updateData?.length });
+
+      if (updateError) {
+        console.error('❌ Error updating project_members:', updateError);
+        throw updateError;
+      }
+      
+      if (!updateData || updateData.length === 0) {
+        console.error('❌ UPDATE succeeded but affected 0 rows - RLS blocking!');
+        throw new Error('Keine Berechtigung, Mitglied zu aktualisieren. Möglicherweise fehlen Berechtigungen.');
+      }
+
+      console.log('📝 Deleting old permissions...');
+      const { error: deleteError } = await supabase.from('project_member_permissions')
         .delete().eq('project_member_id', editingMember.id);
+
+      if (deleteError) {
+        console.error('❌ Error deleting permissions:', deleteError);
+        throw deleteError;
+      }
 
       if (useCustomPermissions) {
         const permsToInsert = Object.values(customPermissions)
@@ -240,15 +405,24 @@ export function ProjectParticipants() {
             can_view: p.can_view, can_create: p.can_create,
             can_edit: p.can_edit, can_delete: p.can_delete
           }));
+        
+        console.log('📝 Inserting custom permissions:', permsToInsert.length);
+        
         if (permsToInsert.length > 0) {
-          await supabase.from('project_member_permissions').insert(permsToInsert);
+          const { error: insertError } = await supabase.from('project_member_permissions').insert(permsToInsert);
+          if (insertError) {
+            console.error('❌ Error inserting permissions:', insertError);
+            throw insertError;
+          }
         }
       }
 
+      console.log('✅ Permissions updated successfully');
       showToast('Berechtigungen aktualisiert', 'success');
       setIsEditPermissionsModalOpen(false);
-      loadMembers();
+      await loadMembers();
     } catch (error: any) {
+      console.error('❌ Error in updateMemberPermissions:', error);
       showToast('Fehler: ' + error.message, 'error');
     }
   };
@@ -396,6 +570,113 @@ export function ProjectParticipants() {
     } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
   };
 
+  const addTeamMembersToProject = async () => {
+    if (selectedTeamMemberIds.length === 0) {
+      showToast('Bitte wählen Sie mindestens ein Teammitglied aus', 'error');
+      return;
+    }
+    
+    console.log('🔍 Adding team members to project:', { selectedTeamMemberIds, userTeamId, projectId });
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !userTeamId) {
+        console.log('❌ No user or team ID:', { user: !!user, userTeamId });
+        return;
+      }
+      
+      // For each selected team member, create user_accessor if not exists, then add to project
+      for (const memberId of selectedTeamMemberIds) {
+        const teamMember = teamMembers.find(tm => tm.id === memberId);
+        if (!teamMember) {
+          console.log('❌ Team member not found:', memberId);
+          continue;
+        }
+        
+        console.log('➕ Processing team member:', teamMember.email);
+        
+        // Check if user is already in project
+        const { data: existingMember } = await supabase
+          .from('project_members')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('user_id', teamMember.id)
+          .maybeSingle();
+        
+        if (existingMember) {
+          console.log('⏭️ Member already in project:', teamMember.email);
+          continue; // Skip if already in project
+        }
+        
+        // Check if accessor exists
+        let { data: accessor } = await supabase
+          .from('user_accessors')
+          .select('id')
+          .eq('accessor_email', teamMember.email)
+          .maybeSingle();
+        
+        let accessorId;
+        
+        // Create accessor if doesn't exist
+        if (!accessor) {
+          console.log('📝 Creating accessor for:', teamMember.email);
+          const { data: newAccessor, error: accessorError } = await supabase
+            .from('user_accessors')
+            .insert({
+              owner_id: user.id,
+              accessor_email: teamMember.email,
+              accessor_first_name: teamMember.first_name,
+              accessor_last_name: teamMember.last_name,
+              accessor_type: 'employee',
+              registered_user_id: teamMember.id,
+              is_active: true,
+            })
+            .select('id')
+            .single();
+          
+          if (accessorError) {
+            console.error('❌ Error creating accessor:', accessorError);
+            throw accessorError;
+          }
+          accessorId = newAccessor.id;
+          console.log('✅ Accessor created:', accessorId);
+        } else {
+          accessorId = accessor.id;
+          console.log('✅ Accessor exists:', accessorId);
+        }
+        
+        // Add to project_members
+        console.log('📝 Adding to project_members...');
+        const { error: insertError } = await supabase
+          .from('project_members')
+          .insert({
+            project_id: projectId,
+            user_id: teamMember.id,
+            accessor_id: accessorId,
+            member_type: 'employee',
+            member_team_id: userTeamId,
+            added_by: user.id,
+            status: 'active',
+          });
+        
+        if (insertError) {
+          console.error('❌ Error adding to project_members:', insertError);
+          throw insertError;
+        }
+        console.log('✅ Added to project_members');
+      }
+      
+      console.log('✅ All team members added successfully');
+      showToast(`${selectedTeamMemberIds.length} Teammitglied(er) zum Projekt hinzugefügt`, 'success');
+      setIsAddTeamMemberModalOpen(false);
+      setSelectedTeamMemberIds([]);
+      await loadMembers();
+    } catch (error: any) {
+      console.error('❌ Error in addTeamMembersToProject:', error);
+      showToast('Fehler beim Hinzufügen: ' + error.message, 'error');
+    }
+  };
+
   const togglePermission = (moduleKey: string, permType: 'can_view' | 'can_create' | 'can_edit' | 'can_delete') => {
     setCustomPermissions(prev => {
       const current = prev[moduleKey];
@@ -405,6 +686,84 @@ export function ProjectParticipants() {
       }
       return { ...prev, [moduleKey]: updated };
     });
+  };
+
+  // ==========================================
+  // FREIGABEN FUNCTIONS
+  // ==========================================
+
+  const updateContentDefault = (moduleKey: string, visibility: VisibilityLevel) => {
+    setContentDefaults(prev => prev.map(cd =>
+      cd.module_key === moduleKey
+        ? { ...cd, default_visibility: visibility }
+        : cd
+    ));
+  };
+
+  const saveContentDefaults = async () => {
+    if (!projectId) return;
+    setSavingFreigaben(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Upsert all content defaults
+      for (const cd of contentDefaults) {
+        const { error } = await supabase
+          .from('project_content_defaults')
+          .upsert({
+            project_id: projectId,
+            module_key: cd.module_key,
+            default_visibility: cd.default_visibility,
+            updated_by: user.id,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'project_id,module_key'
+          });
+
+        if (error) throw error;
+      }
+
+      showToast('Freigabe-Einstellungen gespeichert', 'success');
+      await loadContentDefaults();
+    } catch (error: any) {
+      console.error('Error saving content defaults:', error);
+      showToast('Fehler beim Speichern: ' + error.message, 'error');
+    } finally {
+      setSavingFreigaben(false);
+    }
+  };
+
+  const getVisibilityLabel = (visibility: VisibilityLevel): string => {
+    switch (visibility) {
+      case 'all_participants': return 'Alle Beteiligten';
+      case 'team_only': return 'Nur eigenes Team';
+      case 'owner_only': return 'Nur Projektersteller';
+    }
+  };
+
+  const getVisibilityIcon = (visibility: VisibilityLevel) => {
+    switch (visibility) {
+      case 'all_participants': return <Globe size={16} color="#10B981" />;
+      case 'team_only': return <Building2 size={16} color="#F59E0B" />;
+      case 'owner_only': return <Lock size={16} color="#EF4444" />;
+    }
+  };
+
+  const getVisibilityColor = (visibility: VisibilityLevel): string => {
+    switch (visibility) {
+      case 'all_participants': return '#10B981';
+      case 'team_only': return '#F59E0B';
+      case 'owner_only': return '#EF4444';
+    }
+  };
+
+  const getVisibilityDescription = (visibility: VisibilityLevel): string => {
+    switch (visibility) {
+      case 'all_participants': return 'Alle Projektbeteiligten können die Inhalte dieses Moduls sehen';
+      case 'team_only': return 'Nur Mitglieder des eigenen Teams können die Inhalte sehen (andere Teams sehen nur ihre eigenen)';
+      case 'owner_only': return 'Nur der Projektersteller und Superuser können die Inhalte sehen';
+    }
   };
 
   // ==========================================
@@ -467,14 +826,16 @@ export function ProjectParticipants() {
     );
   }
 
-  if (!isProjectOwner) {
+  if (!isProjectOwner && !hasTeamAccess) {
     return (
       <View style={styles.container}>
         <Card style={styles.noAccessCard}>
           <Shield size={48} color="#CBD5E1" />
           <Text style={styles.noAccessTitle}>Kein Zugriff</Text>
           <Text style={styles.noAccessText}>
-            Sie haben keine Berechtigung, Projektmitglieder zu verwalten.
+            {isTeamAdmin 
+              ? 'Ihr Team hat keinen Zugriff auf dieses Projekt. Kontaktieren Sie den Projektbesitzer.'
+              : 'Sie haben keine Berechtigung, Projektmitglieder zu verwalten.'}
           </Text>
         </Card>
       </View>
@@ -491,7 +852,17 @@ export function ProjectParticipants() {
             <Text style={styles.pageSubtitle}>Projektmitglieder, Rollen und Einladungen verwalten</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            {statusCounts.open > 0 && (
+            {activeTab === 'members' && isTeamAdmin && hasTeamAccess && (
+              <Button onClick={() => setIsAddTeamMemberModalOpen(true)} variant="primary">
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <UsersRound size={16} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
+                    Team-Mitglieder hinzufügen
+                  </Text>
+                </View>
+              </Button>
+            )}
+            {activeTab === 'members' && isProjectOwner && statusCounts.open > 0 && (
               <Button onClick={inviteAllOpen} variant="secondary">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Send size={16} color={colors.primary} />
@@ -501,15 +872,43 @@ export function ProjectParticipants() {
                 </View>
               </Button>
             )}
-            <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#F1F5F9', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
-              <Text style={{ fontSize: 12, color: '#64748B' }}>
-                💡 Mitglieder hinzufügen unter: Projekt → Einstellungen → Beteiligte Personen
-              </Text>
-            </View>
+            {activeTab === 'members' && isProjectOwner && (
+              <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#F1F5F9', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                <Text style={{ fontSize: 12, color: '#64748B' }}>
+                  💡 Mitglieder hinzufügen unter: Projekt → Einstellungen → Beteiligte Personen
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Status Filter Tabs */}
+        {/* ===== TOP-LEVEL TABS ===== */}
+        <View style={styles.topTabs}>
+          <TouchableOpacity
+            style={[styles.topTab, activeTab === 'members' && styles.topTabActive]}
+            onPress={() => setActiveTab('members')}
+          >
+            <Users size={18} color={activeTab === 'members' ? colors.primary : '#64748B'} />
+            <Text style={[styles.topTabText, activeTab === 'members' && styles.topTabTextActive]}>
+              Mitglieder
+            </Text>
+          </TouchableOpacity>
+          {(isProjectOwner || isSuperuser) && (
+            <TouchableOpacity
+              style={[styles.topTab, activeTab === 'freigaben' && styles.topTabActive]}
+              onPress={() => setActiveTab('freigaben')}
+            >
+              <Share2 size={18} color={activeTab === 'freigaben' ? colors.primary : '#64748B'} />
+              <Text style={[styles.topTabText, activeTab === 'freigaben' && styles.topTabTextActive]}>
+                Freigaben
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ===== MEMBERS TAB ===== */}
+        {activeTab === 'members' && (
+          <View>
         <View style={styles.filterTabs}>
           {([
             { key: 'all', label: 'Alle' },
@@ -630,50 +1029,70 @@ export function ProjectParticipants() {
                       )}
 
                       {/* More Actions */}
-                      <View style={{ position: 'relative', zIndex: showMenu ? 100 : 1 }}>
+                      <View style={{ position: 'relative' }}>
                         <TouchableOpacity
                           style={styles.iconButton}
-                          onPress={() => setActionMenuMemberId(showMenu ? null : member.id)}
+                          onPress={() => {
+                            console.log('Menu clicked, current:', actionMenuMemberId, 'member:', member.id);
+                            setActionMenuMemberId(showMenu ? null : member.id);
+                          }}
                         >
                           <MoreVertical size={16} color="#64748b" />
                         </TouchableOpacity>
 
                         {showMenu && (
-                          <View style={styles.actionMenu}>
-                            <TouchableOpacity style={styles.actionMenuItem} onPress={() => openEditPermissionsModal(member)}>
-                              <Shield size={14} color="#64748b" />
-                              <Text style={styles.actionMenuText}>Berechtigungen bearbeiten</Text>
-                            </TouchableOpacity>
-
-                            {member.status === 'active' && (
-                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => setMemberInactive(member)}>
-                                <UserX size={14} color="#F59E0B" />
-                                <Text style={[styles.actionMenuText, { color: '#F59E0B' }]}>Inaktiv setzen</Text>
+                          <>
+                            <View 
+                              style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                zIndex: 998,
+                              }}
+                              onTouchEnd={() => setActionMenuMemberId(null)}
+                              onClick={() => setActionMenuMemberId(null)}
+                            />
+                            <View style={[styles.actionMenu, { zIndex: 999 }]}>
+                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => {
+                                console.log('Edit permissions menu item clicked');
+                                openEditPermissionsModal(member);
+                              }}>
+                                <Shield size={14} color="#64748b" />
+                                <Text style={styles.actionMenuText}>Berechtigungen bearbeiten</Text>
                               </TouchableOpacity>
-                            )}
 
-                            {member.status === 'inactive' && (
-                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => reactivateMember(member)}>
-                                <UserCheck size={14} color="#10B981" />
-                                <Text style={[styles.actionMenuText, { color: '#10B981' }]}>Reaktivieren</Text>
+                              {member.status === 'active' && (
+                                <TouchableOpacity style={styles.actionMenuItem} onPress={() => setMemberInactive(member)}>
+                                  <UserX size={14} color="#F59E0B" />
+                                  <Text style={[styles.actionMenuText, { color: '#F59E0B' }]}>Inaktiv setzen</Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {member.status === 'inactive' && (
+                                <TouchableOpacity style={styles.actionMenuItem} onPress={() => reactivateMember(member)}>
+                                  <UserCheck size={14} color="#10B981" />
+                                  <Text style={[styles.actionMenuText, { color: '#10B981' }]}>Reaktivieren</Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {(member.status === 'invited' || member.status === 'active') && (
+                                <TouchableOpacity style={styles.actionMenuItem} onPress={() => reInviteMember(member)}>
+                                  <RefreshCw size={14} color="#64748b" />
+                                  <Text style={styles.actionMenuText}>Einladung erneut senden</Text>
+                                </TouchableOpacity>
+                              )}
+
+                              <TouchableOpacity
+                                style={[styles.actionMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}
+                                onPress={() => removeMember(member.id)}
+                              >
+                                <Trash2 size={14} color="#EF4444" />
+                                <Text style={[styles.actionMenuText, { color: '#EF4444' }]}>Entfernen</Text>
                               </TouchableOpacity>
-                            )}
-
-                            {(member.status === 'invited' || member.status === 'active') && (
-                              <TouchableOpacity style={styles.actionMenuItem} onPress={() => reInviteMember(member)}>
-                                <RefreshCw size={14} color="#64748b" />
-                                <Text style={styles.actionMenuText}>Einladung erneut senden</Text>
-                              </TouchableOpacity>
-                            )}
-
-                            <TouchableOpacity
-                              style={[styles.actionMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9' }]}
-                              onPress={() => removeMember(member.id)}
-                            >
-                              <Trash2 size={14} color="#EF4444" />
-                              <Text style={[styles.actionMenuText, { color: '#EF4444' }]}>Entfernen</Text>
-                            </TouchableOpacity>
-                          </View>
+                            </View>
+                          </>
                         )}
                       </View>
                     </View>
@@ -711,16 +1130,138 @@ export function ProjectParticipants() {
             })}
           </View>
         )}
-      </ScrollView>
+          </View>
+        )}
 
-      {/* Backdrop to close action menu */}
-      {actionMenuMemberId && (
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={() => setActionMenuMemberId(null)}
-        />
-      )}
+        {/* ===== FREIGABEN TAB ===== */}
+        {activeTab === 'freigaben' && (isProjectOwner || isSuperuser) && (
+          <View>
+            {/* Info banner */}
+            <Card style={{ padding: 16, marginBottom: 20, borderRadius: 12, borderWidth: 1, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                <Info size={20} color="#2563EB" style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#1E40AF', marginBottom: 4 }}>
+                    Sichtbarkeits-Einstellungen
+                  </Text>
+                  <Text style={{ fontSize: 13, color: '#1E40AF', lineHeight: 20 }}>
+                    Definieren Sie hier die Standard-Sichtbarkeit für jedes Modul im Projekt. Diese Einstellung bestimmt, 
+                    ob Inhalte für alle Projektbeteiligten oder nur für das eigene Team sichtbar sind.{'\n\n'}
+                    Einzelne Inhalte (z.B. Aufgaben, Mängel) können von ihren Erstellern zusätzlich individuell freigegeben werden.
+                  </Text>
+                </View>
+              </View>
+            </Card>
+
+            {/* Teams overview */}
+            {teams.length > 0 && (
+              <Card style={{ padding: 16, marginBottom: 20, borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0f172a', marginBottom: 12 }}>
+                  Teams in diesem Projekt
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                  {teams.map(team => (
+                    <View key={team.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F1F5F9', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <Building2 size={14} color="#64748B" />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#334155' }}>{team.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            )}
+
+            {/* Module visibility settings */}
+            <View style={{ gap: 12 }}>
+              {contentDefaults.map(cd => {
+                const vColor = getVisibilityColor(cd.default_visibility);
+                return (
+                  <Card key={cd.module_key} style={{ padding: 0, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden' }}>
+                    <View style={{ padding: 16 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${vColor}15`, alignItems: 'center', justifyContent: 'center' }}>
+                            {getVisibilityIcon(cd.default_visibility)}
+                          </View>
+                          <View>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>{cd.module_name}</Text>
+                            <Text style={{ fontSize: 12, color: '#64748B', marginTop: 2 }}>{cd.module_key}</Text>
+                          </View>
+                        </View>
+                        {cd.has_custom_default && (
+                          <View style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#F0FDF4', borderRadius: 6, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#16A34A' }}>ANGEPASST</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Visibility options */}
+                      <View style={{ gap: 8 }}>
+                        {([
+                          { value: 'all_participants' as VisibilityLevel, label: 'Alle Beteiligten', desc: 'Alle Projektmitglieder können die Inhalte sehen', icon: <Globe size={16} color="#10B981" />, color: '#10B981' },
+                          { value: 'team_only' as VisibilityLevel, label: 'Nur eigenes Team', desc: 'Jedes Team sieht nur seine eigenen Inhalte', icon: <Building2 size={16} color="#F59E0B" />, color: '#F59E0B' },
+                          { value: 'owner_only' as VisibilityLevel, label: 'Nur Projektersteller', desc: 'Nur Projektersteller & Superuser können sehen', icon: <Lock size={16} color="#EF4444" />, color: '#EF4444' },
+                        ]).map(opt => {
+                          const isSelected = cd.default_visibility === opt.value;
+                          return (
+                            <TouchableOpacity
+                              key={opt.value}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 12,
+                                padding: 12,
+                                borderRadius: 10,
+                                borderWidth: 2,
+                                borderColor: isSelected ? opt.color : '#E2E8F0',
+                                backgroundColor: isSelected ? `${opt.color}08` : '#FAFAFA',
+                              }}
+                              onPress={() => updateContentDefault(cd.module_key, opt.value)}
+                            >
+                              <View style={{
+                                width: 22, height: 22, borderRadius: 11,
+                                borderWidth: 2, borderColor: isSelected ? opt.color : '#CBD5E1',
+                                backgroundColor: isSelected ? opt.color : '#fff',
+                                alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                {isSelected && <Check size={12} color="#fff" />}
+                              </View>
+                              {opt.icon}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: isSelected ? opt.color : '#334155' }}>
+                                  {opt.label}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }}>
+                                  {opt.desc}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </Card>
+                );
+              })}
+            </View>
+
+            {/* Save button */}
+            <View style={{ marginTop: 24, marginBottom: 40, flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <Button onClick={saveContentDefaults} variant="primary" disabled={savingFreigaben}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  {savingFreigaben ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Check size={16} color="#fff" />
+                  )}
+                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
+                    {savingFreigaben ? 'Wird gespeichert...' : 'Freigaben speichern'}
+                  </Text>
+                </View>
+              </Button>
+            </View>
+          </View>
+        )}
+      </ScrollView>
 
       {/* ======================== EDIT PERMISSIONS MODAL ======================== */}
       <ModernModal
@@ -848,6 +1389,137 @@ export function ProjectParticipants() {
           </View>
         </View>
       </ModernModal>
+
+      {/* Add Team Members Modal */}
+      <ModernModal
+        visible={isAddTeamMemberModalOpen}
+        onClose={() => setIsAddTeamMemberModalOpen(false)}
+        title="Team-Mitglieder zum Projekt hinzufügen"
+      >
+        <View style={{ gap: 20 }}>
+          <View style={{ padding: 16, backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1, borderColor: '#BFDBFE' }}>
+            <Text style={{ fontSize: 13, color: '#1E40AF', lineHeight: 20 }}>
+              ℹ️ Sie können Ihre Team-Mitglieder zu diesem Projekt hinzufügen. Sie erscheinen dann in der Mitgliederliste und können am Projekt arbeiten.
+            </Text>
+          </View>
+          
+          <View style={{ gap: 12 }}>
+            {teamMembers.length === 0 ? (
+              <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', paddingVertical: 20 }}>
+                Keine Team-Mitglieder verfügbar. Fügen Sie zuerst Mitglieder über "Mein Team" hinzu.
+              </Text>
+            ) : (
+              teamMembers.map(member => {
+                const isSelected = selectedTeamMemberIds.includes(member.id);
+                // Check if already in project
+                const alreadyInProject = members.some(m => m.user_id === member.id);
+                
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 12,
+                      backgroundColor: isSelected ? '#EFF6FF' : '#F8FAFC',
+                      borderRadius: 10,
+                      borderWidth: 2,
+                      borderColor: isSelected ? colors.primary : '#E2E8F0',
+                      opacity: alreadyInProject ? 0.5 : 1,
+                    }}
+                    onPress={() => {
+                      if (alreadyInProject) return;
+                      setSelectedTeamMemberIds(prev =>
+                        isSelected
+                          ? prev.filter(id => id !== member.id)
+                          : [...prev, member.id]
+                      );
+                    }}
+                    disabled={alreadyInProject}
+                  >
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 12,
+                    }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#fff' }}>
+                        {(member.first_name?.[0] || member.email[0]).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#0f172a' }}>
+                        {member.first_name && member.last_name
+                          ? `${member.first_name} ${member.last_name}`
+                          : member.email}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>{member.email}</Text>
+                      {alreadyInProject && (
+                        <Text style={{ fontSize: 11, color: '#10B981', marginTop: 2 }}>
+                          ✓ Bereits im Projekt
+                        </Text>
+                      )}
+                    </View>
+                    {member.team_role === 'team_admin' && (
+                      <View style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        backgroundColor: '#FEF3C7',
+                        borderRadius: 6,
+                        marginRight: 8,
+                      }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#D97706' }}>
+                          Admin
+                        </Text>
+                      </View>
+                    )}
+                    {!alreadyInProject && (
+                      <View style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor: isSelected ? colors.primary : '#CBD5E1',
+                        backgroundColor: isSelected ? colors.primary : '#fff',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        {isSelected && <Check size={14} color="#fff" />}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+          
+          {selectedTeamMemberIds.length > 0 && (
+            <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center' }}>
+              {selectedTeamMemberIds.length} Mitglied{selectedTeamMemberIds.length !== 1 ? 'er' : ''} ausgewählt
+            </Text>
+          )}
+          
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Button onClick={() => setIsAddTeamMemberModalOpen(false)} variant="secondary" style={{ flex: 1 }}>
+              Abbrechen
+            </Button>
+            <Button 
+              onClick={addTeamMembersToProject} 
+              variant="primary" 
+              style={{ flex: 1 }}
+              disabled={selectedTeamMemberIds.length === 0}
+            >
+              {selectedTeamMemberIds.length > 0 
+                ? `${selectedTeamMemberIds.length} hinzufügen`
+                : 'Hinzufügen'
+              }
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
     </View>
   );
 }
@@ -860,6 +1532,24 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', marginBottom: 4, letterSpacing: -0.5 },
   pageSubtitle: { fontSize: 15, color: '#64748b' },
   
+  // Top tabs (Mitglieder / Freigaben)
+  topTabs: {
+    flexDirection: 'row', gap: 4, marginBottom: 20,
+    borderBottomWidth: 2, borderBottomColor: '#E2E8F0',
+    paddingBottom: 0,
+  },
+  topTab: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 12, paddingHorizontal: 20,
+    borderBottomWidth: 3, borderBottomColor: 'transparent',
+    marginBottom: -2,
+  },
+  topTabActive: {
+    borderBottomColor: colors.primary,
+  },
+  topTabText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
+  topTabTextActive: { color: colors.primary },
+
   // Filter tabs
   filterTabs: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
   filterTab: {
@@ -889,7 +1579,7 @@ const styles = StyleSheet.create({
 
   // Member list
   membersList: { gap: 12 },
-  memberCard: { padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  memberCard: { padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9', position: 'relative' },
   memberHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 12 },
   memberAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
   memberAvatarText: { fontSize: 18, fontWeight: '700', color: colors.primary },
@@ -923,11 +1613,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E2E8F0',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12, shadowRadius: 12,
-    minWidth: 240, zIndex: 100, overflow: 'hidden'
+    minWidth: 240, zIndex: 1000, overflow: 'hidden',
+    elevation: 10
   },
   actionMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
   actionMenuText: { fontSize: 13, fontWeight: '500', color: '#334155' },
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 50 },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 900, backgroundColor: 'transparent' },
 
   // Permissions row
   memberPermissions: {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { LoginForm } from '@docstruc/ui';
+import { LoginForm, RegisterData } from '@docstruc/ui';
 import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { colors } from '@docstruc/theme';
@@ -8,6 +8,7 @@ import { View, ActivityIndicator, Text } from 'react-native';
 import { Dashboard } from './pages/Dashboard';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { Accessors } from './pages/Accessors';
+import { MyTeam } from './pages/MyTeam';
 import { ManageProjects } from './pages/superuser/ManageProjects';
 import { ProjectManagementDetail } from './pages/superuser/ProjectManagementDetail';
 import { Profile } from './pages/Profile';
@@ -56,6 +57,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     console.log('App mounting, checking session...');
@@ -86,21 +88,35 @@ function App() {
   const handleLogin = async (email: string, pass: string) => {
     setLoading(true);
     setAuthError(null);
+    setAuthSuccess(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
     if (error) setAuthError(error.message);
     setLoading(false);
   };
 
-  const handleRegister = async (email: string, pass: string) => {
+  const handleRegister = async (data: RegisterData) => {
     setLoading(true);
     setAuthError(null);
+    setAuthSuccess(null);
     const { error } = await supabase.auth.signUp({ 
-        email, 
-        password: pass,
-        options: { data: { first_name: 'Web', last_name: 'User' } }
+        email: data.email, 
+        password: data.password,
+        options: { 
+          data: { 
+            first_name: data.firstName, 
+            last_name: data.lastName,
+            phone: data.phone || null,
+            company_name: data.companyName || null,
+            position: data.position || null,
+          } 
+        }
     });
-    if (error) setAuthError(error.message);
-    else setAuthError(null); // Registration successful — auto-login or email verification
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthSuccess('Ihre Registrierung war erfolgreich! Bitte überprüfen Sie Ihre E-Mails und bestätigen Sie Ihr Konto.');
+      setAuthError(null);
+    }
     setLoading(false);
   };
 
@@ -119,9 +135,7 @@ function App() {
           <Routes>
             <Route path="/login" element={
               !session ? (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: colors.background }}>
-                  <LoginForm onLogin={handleLogin} onRegister={handleRegister} isLoading={loading} error={authError} />
-                </div>
+                <LoginForm onLogin={handleLogin} onRegister={handleRegister} isLoading={loading} error={authError} successMessage={authSuccess} />
               ) : <Navigate to="/" />
             } />
             
@@ -131,6 +145,7 @@ function App() {
             <Route element={session ? <WebLayout /> : <Navigate to="/login" />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/accessors" element={<Accessors />} />
+              <Route path="/my-team" element={<MyTeam />} />
               <Route path="/manage-projects" element={<ManageProjects />} />
               <Route path="/manage-projects/:id" element={<ProjectManagementDetail />} />
               <Route path="/project/:id" element={<ProjectDetail />}>

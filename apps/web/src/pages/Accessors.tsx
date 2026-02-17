@@ -5,7 +5,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { ModernModal } from '../components/ModernModal';
 import { useToast } from '../components/ToastProvider';
-import { UserCog, Plus, Trash2, Edit2, Shield, Eye, EyeOff, Check, X } from 'lucide-react';
+import { UserCog, Plus, Trash2, Edit2, Shield, Eye, EyeOff, Check, X, Building2, Crown, Users as UsersIcon, UserPlus } from 'lucide-react';
 
 interface PermissionModule {
   module_key: string;
@@ -46,10 +46,35 @@ interface UserAccessor {
   created_at: string;
 }
 
+interface Team {
+  id: string;
+  name: string;
+  description: string;
+  company_info: string;
+  contact_email: string;
+  contact_phone: string;
+  address: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+  member_count?: number;
+  admin_name?: string;
+  admin_email?: string;
+}
+
+interface TeamMemberProfile {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  team_role: 'member' | 'team_admin';
+  joined_team_at: string;
+}
+
 export function Accessors() {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'roles' | 'users'>('roles');
+  const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'teams'>('roles');
   
   // Roles state
   const [roles, setRoles] = useState<Role[]>([]);
@@ -72,6 +97,23 @@ export function Accessors() {
   const [userType, setUserType] = useState<'employee' | 'owner' | 'subcontractor' | 'other'>('employee');
   const [userNotes, setUserNotes] = useState('');
 
+  // Teams state
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [teamName, setTeamName] = useState('');
+  const [teamDescription, setTeamDescription] = useState('');
+  const [teamCompanyInfo, setTeamCompanyInfo] = useState('');
+  const [teamContactEmail, setTeamContactEmail] = useState('');
+  const [teamContactPhone, setTeamContactPhone] = useState('');
+  const [teamAddress, setTeamAddress] = useState('');
+  const [isTeamAdminModalOpen, setIsTeamAdminModalOpen] = useState(false);
+  const [selectedTeamForAdmin, setSelectedTeamForAdmin] = useState<Team | null>(null);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [savingTeamAdmin, setSavingTeamAdmin] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMemberProfile[]>([]);
+  const [viewingTeamMembers, setViewingTeamMembers] = useState<Team | null>(null);
+
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -91,6 +133,8 @@ export function Accessors() {
 
       if (activeTab === 'roles') {
         await loadRoles();
+      } else if (activeTab === 'teams') {
+        await loadTeams();
       } else {
         await loadAccessors();
       }
@@ -151,6 +195,274 @@ export function Accessors() {
       setAccessors(accessorsData || []);
     } catch (error: any) {
       showToast('Fehler beim Laden der Zugreifer: ' + error.message, 'error');
+    }
+  };
+
+  const loadTeams = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Load all teams
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (teamsError) throw teamsError;
+
+      // For each team, get member count and admin info
+      const teamsWithDetails = await Promise.all(
+        (teamsData || []).map(async (team: any) => {
+          // Get member count
+          const { count } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('team_id', team.id);
+
+          // Get admin info
+          const { data: adminData } = await supabase
+            .from('profiles')
+            .select('email, first_name, last_name')
+            .eq('team_id', team.id)
+            .eq('team_role', 'team_admin')
+            .maybeSingle();
+
+          return {
+            ...team,
+            member_count: count || 0,
+            admin_name: adminData
+              ? `${adminData.first_name || ''} ${adminData.last_name || ''}`.trim() || adminData.email
+              : null,
+            admin_email: adminData?.email || null,
+          } as Team;
+        })
+      );
+
+      setTeams(teamsWithDetails);
+    } catch (error: any) {
+      showToast('Fehler beim Laden der Teams: ' + error.message, 'error');
+    }
+  };
+
+  const openTeamModal = (team?: Team) => {
+    if (team) {
+      setEditingTeam(team);
+      setTeamName(team.name);
+      setTeamDescription(team.description || '');
+      setTeamCompanyInfo(team.company_info || '');
+      setTeamContactEmail(team.contact_email || '');
+      setTeamContactPhone(team.contact_phone || '');
+      setTeamAddress(team.address || '');
+    } else {
+      setEditingTeam(null);
+      setTeamName('');
+      setTeamDescription('');
+      setTeamCompanyInfo('');
+      setTeamContactEmail('');
+      setTeamContactPhone('');
+      setTeamAddress('');
+    }
+    setIsTeamModalOpen(true);
+  };
+
+  const saveTeam = async () => {
+    if (!teamName.trim()) {
+      showToast('Bitte geben Sie einen Team-Namen ein', 'error');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Nicht angemeldet');
+
+      if (editingTeam) {
+        const { error } = await supabase
+          .from('teams')
+          .update({
+            name: teamName,
+            description: teamDescription || null,
+            company_info: teamCompanyInfo || null,
+            contact_email: teamContactEmail || null,
+            contact_phone: teamContactPhone || null,
+            address: teamAddress || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingTeam.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('teams')
+          .insert({
+            name: teamName,
+            description: teamDescription || null,
+            company_info: teamCompanyInfo || null,
+            contact_email: teamContactEmail || null,
+            contact_phone: teamContactPhone || null,
+            address: teamAddress || null,
+            created_by: user.id,
+            is_active: true,
+          });
+
+        if (error) throw error;
+      }
+
+      showToast(
+        editingTeam ? 'Team erfolgreich aktualisiert' : 'Team erfolgreich erstellt',
+        'success'
+      );
+      setIsTeamModalOpen(false);
+      loadTeams();
+    } catch (error: any) {
+      showToast('Fehler beim Speichern: ' + error.message, 'error');
+    }
+  };
+
+  const deleteTeam = async (teamId: string) => {
+    if (!confirm('Möchten Sie dieses Team wirklich löschen? Alle Mitglieder werden aus dem Team entfernt.')) return;
+
+    try {
+      // Remove all members from team
+      await supabase
+        .from('profiles')
+        .update({ team_id: null, team_role: null, joined_team_at: null })
+        .eq('team_id', teamId);
+
+      // Deactivate team
+      const { error } = await supabase
+        .from('teams')
+        .update({ is_active: false })
+        .eq('id', teamId);
+
+      if (error) throw error;
+
+      showToast('Team erfolgreich gelöscht', 'success');
+      loadTeams();
+    } catch (error: any) {
+      showToast('Fehler beim Löschen: ' + error.message, 'error');
+    }
+  };
+
+  const openTeamAdminModal = (team: Team) => {
+    setSelectedTeamForAdmin(team);
+    setAdminEmail(team.admin_email || '');
+    setIsTeamAdminModalOpen(true);
+  };
+
+  const assignTeamAdmin = async () => {
+    if (!adminEmail.trim() || !selectedTeamForAdmin) {
+      showToast('Bitte geben Sie eine E-Mail-Adresse ein', 'error');
+      return;
+    }
+
+    setSavingTeamAdmin(true);
+    try {
+      console.log('🔍 Assigning team admin:', adminEmail.trim().toLowerCase(), 'to team:', selectedTeamForAdmin.id);
+      
+      // Find the user profile by email
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email, first_name, last_name, team_id, team_role')
+        .eq('email', adminEmail.trim().toLowerCase())
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('❌ Profile lookup error:', profileError);
+        throw profileError;
+      }
+
+      if (!profile) {
+        showToast('Dieser Benutzer muss sich zuerst einmal anmelden, bevor er als Team-Admin zugewiesen werden kann', 'error');
+        setSavingTeamAdmin(false);
+        return;
+      }
+
+      console.log('📊 Found profile:', profile.id, profile.email);
+
+      // Remove old admin (if any) from this team
+      const { error: demoteError } = await supabase
+        .from('profiles')
+        .update({ team_role: 'member' })
+        .eq('team_id', selectedTeamForAdmin.id)
+        .eq('team_role', 'team_admin');
+
+      if (demoteError) {
+        console.error('⚠️ Error demoting old admin (non-critical):', demoteError);
+      }
+
+      // Assign new admin
+      console.log('📝 Updating profile to team_admin...');
+      const { data: updateResult, error } = await supabase
+        .from('profiles')
+        .update({
+          team_id: selectedTeamForAdmin.id,
+          team_role: 'team_admin',
+          joined_team_at: new Date().toISOString(),
+        })
+        .eq('id', profile.id)
+        .select();
+
+      if (error) {
+        console.error('❌ Error updating profile:', error);
+        throw error;
+      }
+      
+      if (!updateResult || updateResult.length === 0) {
+        console.error('❌ UPDATE returned 0 rows - RLS is blocking the update!');
+        throw new Error('Profil konnte nicht aktualisiert werden. Bitte führen Sie die SQL-Migration "20260217_fix_permissions_complete.sql" aus.');
+      }
+      
+      console.log('✅ Profile updated successfully:', updateResult[0]);
+
+      // Also ensure this person is visible as accessor for the superuser
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: existingAccessor } = await supabase
+          .from('user_accessors')
+          .select('id')
+          .eq('owner_id', user.id)
+          .eq('accessor_email', adminEmail.trim().toLowerCase())
+          .maybeSingle();
+
+        if (!existingAccessor) {
+          await supabase.from('user_accessors').insert({
+            owner_id: user.id,
+            accessor_email: adminEmail.trim().toLowerCase(),
+            accessor_first_name: profile.first_name,
+            accessor_last_name: profile.last_name,
+            accessor_type: 'employee',
+            is_active: true,
+          });
+        }
+      }
+
+      showToast(`${profile.first_name || profile.email} wurde als Team-Admin zugewiesen`, 'success');
+      setIsTeamAdminModalOpen(false);
+      loadTeams();
+    } catch (error: any) {
+      showToast('Fehler beim Zuweisen: ' + error.message, 'error');
+    } finally {
+      setSavingTeamAdmin(false);
+    }
+  };
+
+  const viewTeamMembersForTeam = async (team: Team) => {
+    try {
+      const { data: members, error } = await supabase
+        .from('profiles')
+        .select('id, email, first_name, last_name, team_role, joined_team_at')
+        .eq('team_id', team.id)
+        .order('team_role', { ascending: true })
+        .order('joined_team_at', { ascending: true });
+
+      if (error) throw error;
+
+      setTeamMembers((members || []) as TeamMemberProfile[]);
+      setViewingTeamMembers(team);
+    } catch (error: any) {
+      showToast('Fehler beim Laden der Mitglieder: ' + error.message, 'error');
     }
   };
 
@@ -462,6 +774,15 @@ export function Accessors() {
               Zugreifer ({accessors.length})
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'teams' && styles.tabActive]}
+            onPress={() => setActiveTab('teams')}
+          >
+            <Building2 size={18} color={activeTab === 'teams' ? colors.primary : '#64748b'} />
+            <Text style={[styles.tabText, activeTab === 'teams' && styles.tabTextActive]}>
+              Teams ({teams.length})
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Roles Tab */}
@@ -624,6 +945,118 @@ export function Accessors() {
                             <Trash2 size={16} color="#EF4444" />
                           </TouchableOpacity>
                         </View>
+                      </View>
+                    </View>
+                  </Card>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Teams Tab */}
+        {activeTab === 'teams' && (
+          <View style={styles.tabContent}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Teams</Text>
+              <Button
+                onClick={() => openTeamModal()}
+                variant="primary"
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Plus size={18} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Neues Team</Text>
+                </View>
+              </Button>
+            </View>
+
+            {teams.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Building2 size={48} color="#CBD5E1" />
+                <Text style={styles.emptyTitle}>Keine Teams vorhanden</Text>
+                <Text style={styles.emptyText}>
+                  Erstellen Sie Teams und weisen Sie Team-Admins zu, die ihre eigenen Mitarbeiter verwalten können.
+                </Text>
+                <Button
+                  onClick={() => openTeamModal()}
+                  variant="primary"
+                >
+                  Erstes Team erstellen
+                </Button>
+              </Card>
+            ) : (
+              <View style={styles.teamsGrid}>
+                {teams.map(team => (
+                  <Card key={team.id} style={styles.teamCard}>
+                    <View style={styles.teamHeader}>
+                      <View style={styles.teamIconContainer}>
+                        <Building2 size={24} color={colors.primary} />
+                      </View>
+                      <View style={styles.teamActions}>
+                        <TouchableOpacity
+                          style={[styles.iconButton, { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' }]}
+                          onPress={() => openTeamAdminModal(team)}
+                        >
+                          <Crown size={16} color="#D97706" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => viewTeamMembersForTeam(team)}
+                        >
+                          <UsersIcon size={16} color="#64748b" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => openTeamModal(team)}
+                        >
+                          <Edit2 size={16} color="#64748b" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => deleteTeam(team.id)}
+                        >
+                          <Trash2 size={16} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <Text style={styles.teamName}>{team.name}</Text>
+                    {team.description && (
+                      <Text style={styles.teamDescription}>{team.description}</Text>
+                    )}
+                    {team.company_info && (
+                      <Text style={styles.teamCompanyInfo}>{team.company_info}</Text>
+                    )}
+
+                    <View style={styles.teamInfoRow}>
+                      {team.contact_email && (
+                        <Text style={styles.teamContactText}>✉ {team.contact_email}</Text>
+                      )}
+                      {team.contact_phone && (
+                        <Text style={styles.teamContactText}>☎ {team.contact_phone}</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.teamStats}>
+                      <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{team.member_count || 0}</Text>
+                        <Text style={styles.statLabel}>Mitglieder</Text>
+                      </View>
+                      <View style={[styles.statItem, { flex: 2 }]}>
+                        {team.admin_name ? (
+                          <>
+                            <View style={styles.teamAdminBadge}>
+                              <Crown size={12} color="#D97706" />
+                              <Text style={styles.teamAdminBadgeText}>Admin</Text>
+                            </View>
+                            <Text style={styles.statLabel} numberOfLines={1}>{team.admin_name}</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={[styles.statValue, { color: '#EF4444' }]}>—</Text>
+                            <Text style={[styles.statLabel, { color: '#EF4444' }]}>Kein Admin</Text>
+                          </>
+                        )}
                       </View>
                     </View>
                   </Card>
@@ -832,6 +1265,174 @@ export function Accessors() {
           </View>
         </View>
       </ModernModal>
+
+      {/* Team Modal */}
+      <ModernModal
+        visible={isTeamModalOpen}
+        onClose={() => setIsTeamModalOpen(false)}
+        title={editingTeam ? 'Team bearbeiten' : 'Neues Team erstellen'}
+      >
+        <View style={styles.modalContent}>
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Team-Name *</Text>
+            <Input
+              value={teamName}
+              onChangeText={setTeamName}
+              placeholder="z.B. Elektro-Team, Sanitär-Team"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Beschreibung</Text>
+            <Input
+              value={teamDescription}
+              onChangeText={setTeamDescription}
+              placeholder="Optionale Beschreibung des Teams"
+              multiline
+              numberOfLines={2}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Firmeninformation</Text>
+            <Input
+              value={teamCompanyInfo}
+              onChangeText={setTeamCompanyInfo}
+              placeholder="Firma GmbH"
+            />
+          </View>
+
+          <View style={styles.formRow}>
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>Kontakt E-Mail</Text>
+              <Input
+                value={teamContactEmail}
+                onChangeText={setTeamContactEmail}
+                placeholder="team@firma.de"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>Kontakt Telefon</Text>
+              <Input
+                value={teamContactPhone}
+                onChangeText={setTeamContactPhone}
+                placeholder="+49 123 456789"
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Adresse</Text>
+            <Input
+              value={teamAddress}
+              onChangeText={setTeamAddress}
+              placeholder="Straße, PLZ Ort"
+              multiline
+              numberOfLines={2}
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <Button onClick={() => setIsTeamModalOpen(false)} variant="secondary">Abbrechen</Button>
+            <Button onClick={saveTeam} variant="primary">Speichern</Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* Team Admin Modal */}
+      <ModernModal
+        visible={isTeamAdminModalOpen}
+        onClose={() => setIsTeamAdminModalOpen(false)}
+        title={`Team-Admin zuweisen: ${selectedTeamForAdmin?.name || ''}`}
+      >
+        <View style={styles.modalContent}>
+          <View style={styles.teamAdminInfoBox}>
+            <Crown size={20} color="#D97706" />
+            <Text style={styles.teamAdminInfoText}>
+              Der Team-Admin kann über den Menüpunkt "Mein Team" seine eigenen Teammitglieder verwalten.
+              {selectedTeamForAdmin?.admin_email
+                ? ` Aktueller Admin: ${selectedTeamForAdmin.admin_name || selectedTeamForAdmin.admin_email}`
+                : ' Aktuell ist kein Admin zugewiesen.'
+              }
+            </Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>E-Mail des neuen Team-Admins *</Text>
+            <Input
+              value={adminEmail}
+              onChangeText={setAdminEmail}
+              placeholder="admin@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <Button onClick={() => setIsTeamAdminModalOpen(false)} variant="secondary">Abbrechen</Button>
+            <Button onClick={assignTeamAdmin} variant="primary" disabled={savingTeamAdmin}>
+              {savingTeamAdmin ? 'Wird zugewiesen...' : 'Admin zuweisen'}
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* Team Members Modal */}
+      <ModernModal
+        visible={!!viewingTeamMembers}
+        onClose={() => setViewingTeamMembers(null)}
+        title={`Mitglieder: ${viewingTeamMembers?.name || ''}`}
+      >
+        <View style={styles.modalContent}>
+          {teamMembers.length === 0 ? (
+            <View style={{ alignItems: 'center', padding: 32 }}>
+              <UsersIcon size={40} color="#CBD5E1" />
+              <Text style={[styles.emptyTitle, { fontSize: 16, marginTop: 12 }]}>
+                Keine Mitglieder
+              </Text>
+              <Text style={styles.emptyText}>
+                Der Team-Admin kann über "Mein Team" Mitglieder hinzufügen.
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {teamMembers.map(member => (
+                <View key={member.id} style={styles.teamMemberRow}>
+                  <View style={styles.teamMemberAvatar}>
+                    <Text style={styles.teamMemberAvatarText}>
+                      {(member.first_name?.[0] || member.email[0]).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.teamMemberName}>
+                      {member.first_name && member.last_name
+                        ? `${member.first_name} ${member.last_name}`
+                        : member.email}
+                    </Text>
+                    <Text style={styles.teamMemberEmail}>{member.email}</Text>
+                  </View>
+                  {member.team_role === 'team_admin' && (
+                    <View style={styles.teamAdminBadgeLarge}>
+                      <Crown size={14} color="#D97706" />
+                      <Text style={styles.teamAdminBadgeLargeText}>Admin</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+              <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, textAlign: 'center' }}>
+                {teamMembers.length} Mitglied{teamMembers.length !== 1 ? 'er' : ''}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.modalActions}>
+            <Button onClick={() => setViewingTeamMembers(null)} variant="secondary">Schließen</Button>
+          </View>
+        </View>
+      </ModernModal>
     </View>
   );
 }
@@ -901,5 +1502,28 @@ const styles = StyleSheet.create({
   permissionToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   permissionToggleText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
   permissionToggleTextActive: { color: '#fff' },
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 }
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  // Team styles
+  teamsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  teamCard: { width: '48%', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  teamHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  teamIconContainer: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  teamActions: { flexDirection: 'row', gap: 6 },
+  teamName: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginBottom: 4 },
+  teamDescription: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 4 },
+  teamCompanyInfo: { fontSize: 13, color: '#475569', fontWeight: '500', marginBottom: 8 },
+  teamInfoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
+  teamContactText: { fontSize: 12, color: '#64748b' },
+  teamStats: { flexDirection: 'row', gap: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  teamAdminBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#FEF3C7', borderRadius: 6, alignSelf: 'center', marginBottom: 4 },
+  teamAdminBadgeText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
+  teamAdminInfoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: '#FFFBEB', borderRadius: 12, borderWidth: 1, borderColor: '#FCD34D' },
+  teamAdminInfoText: { flex: 1, fontSize: 13, color: '#92400E', lineHeight: 20 },
+  teamMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  teamMemberAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  teamMemberAvatarText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  teamMemberName: { fontSize: 14, fontWeight: '600', color: '#0f172a', marginBottom: 1 },
+  teamMemberEmail: { fontSize: 12, color: '#64748b' },
+  teamAdminBadgeLarge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#FEF3C7', borderRadius: 8 },
+  teamAdminBadgeLargeText: { fontSize: 12, fontWeight: '700', color: '#D97706' },
 });

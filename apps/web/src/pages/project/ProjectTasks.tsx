@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
+import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { TaskModal, TaskDetailModal } from './TaskModals';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
@@ -80,6 +82,9 @@ export function ProjectTasks() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('tasks') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('tasks') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('tasks') || false;
+  const { defaultVisibility, filterVisibleItems, setContentVisibility, getContentVisibility } = useContentVisibility(id, 'tasks');
+  const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
+  const [editVisibility, setEditVisibility] = useState<VisibilityLevel>('all_participants');
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -161,7 +166,7 @@ export function ProjectTasks() {
 
   useEffect(() => {
     filterTasks();
-  }, [tasks, searchQuery, statusFilter, priorityFilter]);
+  }, [tasks, searchQuery, statusFilter, priorityFilter, defaultVisibility]);
 
   const loadTasks = async () => {
     if (!id) return;
@@ -233,7 +238,7 @@ export function ProjectTasks() {
     }
   };
 
-  const filterTasks = () => {
+  const filterTasks = async () => {
     let filtered = [...tasks];
 
     if (searchQuery) {
@@ -249,6 +254,13 @@ export function ProjectTasks() {
 
     if (priorityFilter !== 'all') {
       filtered = filtered.filter(task => task.priority === priorityFilter);
+    }
+
+    // Apply content visibility (Freigaben) filtering
+    try {
+      filtered = await filterVisibleItems(filtered);
+    } catch (error) {
+      console.error('Error filtering visible tasks:', error);
     }
 
     setFilteredTasks(filtered);
@@ -323,8 +335,15 @@ export function ProjectTasks() {
       }
 
       showToast('Aufgabe erfolgreich erstellt', 'success');
+
+      // Set content visibility override if not default
+      if (newTask && createVisibility !== 'all_participants') {
+        await setContentVisibility(newTask.id, createVisibility);
+      }
+
       setIsCreateModalOpen(false);
       setCreateFormData({ title: '', description: '', priority: 'medium', status: 'open', assigned_to: '', due_date: '', story_points: '' });
+      setCreateVisibility(defaultVisibility || 'all_participants');
       setCreateImages([]);
       loadTasks();
     } catch (error: any) {
@@ -353,6 +372,9 @@ export function ProjectTasks() {
         .eq('id', selectedTask.id);
 
       if (error) throw error;
+
+      // Save content visibility
+      await setContentVisibility(selectedTask.id, editVisibility);
 
       showToast('Aufgabe aktualisiert', 'success');
       setIsEditMode(false);
@@ -496,7 +518,7 @@ export function ProjectTasks() {
     }
   };
 
-  const openTaskDetail = (task: Task) => {
+  const openTaskDetail = async (task: Task) => {
     setSelectedTask(task);
     setEditFormData({
       title: task.title,
@@ -510,6 +532,14 @@ export function ProjectTasks() {
     setIsEditMode(false);
     setIsDetailModalOpen(true);
     loadTaskDetails(task.id);
+
+    // Load current visibility for this task
+    try {
+      const info = await getContentVisibility(task.id);
+      setEditVisibility(info.effective_visibility);
+    } catch {
+      setEditVisibility(defaultVisibility || 'all_participants');
+    }
   };
 
   // Handle image upload for create modal
@@ -838,6 +868,9 @@ export function ProjectTasks() {
               </View>
               
               <View style={styles.listCardRight}>
+                {defaultVisibility !== 'all_participants' && (
+                  <VisibilityBadge visibility={defaultVisibility} size="small" showLabel />
+                )}
                 {task.due_date && (
                   <View style={[styles.dueDateBadge, new Date(task.due_date) < new Date() ? { backgroundColor: '#FEE2E2' } : {}]}>
                     <Calendar size={12} color={new Date(task.due_date) < new Date() ? '#DC2626' : '#64748b'} />
@@ -1276,6 +1309,13 @@ export function ProjectTasks() {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        visibilityControls={isCreateModalOpen ? (
+          <VisibilitySelector
+            value={createVisibility}
+            onChange={setCreateVisibility}
+            compact
+          />
+        ) : undefined}
       />
 
       {/* Task Detail Modal */}
@@ -1297,6 +1337,12 @@ export function ProjectTasks() {
         isRecording={isRecording}
         canEditPerm={pCanEdit}
         canDeletePerm={pCanDelete}
+        visibilityControls={isEditMode ? (
+          <VisibilityDropdown
+            value={editVisibility}
+            onChange={setEditVisibility}
+          />
+        ) : undefined}
         onChangeEditFormData={(field, value) => setEditFormData({ ...editFormData, [field]: value })}
         onToggleEditMode={() => setIsEditMode(!isEditMode)}
         onSaveEdit={handleUpdateTask}

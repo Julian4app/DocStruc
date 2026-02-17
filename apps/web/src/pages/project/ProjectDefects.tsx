@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
+import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
@@ -68,6 +70,9 @@ export function ProjectDefects() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('defects') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('defects') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('defects') || false;
+  const { defaultVisibility, filterVisibleItems, setContentVisibility, getContentVisibility } = useContentVisibility(id, 'defects');
+  const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
+  const [editVisibility, setEditVisibility] = useState<VisibilityLevel>('all_participants');
   const [loading, setLoading] = useState(true);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -130,7 +135,15 @@ export function ProjectDefects() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setDefects(data || []);
+      
+      // Apply content visibility (Freigaben) filtering
+      let visibleDefects = data || [];
+      try {
+        visibleDefects = await filterVisibleItems(visibleDefects);
+      } catch (err) {
+        console.error('Error filtering visible defects:', err);
+      }
+      setDefects(visibleDefects);
     } catch (error: any) {
       console.error('Error loading defects:', error);
       showToast('Fehler beim Laden der Mängel', 'error');
@@ -222,6 +235,12 @@ export function ProjectDefects() {
       }
 
       showToast('Mangel erfolgreich erstellt', 'success');
+
+      // Set content visibility override if not default
+      if (newDefect && createVisibility !== 'all_participants') {
+        await setContentVisibility(newDefect.id, createVisibility);
+      }
+
       setIsCreateModalOpen(false);
       setTitle('');
       setDescription('');
@@ -229,6 +248,7 @@ export function ProjectDefects() {
       setDueDate('');
       setAssignedTo('');
       setCreateImages([]);
+      setCreateVisibility(defaultVisibility || 'all_participants');
       loadDefects();
     } catch (error: any) {
       console.error('Error creating defect:', error);
@@ -331,6 +351,9 @@ export function ProjectDefects() {
         .eq('id', selectedDefect.id);
 
       if (error) throw error;
+
+      // Save content visibility
+      await setContentVisibility(selectedDefect.id, editVisibility);
 
       showToast('Mangel aktualisiert', 'success');
       setIsEditMode(false);
@@ -626,9 +649,16 @@ export function ProjectDefects() {
                   styles.defectCard,
                   { borderLeftColor: getPriorityColor(defect.priority), borderLeftWidth: 4 }
                 ]}
-                onPress={() => {
+                onPress={async () => {
                   setSelectedDefect(defect);
                   loadDefectDetails(defect.id);
+                  // Load current visibility for this defect
+                  try {
+                    const info = await getContentVisibility(defect.id);
+                    setEditVisibility(info.effective_visibility);
+                  } catch {
+                    setEditVisibility(defaultVisibility || 'all_participants');
+                  }
                 }}
               >
                 <View style={styles.defectHeader}>
@@ -647,6 +677,9 @@ export function ProjectDefects() {
                 )}
                 <View style={styles.defectFooter}>
                   <Text style={styles.defectStatus}>{getStatusLabel(defect.status)}</Text>
+                  {defaultVisibility !== 'all_participants' && (
+                    <VisibilityBadge visibility={defaultVisibility} size="small" />
+                  )}
                   <Text style={styles.defectDate}>
                     {new Date(defect.created_at).toLocaleDateString('de-DE')}
                   </Text>
@@ -672,6 +705,14 @@ export function ProjectDefects() {
         title="Mangel erfassen"
       >
         <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          {/* Visibility selector (Freigaben) — at top */}
+          <View style={styles.modalSection}>
+            <VisibilityDropdown
+              value={createVisibility}
+              onChange={setCreateVisibility}
+            />
+          </View>
+
           {/* Title */}
           <View style={styles.modalSection}>
             <Text style={styles.modalLabel}>Titel *</Text>
@@ -957,6 +998,16 @@ export function ProjectDefects() {
             {/* Info Tab */}
             {activeTab === 'info' && (
               <View style={{ padding: 20 }}>
+                {/* Visibility Dropdown (Edit Mode) */}
+                {isEditMode && (
+                  <View style={styles.detailSection}>
+                    <VisibilityDropdown
+                      value={editVisibility}
+                      onChange={setEditVisibility}
+                    />
+                  </View>
+                )}
+
                 {/* Title (Edit Mode) */}
                 {isEditMode && (
                   <View style={styles.detailSection}>

@@ -39,12 +39,18 @@ export function Dashboard() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
-          fetchProjects();
-          fetchMilestones();
           checkSuperuser(session.user.id);
       }
     });
   }, [setTitle]);
+
+  // Fetch projects whenever session changes
+  useEffect(() => {
+    if (session) {
+      fetchProjects();
+      fetchMilestones();
+    }
+  }, [session]);
 
   const handleCreateClick = useCallback(() => {
       if (!session?.user) {
@@ -73,17 +79,97 @@ export function Dashboard() {
   };
 
   const fetchProjects = async () => {
+    if (!session?.user) {
+      console.log('❌ Dashboard: No session, skipping project fetch');
+      return;
+    }
+    
+    console.log('🔍 Dashboard: Fetching projects for user:', session.user.id);
+    
+    // Get projects user has access to via:
+    // 1. Owner
+    // 2. Project member
+    // 3. Team access (team_project_access)
+    
+    const userId = session.user.id;
+    
+    // Get user's team info
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('team_id, team_role')
+      .eq('id', userId)
+      .single();
+    
+    console.log('📊 Dashboard: User profile:', userProfile);
+    
+    let projectIds: string[] = [];
+    
+    // 1. Projects user owns
+    const { data: ownedProjects } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('owner_id', userId);
+    
+    console.log('📊 Dashboard: Owned projects:', ownedProjects?.length || 0);
+    
+    if (ownedProjects) {
+      projectIds.push(...ownedProjects.map(p => p.id));
+    }
+    
+    // 2. Projects user is a member of
+    const { data: memberProjects } = await supabase
+      .from('project_members')
+      .select('project_id')
+      .eq('user_id', userId);
+    
+    console.log('📊 Dashboard: Member of projects:', memberProjects?.length || 0);
+    
+    if (memberProjects) {
+      projectIds.push(...memberProjects.map(p => p.project_id));
+    }
+    
+    // 3. Projects user's team has access to (if user is team admin or team member)
+    if (userProfile?.team_id) {
+      console.log('📊 Dashboard: Checking team access for team:', userProfile.team_id);
+      
+      const { data: teamProjects, error: teamError } = await supabase
+        .from('team_project_access')
+        .select('project_id')
+        .eq('team_id', userProfile.team_id);
+      
+      console.log('📊 Dashboard: Team projects:', teamProjects?.length || 0, 'error:', teamError);
+      
+      if (teamProjects) {
+        projectIds.push(...teamProjects.map(p => p.project_id));
+      }
+    } else {
+      console.log('⚠️ Dashboard: User has no team_id');
+    }
+    
+    // Remove duplicates
+    projectIds = [...new Set(projectIds)];
+    
+    console.log('✅ Dashboard: Total unique project IDs:', projectIds.length, projectIds);
+    
+    if (projectIds.length === 0) {
+      setProjects([]);
+      return;
+    }
+    
+    // Fetch full project data
     const { data, error } = await supabase
       .from('projects')
       .select('*')
+      .in('id', projectIds)
       .order('created_at', { ascending: false });
     
     if (error) {
-      console.error('Error fetching projects:', error);
+      console.error('❌ Dashboard: Error fetching projects:', error);
       if (error.code === '42P17' || error.message.includes('infinite recursion')) {
           showToast('Datenbankfehler: Bitte FIX_DATABASE.sql im Supabase SQL Editor ausführen.', 'error');
       }
     } else {
+      console.log('✅ Dashboard: Projects loaded:', data?.length);
       setProjects(data || []);
     }
   };

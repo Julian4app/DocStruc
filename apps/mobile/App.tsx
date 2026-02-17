@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, SafeAreaView, Text } from 'react-native';
 import { colors } from '@docstruc/theme';
-import { LoginForm, Button } from '@docstruc/ui';
+import { Button, RegisterData } from '@docstruc/ui';
+import { Input } from '@docstruc/ui';
 import { supabase } from './src/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { useState, useEffect } from 'react';
@@ -48,28 +49,77 @@ export default function App() {
     setLoading(false);
   };
 
-  const handleRegister = async (email: string, pass: string) => {
+  const handleRegister = async (data: RegisterData) => {
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.signUp({ 
-      email, 
-      password: pass,
-      options: { data: { first_name: 'Mobile', last_name: 'User' } }
+      email: data.email, 
+      password: data.password,
+      options: { 
+        data: { 
+          first_name: data.firstName, 
+          last_name: data.lastName,
+          phone: data.phone || null,
+          company_name: data.companyName || null,
+          position: data.position || null,
+        } 
+      }
     });
     if (error) setError(error.message);
     setLoading(false);
   };
 
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+
   if (!session) {
+    const handleSubmit = async () => {
+      if (isLogin) {
+        await handleLogin(email, password);
+      } else {
+        await handleRegister({
+          email,
+          password,
+          firstName,
+          lastName,
+        });
+      }
+    };
+
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
-          <LoginForm 
-            onLogin={handleLogin} 
-            onRegister={handleRegister} 
-            isLoading={loading}
-            error={error}
-          />
+          <View style={{ width: '100%', maxWidth: 400, padding: 24, backgroundColor: '#fff', borderRadius: 20 }}>
+            <Text style={{ fontSize: 24, fontWeight: '800', textAlign: 'center', color: colors.primary, marginBottom: 24 }}>
+              {isLogin ? 'Anmelden' : 'Registrieren'}
+            </Text>
+            {error && (
+              <View style={{ padding: 12, backgroundColor: '#fef2f2', borderRadius: 10, marginBottom: 16 }}>
+                <Text style={{ color: '#dc2626', fontSize: 14 }}>{error}</Text>
+              </View>
+            )}
+            {!isLogin && (
+              <>
+                <Input label="Vorname *" value={firstName} onChangeText={setFirstName} placeholder="Max" />
+                <Input label="Nachname *" value={lastName} onChangeText={setLastName} placeholder="Mustermann" />
+              </>
+            )}
+            <Input label="E-Mail *" value={email} onChangeText={setEmail} placeholder="name@firma.de" />
+            <Input label="Passwort *" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry />
+            <View style={{ marginTop: 16 }}>
+              <Button onClick={handleSubmit} disabled={loading}>
+                {loading ? 'Bitte warten...' : isLogin ? 'Anmelden' : 'Registrieren'}
+              </Button>
+            </View>
+            <View style={{ marginTop: 16, alignItems: 'center' }}>
+              <Button variant="ghost" onClick={() => setIsLogin(!isLogin)}>
+                {isLogin ? 'Konto erstellen' : 'Zur Anmeldung'}
+              </Button>
+            </View>
+          </View>
         </View>
         <StatusBar style="auto" />
       </SafeAreaView>

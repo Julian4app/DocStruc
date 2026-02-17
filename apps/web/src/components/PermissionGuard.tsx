@@ -8,6 +8,8 @@ import { ROUTE_MODULE_MAP } from '../pages/ProjectDetail';
 interface ProjectOutletContext {
   permissions: any;
   isProjectOwner: boolean;
+  isSuperuser: boolean;
+  isTeamAdmin: boolean;
   canView: (moduleKey: string) => boolean;
   canCreate: (moduleKey: string) => boolean;
   canEdit: (moduleKey: string) => boolean;
@@ -41,8 +43,8 @@ export function PermissionGuard({ moduleKey, children }: PermissionGuardProps) {
     return null;
   }
 
-  // Project owner always has access
-  if (context.isProjectOwner) {
+  // Project owner or superuser always has access
+  if (context.isProjectOwner || context.isSuperuser) {
     return <>{children}</>;
   }
 

@@ -371,25 +371,42 @@ export function Accessors() {
       );
   };
 
+  // Calculate tab counts
+  const getTabCount = (tab: 'employees' | 'owners' | 'subcontractors') => {
+    return cache.current[tab]?.length || (tab === activeTab ? data.length : 0);
+  };
+
+  const getTabLabel = (tab: 'employees' | 'owners' | 'subcontractors') => {
+    const labels = {
+      employees: 'Mitarbeiter',
+      owners: 'Zugreifer',
+      subcontractors: 'Gewerke'
+    };
+    return labels[tab];
+  };
+
   return (
     <>
         <View style={styles.tabs}>
-            {(['employees', 'owners', 'subcontractors'] as const).map(tab => (
+            {(['employees', 'owners', 'subcontractors'] as const).map(tab => {
+              const count = getTabCount(tab);
+              return (
                 <TouchableOpacity 
                     key={tab} 
                     style={[styles.tab, activeTab === tab && styles.activeTab]}
                     onPress={() => setActiveTab(tab)}
                 >
                     <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        {getTabLabel(tab)} ({count})
                     </Text>
                 </TouchableOpacity>
-            ))}
+              );
+            })}
         </View>
 
         <View style={styles.toolbar}>
-            <Text style={styles.count}>{data.length} entries</Text>
-            <Button onClick={handleOpenCreate}>Add New</Button>
+            <Text style={styles.count}>{data.length} Einträge</Text>
+            <Button onClick={handleOpenCreate}>Neu hinzufügen</Button>
         </View>
 
         {loading && !cache.current[activeTab] ? (

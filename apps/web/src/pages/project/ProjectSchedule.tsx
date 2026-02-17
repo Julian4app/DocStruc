@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
+import { VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { DatePicker } from '../../components/DatePicker';
 import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { TaskDetailModal } from './TaskModals';
@@ -57,6 +59,7 @@ export function ProjectSchedule() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('schedule') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('schedule') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('schedule') || false;
+  const { defaultVisibility, filterVisibleItems, setContentVisibility } = useContentVisibility(id, 'schedule');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'list' | 'timeline' | 'calendar'>('list');
   const [milestones, setMilestones] = useState<TimelineEvent[]>([]);
@@ -69,6 +72,7 @@ export function ProjectSchedule() {
   const [endDate, setEndDate] = useState('');
   const [color, setColor] = useState('#3B82F6');
   const [eventType, setEventType] = useState<'milestone' | 'deadline' | 'phase'>('milestone');
+  const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
   
   // Task/Defect linking states
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -131,13 +135,16 @@ export function ProjectSchedule() {
         .order('start_date', { ascending: true });
 
       if (timelineError) throw timelineError;
-      setMilestones(timelineData || []);
+
+      // Apply visibility filtering to milestones
+      const visibleMilestones = await filterVisibleItems(timelineData || []);
+      setMilestones(visibleMilestones);
 
       // Calculate schedule status
-      calculateScheduleStatus(timelineData || [], projectData?.target_end_date);
+      calculateScheduleStatus(visibleMilestones, projectData?.target_end_date);
 
       // Load milestones with linked tasks/defects for timeline view
-      await loadMilestonesWithLinkedItems(timelineData || []);
+      await loadMilestonesWithLinkedItems(visibleMilestones);
 
       // Load upcoming tasks with due dates
       const { data: tasksData, error: tasksError } = await supabase
@@ -302,6 +309,11 @@ export function ProjectSchedule() {
 
       if (milestoneError) throw milestoneError;
 
+      // Set visibility if not default
+      if (milestoneData && createVisibility !== 'all_participants') {
+        await setContentVisibility(milestoneData.id, createVisibility);
+      }
+
       // Link selected tasks and defects
       if (selectedItems.length > 0) {
         const milestoneTasksInserts = selectedItems.map(item => ({
@@ -333,6 +345,7 @@ export function ProjectSchedule() {
     setEndDate('');
     setColor('#3B82F6');
     setEventType('milestone');
+    setCreateVisibility('all_participants');
     setSelectedItems([]);
     setSearchQuery('');
     setPreviewItem(null);
@@ -1412,6 +1425,14 @@ export function ProjectSchedule() {
         maxWidth={700}
       >
         <View style={styles.modalContent}>
+          {/* Visibility at top */}
+          <View style={{ marginBottom: 8 }}>
+            <VisibilityDropdown
+              value={createVisibility}
+              onChange={setCreateVisibility}
+            />
+          </View>
+
           {/* Title */}
           <Input
             label="Titel *"

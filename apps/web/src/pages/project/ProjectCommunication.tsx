@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
+import { VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { MessageSquare, Send, StickyNote, Users, Clock, Pin, Trash2, Edit2, X, PinOff, Plus } from 'lucide-react';
 
 interface Message {
@@ -41,6 +43,7 @@ export function ProjectCommunication() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('communication') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('communication') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('communication') || false;
+  const { defaultVisibility, filterVisibleItems, setContentVisibility } = useContentVisibility(id, 'communication');
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [notes, setNotes] = useState<Message[]>([]);
@@ -53,6 +56,7 @@ export function ProjectCommunication() {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
+  const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
 
   useEffect(() => {
     if (id) {
@@ -146,18 +150,21 @@ export function ProjectCommunication() {
         user_avatar: note.profiles?.avatar_url
       }));
 
-      setMessages(transformedMessages);
-      setNotes(transformedNotes);
+      // Apply visibility filtering
+      const visibleMessages = await filterVisibleItems(transformedMessages);
+      const visibleNotes = await filterVisibleItems(transformedNotes);
+      setMessages(visibleMessages);
+      setNotes(visibleNotes);
 
-      // Calculate stats
+      // Calculate stats from visible items
       const uniqueUsers = new Set([
-        ...transformedMessages.map(m => m.user_id),
-        ...transformedNotes.map(n => n.user_id)
+        ...visibleMessages.map(m => m.user_id),
+        ...visibleNotes.map(n => n.user_id)
       ]);
 
       setStats({
-        totalMessages: transformedMessages.length,
-        totalNotes: transformedNotes.length,
+        totalMessages: visibleMessages.length,
+        totalNotes: visibleNotes.length,
         activeUsers: uniqueUsers.size
       });
     } catch (error: any) {
@@ -219,16 +226,24 @@ export function ProjectCommunication() {
         showToast('Notiz aktualisiert', 'success');
       } else {
         // Create new note
-        const { error } = await supabase
+        const { data: newNote, error } = await supabase
           .from('project_messages')
           .insert({
             project_id: id,
             user_id: user.id,
             content: noteInput.trim(),
             message_type: 'note'
-          });
+          })
+          .select()
+          .single();
 
         if (error) throw error;
+
+        // Set visibility if not default
+        if (newNote && createVisibility !== 'all_participants') {
+          await setContentVisibility(newNote.id, createVisibility);
+        }
+        setCreateVisibility('all_participants');
         showToast('Notiz erstellt', 'success');
       }
 
@@ -466,6 +481,13 @@ export function ProjectCommunication() {
         title={editingMessage ? 'Notiz bearbeiten' : 'Neue Notiz erstellen'}
       >
         <View style={styles.modalContent}>
+          {/* Visibility selector at top */}
+          <View style={{ marginBottom: 8 }}>
+            <VisibilityDropdown
+              value={createVisibility}
+              onChange={setCreateVisibility}
+            />
+          </View>
           <TextInput
             style={styles.noteTextArea}
             placeholder="Notiz eingeben..."

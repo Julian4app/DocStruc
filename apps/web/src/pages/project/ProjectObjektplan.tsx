@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
 import {
   Building2, Layers, Home, Plus, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, X, Maximize2, Minimize2, Move, Square, Circle, Type, Minus,
@@ -940,6 +941,8 @@ export function ProjectObjektplan() {
   const [parentFloorId, setParentFloorId] = useState<string | null>(null);
   const [formName, setFormName] = useState('');
   const [formLevel, setFormLevel] = useState('0');
+
+  const { defaultVisibility, filterVisibleItems } = useContentVisibility(projectId, 'objektplan');
 
   useEffect(() => { if (projectId) loadData(); }, [projectId]);
 

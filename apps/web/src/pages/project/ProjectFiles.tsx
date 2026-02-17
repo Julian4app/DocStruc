@@ -6,6 +6,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { ModernModal } from '../../components/ModernModal';
 import { Select } from '../../components/Select';
 import { 
@@ -93,6 +94,7 @@ export function ProjectFiles() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('files') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('files') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('files') || false;
+  const { defaultVisibility, filterVisibleItems } = useContentVisibility(id, 'files');
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [loading, setLoading] = useState(true);
@@ -207,10 +209,12 @@ export function ProjectFiles() {
         : 'Unbekannt'
     }));
 
-    setFiles(filesWithNames);
+    // Apply visibility filtering
+    const visibleFiles = await filterVisibleItems(filesWithNames);
+    setFiles(visibleFiles);
     
-    const totalSize = filesWithNames.reduce((sum: number, f: ProjectFile) => sum + f.file_size, 0);
-    setStats(prev => ({ ...prev, totalFiles: filesWithNames.length, totalSize }));
+    const totalSize = visibleFiles.reduce((sum: number, f: ProjectFile) => sum + f.file_size, 0);
+    setStats(prev => ({ ...prev, totalFiles: visibleFiles.length, totalSize }));
   };
 
   const loadProjectMembers = async () => {

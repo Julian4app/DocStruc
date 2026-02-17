@@ -13,7 +13,7 @@ import { SearchableSelect } from '../../components/SearchableSelect';
 import { useLayout } from '../../layouts/LayoutContext';
 import { 
   Settings, Archive, Trash2, Save, AlertTriangle, Building2, MapPin, 
-  Calendar, Image, Users, FileText, Briefcase, ArrowLeft, Shield 
+  Calendar, Image, Users, FileText, Briefcase, ArrowLeft, Shield, UsersRound 
 } from 'lucide-react';
 
 interface Project {
@@ -70,6 +70,10 @@ export function ProjectManagementDetail() {
   // Roles for this project
   const [availableRoles, setAvailableRoles] = useState<any[]>([]);
   const [selectedProjectRoleIds, setSelectedProjectRoleIds] = useState<string[]>([]);
+  
+  // Teams for this project
+  const [allTeams, setAllTeams] = useState<any[]>([]);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
 
   useEffect(() => {
     setTitle('Projekt Management');
@@ -147,6 +151,15 @@ export function ProjectManagementDetail() {
       
       if (rolesError) throw rolesError;
       setAvailableRoles(rolesData || []);
+      
+      // Load all teams
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('teams')
+        .select('id, name, description')
+        .eq('is_active', true);
+      
+      if (teamsError) throw teamsError;
+      setAllTeams(teamsData || []);
     } catch (error: any) {
       console.error('Error loading resources:', error);
     }
@@ -185,6 +198,17 @@ export function ProjectManagementDetail() {
       
       const roleIds = (projectRolesData || []).map(pr => pr.role_id).filter(Boolean);
       setSelectedProjectRoleIds(roleIds as string[]);
+      
+      // Load team_project_access for this project
+      const { data: projectTeamsData, error: projectTeamsError } = await supabase
+        .from('team_project_access')
+        .select('team_id')
+        .eq('project_id', id);
+      
+      if (projectTeamsError) throw projectTeamsError;
+      
+      const teamIds = (projectTeamsData || []).map(pt => pt.team_id).filter(Boolean);
+      setSelectedTeamIds(teamIds as string[]);
     } catch (error: any) {
       console.error('Error loading linked people:', error);
     }
@@ -254,6 +278,35 @@ export function ProjectManagementDetail() {
           role_id: roleId
         }));
         await supabase.from('project_available_roles').insert(projectRolesToInsert);
+      }
+
+      // 1.5. Sync team_project_access with selected teams
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: existingTeamAccess } = await supabase
+        .from('team_project_access')
+        .select('id, team_id')
+        .eq('project_id', id);
+
+      const existingTeamIds = (existingTeamAccess || []).map(ta => ta.team_id).filter(Boolean);
+      
+      // Find teams to add/remove
+      const teamsToAdd = selectedTeamIds.filter(tid => !existingTeamIds.includes(tid));
+      const teamsToRemove = (existingTeamAccess || []).filter(ta => ta.team_id && !selectedTeamIds.includes(ta.team_id));
+
+      // Remove unselected team access
+      if (teamsToRemove.length > 0) {
+        const removeTeamIds = teamsToRemove.map(ta => ta.id);
+        await supabase.from('team_project_access').delete().in('id', removeTeamIds);
+      }
+
+      // Add newly selected teams
+      if (teamsToAdd.length > 0 && user) {
+        const teamAccessToInsert = teamsToAdd.map(teamId => ({
+          project_id: id,
+          team_id: teamId,
+          added_by: user.id
+        }));
+        await supabase.from('team_project_access').insert(teamAccessToInsert);
       }
 
       // 2. Sync project_members with selected accessors
@@ -592,6 +645,36 @@ export function ProjectManagementDetail() {
           {availableRoles.length === 0 && (
             <Text style={{ fontSize: 13, color: '#F59E0B', marginTop: 8 }}>
               ⚠️ Keine Rollen verfügbar. Erstellen Sie zuerst Rollen auf der "Zugriffsberechtigte" Seite im "Rollen" Tab.
+            </Text>
+          )}
+        </Card>
+
+        {/* 5.5. Project Teams */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <UsersRound size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Teams</Text>
+          </View>
+          <Text style={styles.helperText}>
+            Fügen Sie Teams zu diesem Projekt hinzu. Team-Admins können dann ihre eigenen Teammitglieder zum Projekt hinzufügen.
+          </Text>
+          <View style={styles.formGroup}>
+            <SearchableSelect
+              label="Teams mit Projektzugriff"
+              placeholder="Teams auswählen..."
+              options={allTeams.map(t => ({
+                label: t.name,
+                value: t.id,
+                subtitle: t.description || undefined
+              }))}
+              values={selectedTeamIds}
+              onChange={setSelectedTeamIds}
+              multi
+            />
+          </View>
+          {allTeams.length === 0 && (
+            <Text style={{ fontSize: 13, color: '#F59E0B', marginTop: 8 }}>
+              ⚠️ Keine Teams verfügbar. Erstellen Sie zuerst Teams auf der "Zugreifer" Seite im "Teams" Tab.
             </Text>
           )}
         </Card>

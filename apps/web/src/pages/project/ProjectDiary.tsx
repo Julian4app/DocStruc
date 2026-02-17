@@ -6,6 +6,8 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
+import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { DatePicker } from '../../components/DatePicker';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
@@ -45,6 +47,8 @@ export function ProjectDiary() {
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('diary') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('diary') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('diary') || false;
+  const { defaultVisibility, filterVisibleItems, setContentVisibility } = useContentVisibility(id, 'diary');
+  const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
@@ -195,7 +199,15 @@ export function ProjectDiary() {
           : 'Unbekannt'
       }));
 
-      setEntries(transformed);
+      // Apply content visibility (Freigaben) filtering
+      let visibleEntries = transformed;
+      try {
+        visibleEntries = await filterVisibleItems(visibleEntries);
+      } catch (err) {
+        console.error('Error filtering visible diary entries:', err);
+      }
+
+      setEntries(visibleEntries);
     } catch (error: any) {
       console.error('Error loading diary entries:', error);
       showToast('Fehler beim Laden der Einträge', 'error');
@@ -230,7 +242,7 @@ export function ProjectDiary() {
       const manualCount = manualWorkerCount ? parseInt(manualWorkerCount) : 0;
       const totalWorkers = manualCount + selectedWorkers.length;
       
-      const { error } = await supabase
+      const { data: newEntry, error } = await supabase
         .from('diary_entries')
         .insert({
           project_id: id,
@@ -244,12 +256,20 @@ export function ProjectDiary() {
           special_events: specialEvents || null,
           deliveries: deliveries || null,
           created_by: user.id
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
+      // Set content visibility override if not default
+      if (newEntry && createVisibility !== 'all_participants') {
+        await setContentVisibility(newEntry.id, createVisibility);
+      }
+
       showToast('Eintrag erfolgreich erstellt', 'success');
       setIsCreateModalOpen(false);
+      setCreateVisibility(defaultVisibility || 'all_participants');
       resetForm();
       loadDiaryEntries();
     } catch (error: any) {
@@ -556,6 +576,9 @@ export function ProjectDiary() {
                     <View style={styles.entryDateRow}>
                       <Calendar size={18} color={colors.primary} />
                       <Text style={styles.entryDate}>{formatDate(entry.entry_date)}</Text>
+                      {defaultVisibility !== 'all_participants' && (
+                        <VisibilityBadge visibility={defaultVisibility} size="small" />
+                      )}
                     </View>
                   </View>
                   <View style={styles.entryMeta}>
@@ -625,6 +648,14 @@ export function ProjectDiary() {
         title="Neuer Bautagebuch-Eintrag"
       >
         <View style={styles.modalContent}>
+          {/* Visibility selector (Freigaben) — at top */}
+          <View style={{ marginBottom: 8 }}>
+            <VisibilityDropdown
+              value={createVisibility}
+              onChange={setCreateVisibility}
+            />
+          </View>
+
           <DatePicker 
             label="Datum *" 
             value={selectedDate} 

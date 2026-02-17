@@ -13,7 +13,8 @@ import {
   Users, 
   Search,
   Bell,
-  Smartphone
+  Smartphone,
+  UsersRound
 } from 'lucide-react';
 
 export function WebLayout() {
@@ -25,6 +26,7 @@ export function WebLayout() {
   const [actions, setActions] = useState<React.ReactNode>(null);
   const [sidebarMenu, setSidebarMenu] = useState<{ label: string; path: string; icon?: any }[] | null>(null);
   const [isSuperuser, setIsSuperuser] = useState(false);
+  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState('');
@@ -51,26 +53,71 @@ export function WebLayout() {
   }, [showNotifications]);
 
   const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserEmail(user.email || '');
-      const { data } = await supabase
-        .from('profiles')
-        .select('is_superuser, first_name, last_name, avatar_url')
-        .eq('id', user.id)
-        .single();
-      if (data?.is_superuser) setIsSuperuser(true);
-      if (data?.first_name) setUserName(`${data.first_name} ${data.last_name || ''}`.trim());
-      if (data?.avatar_url) setUserAvatar(data.avatar_url);
-      
-      // Fetch notifications (example - adjust based on your schema)
-      const { data: notifs } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (notifs) setNotifications(notifs);
+      try {
+        console.log('🔍 WebLayout: Starting checkUser...');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.log('❌ WebLayout: No user found');
+          return;
+        }
+        console.log('✅ WebLayout: User found:', user.id);
+        setUserEmail(user.email || '');
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_superuser, first_name, last_name, avatar_url, team_id, team_role')
+          .eq('id', user.id)
+          .single();
+        
+        console.log('📊 WebLayout: Profile query result:', { data, error });
+        
+        if (error) {
+          console.error('❌ WebLayout: Error loading profile:', error);
+          return;
+        }
+        
+        if (!data) {
+          console.error('❌ WebLayout: No profile data returned');
+          return;
+        }
+        
+        console.log('✅ WebLayout: Profile loaded:', {
+          is_superuser: data.is_superuser,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          team_role: data.team_role,
+          team_id: data.team_id
+        });
+        
+        // Always set states based on current data (reset to false if not applicable)
+        const newIsSuperuser = data?.is_superuser === true;
+        const newIsTeamAdmin = data?.team_role === 'team_admin' && !!data?.team_id;
+        const newUserName = data?.first_name ? `${data.first_name} ${data.last_name || ''}`.trim() : '';
+        const newUserAvatar = data?.avatar_url || '';
+        
+        console.log('🎯 WebLayout: Setting states:', {
+          isSuperuser: newIsSuperuser,
+          isTeamAdmin: newIsTeamAdmin,
+          userName: newUserName,
+          userAvatar: newUserAvatar
+        });
+        
+        setIsSuperuser(newIsSuperuser);
+        setIsTeamAdmin(newIsTeamAdmin);
+        setUserName(newUserName);
+        setUserAvatar(newUserAvatar);
+        
+        // Fetch notifications (example - adjust based on your schema)
+        const { data: notifs } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (notifs) setNotifications(notifs);
+      } catch (err) {
+        console.error('❌ WebLayout: Error in checkUser:', err);
+      }
   };
 
   const handleLogout = async () => { await supabase.auth.signOut(); };
@@ -90,6 +137,15 @@ export function WebLayout() {
           items: [
               { label: 'Projekte Manager', path: '/manage-projects', icon: Folder },
               { label: 'Zugreifer', path: '/accessors', icon: Users },
+          ]
+      });
+  }
+
+  if (isTeamAdmin && !isSuperuser) {
+      menuGroups.push({
+          title: 'TEAM',
+          items: [
+              { label: 'Mein Team', path: '/my-team', icon: UsersRound },
           ]
       });
   }

@@ -12,7 +12,9 @@ import {
   Menu,
   Bell,
   Search,
-  ChevronRight
+  ChevronRight,
+  Settings,
+  UserCircle
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -28,6 +30,18 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
   const [profile, setProfile] = useState<{ first_name?: string, last_name?: string, email?: string } | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
+
+  const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+          setUserEmail(user.email || '');
+          const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
+          if (data) {
+            setProfile(data);
+            setUserName(`${data.first_name || ''} ${data.last_name || ''}`.trim());
+          }
+      }
+  };
 
   useEffect(() => {
       fetchProfile();
@@ -45,17 +59,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         .subscribe();
         
       return () => { supabase.removeChannel(channel); };
-  const fetchProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-          setUserEmail(user.email || '');
-          const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
-          if (data) {
-            setProfile(data);
-            setUserName(`${data.first_name || ''} ${data.last_name || ''}`.trim());
-          }
-      }
-  };
+  }, []);
 
   const menuGroups = [
     {
@@ -110,6 +114,9 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
                     </Text>
                     {isActive && <View style={styles.activeIndicator} />}
                   </TouchableOpacity>
+                );
+              })}
+            </View>
           ))}
         </ScrollView>
         
@@ -125,9 +132,6 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
                     {profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User' : 'Loading...'}
                 </Text>
                 <Text style={styles.userRole}>Super Admin</Text>
-            </View>
-        </View>
-      </View>   <Text style={styles.userRole}>Super Admin</Text>
             </View>
         </View>
       </View>
@@ -169,20 +173,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-                <TouchableOpacity style={styles.iconBtn}>
-                    <Bell size={20} color="#64748b" />
-                    <View style={styles.notificationDot} />
-                </TouchableOpacity>
-                {actions && <View style={styles.actionDelimiter} />}
-                {actions}
-                <View style={styles.actionDelimiter} />
-                <ProfileDropdown 
-                  userName={displayName}
-                  userEmail={userEmail}
-                  userAvatar=""
-                />
-            </View>
-        </View>olor: '#0f172a', // Slate 900
+    backgroundColor: '#0f172a', // Slate 900
+  },
+  sidebar: {
+    width: 280,
+    backgroundColor: '#0f172a', // Slate 900
     borderRightWidth: 1,
     borderRightColor: '#1e293b',
     display: 'flex',

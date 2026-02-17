@@ -49,7 +49,7 @@ export function ProjectDetail() {
   const { setTitle, setSubtitle, setActions, setSidebarMenu } = useLayout();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const { permissions, isLoading: permissionsLoading, isProjectOwner, canView, canCreate, canEdit, canDelete } = usePermissions(id);
+  const { permissions, isLoading: permissionsLoading, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete } = usePermissions(id);
 
   useEffect(() => {
     if (id) {
@@ -120,7 +120,7 @@ export function ProjectDetail() {
 
   if (!project) return null;
 
-  return <Outlet context={{ permissions, isProjectOwner, canView, canCreate, canEdit, canDelete, permissionsLoading }} />;
+  return <Outlet context={{ permissions, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete, permissionsLoading }} />;
 }
 
 const styles = StyleSheet.create({

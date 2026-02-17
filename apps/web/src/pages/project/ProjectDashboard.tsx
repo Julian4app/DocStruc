@@ -64,10 +64,29 @@ export function ProjectDashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projectStatus, setProjectStatus] = useState<string>('active');
   const [statusDate, setStatusDate] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserTeamId, setCurrentUserTeamId] = useState<string | null>(null);
+  const [teamStats, setTeamStats] = useState({ totalTasks: 0, completedTasks: 0 });
 
   useEffect(() => {
+    loadCurrentUser();
     loadDashboardData();
   }, [id]);
+
+  const loadCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      setCurrentUserId(user.id);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('team_id')
+        .eq('id', user.id)
+        .single();
+      if (profile) {
+        setCurrentUserTeamId(profile.team_id);
+      }
+    }
+  };
 
   const loadDashboardData = async () => {
     if (!id) return;
@@ -110,6 +129,26 @@ export function ProjectDashboard() {
       });
 
       setRecentTasks(allTasks.slice(0, 5));
+
+      // Calculate team-specific stats if user has a team
+      if (currentUserTeamId) {
+        // Get all task creators' profiles
+        const creatorIds = [...new Set(allTasks.map(t => t.created_by).filter(Boolean))];
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, team_id')
+          .in('id', creatorIds);
+
+        const teamTasks = allTasks.filter(t => {
+          const creatorProfile = profiles?.find(p => p.id === t.created_by);
+          return creatorProfile?.team_id === currentUserTeamId && (t.task_type === 'task' || !t.task_type);
+        });
+
+        setTeamStats({
+          totalTasks: teamTasks.length,
+          completedTasks: teamTasks.filter(t => t.status === 'done').length
+        });
+      }
 
       // Load upcoming milestones
       const { data: milestonesData, error: milestonesError } = await supabase
@@ -242,7 +281,7 @@ export function ProjectDashboard() {
 
       {/* Progress Overview */}
       <Card style={styles.progressCard}>
-        <Text style={styles.cardTitle}>Gesamtfortschritt</Text>
+        <Text style={styles.cardTitle}>Gesamtfortschritt - Alle Teams</Text>
         <View style={styles.progressDetails}>
           <View style={styles.progressDetailItem}>
             <Text style={styles.progressDetailLabel}>Aufgaben</Text>
@@ -264,6 +303,33 @@ export function ProjectDashboard() {
         </View>
         <Text style={styles.progressText}>{progress}% abgeschlossen</Text>
       </Card>
+
+      {/* Team-Specific Progress */}
+      {currentUserTeamId && teamStats.totalTasks > 0 && (() => {
+        const teamProgress = Math.round((teamStats.completedTasks / teamStats.totalTasks) * 100);
+        
+        return (
+          <Card style={[styles.progressCard, { marginTop: 16 }]}>
+            <Text style={styles.cardTitle}>Fortschritt - Nur Eigenes Team</Text>
+            <View style={styles.progressDetails}>
+              <View style={styles.progressDetailItem}>
+                <Text style={styles.progressDetailLabel}>Team-Aufgaben</Text>
+                <Text style={styles.progressDetailValue}>{teamStats.completedTasks} / {teamStats.totalTasks}</Text>
+              </View>
+            </View>
+            <View style={styles.progressBarContainer}>
+              <View style={[
+                styles.progressBar, 
+                { 
+                  width: `${teamProgress}%`,
+                  backgroundColor: getProgressColor(teamProgress)
+                }
+              ]} />
+            </View>
+            <Text style={styles.progressText}>{teamProgress}% abgeschlossen</Text>
+          </Card>
+        );
+      })()}
 
       {/* Stats Grid */}
       <View style={styles.statsGrid}>

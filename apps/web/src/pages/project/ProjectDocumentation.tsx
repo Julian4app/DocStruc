@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
+import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { DatePicker } from '../../components/DatePicker';
 import { TaskDetailModal } from './TaskModals';
 import { 
@@ -38,6 +39,7 @@ interface GroupedDocs {
 export function ProjectDocumentation() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { defaultVisibility, filterVisibleItems } = useContentVisibility(id, 'documentation');
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<DocumentationEntry[]>([]);
   const [filteredEntries, setFilteredEntries] = useState<DocumentationEntry[]>([]);
@@ -128,7 +130,9 @@ export function ProjectDocumentation() {
         task_priority: entry.tasks.priority
       }));
 
-      setEntries(transformed);
+      // Apply visibility filtering
+      const visibleEntries = await filterVisibleItems(transformed);
+      setEntries(visibleEntries);
     } catch (error: any) {
       console.error('Error loading documentation:', error);
       showToast('Fehler beim Laden der Dokumentation', 'error');

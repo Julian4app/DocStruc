@@ -93,6 +93,7 @@ export const TaskModal: React.FC<{
   onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
+  visibilityControls?: React.ReactNode;
 }> = ({ 
   visible, 
   mode, 
@@ -110,6 +111,7 @@ export const TaskModal: React.FC<{
   onDragOver,
   onDragLeave,
   onDrop,
+  visibilityControls,
 }) => {
   if (!visible) return null;
 
@@ -134,6 +136,13 @@ export const TaskModal: React.FC<{
           </View>
 
           <ScrollView style={styles.modalBody}>
+            {/* Visibility Controls (Freigaben) — at top */}
+            {visibilityControls && (
+              <View style={styles.modalSection}>
+                {visibilityControls}
+              </View>
+            )}
+
             {/* Title */}
             <View style={styles.modalSection}>
               <Text style={styles.modalLabel}>Titel *</Text>
@@ -329,6 +338,7 @@ export const TaskDetailModal: React.FC<{
   canEditPerm?: boolean;
   canDeletePerm?: boolean;
   canCreatePerm?: boolean;
+  visibilityControls?: React.ReactNode;
   onChangeEditFormData: (field: string, value: string) => void;
   onToggleEditMode: () => void;
   onSaveEdit: () => void;
@@ -354,6 +364,7 @@ export const TaskDetailModal: React.FC<{
   canEditPerm = true,
   canDeletePerm = true,
   canCreatePerm = true,
+  visibilityControls,
   onChangeEditFormData,
   onToggleEditMode,
   onSaveEdit,
@@ -576,6 +587,13 @@ export const TaskDetailModal: React.FC<{
                 {/* Edit Mode Fields */}
                 {isEditMode && (
                   <>
+                    {/* Visibility Controls in Edit Mode */}
+                    {visibilityControls && (
+                      <View style={styles.detailSection}>
+                        {visibilityControls}
+                      </View>
+                    )}
+
                     <View style={styles.detailSection}>
                       <Text style={styles.modalLabel}>Priorität</Text>
                       <View style={styles.priorityGrid}>
