@@ -45,7 +45,23 @@ The following tables are actively queried by the app but have **NO RLS enabled**
 | `subscription_types` | 🔵 | Subscription plan definitions |
 | `tags` | 🔵 | Tag definitions |
 
-**Fix:** See `supabase/migrations/20260219_critical_rls_missing_tables.sql` ✅ **CREATED** — Apply to database to activate
+**Fix:** See `supabase/migrations/20260219_critical_rls_missing_tables.sql` ✅ **READY TO APPLY**
+
+**Fix Details:**
+- **Schema corrected** — Previous versions referenced non-existent `company_id` columns
+- **Access model:**
+  - CRM/master data tables: Read for all authenticated users, write for superusers only
+  - Project tables: Scoped to owner and members
+  - User data: Self-scoped
+- **Performance:** Added 14 indexes for RLS policy checks
+- **Verification:** Migration tested against actual schema structure (companies, crm_contacts, subcontractors, etc.)
+
+**To Apply:**
+```bash
+# In Supabase dashboard SQL Editor or via CLI:
+supabase db reset  # Dev environment
+# OR apply migration file directly in production dashboard
+```
 
 ---
 
