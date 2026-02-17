@@ -12,6 +12,7 @@ import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLeve
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
+import { useAuth } from '../../contexts/AuthContext';
 import DOMPurify from 'dompurify';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
@@ -66,6 +67,7 @@ interface ProjectMember {
 export function ProjectDefects() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const ctx = useProjectPermissionContext();
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('defects') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('defects') || false;
@@ -178,9 +180,7 @@ export function ProjectDefects() {
     }
 
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !userData.user) {
+      if (!userId) {
         throw new Error('Benutzer nicht authentifiziert');
       }
       
@@ -193,7 +193,7 @@ export function ProjectDefects() {
         status: 'open',
         due_date: dueDate || null,
         assigned_to: assignedTo || null,
-        creator_id: userData.user.id
+        creator_id: userId
       }).select().single();
 
       if (error) {
@@ -224,7 +224,7 @@ export function ProjectDefects() {
             storage_path: filePath,
             file_name: file.name,
             display_order: i,
-            uploaded_by: userData.user.id
+            uploaded_by: userId
           });
 
           if (imageInsertError) {
@@ -424,8 +424,6 @@ export function ProjectDefects() {
     if (files.length === 0) return;
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fileExt = file.name.split('.').pop();
@@ -466,12 +464,10 @@ export function ProjectDefects() {
     }
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      
       const { error } = await supabase.from('task_documentation').insert({
         task_id: selectedDefect.id,
         project_id: id,
-        user_id: userData.user?.id,
+        user_id: userId,
         content: type === 'text' ? docFormData.content.trim() : null,
         documentation_type: type
       });

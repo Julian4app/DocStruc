@@ -39,6 +39,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { ToastProvider } from './components/ToastProvider';
+import { AuthProvider } from './contexts/AuthContext';
 import { WebLayout } from './layouts/WebLayout';
 import { PermissionGuard } from './components/PermissionGuard';
 
@@ -157,6 +158,7 @@ function App() {
 
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
+      <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
           <Suspense fallback={
@@ -208,6 +210,7 @@ function App() {
           </Suspense>
         </BrowserRouter>
       </ToastProvider>
+      </AuthProvider>
     </PersistQueryClientProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface UserPermissions {
   [moduleKey: string]: {
@@ -27,20 +28,18 @@ export interface PermissionCheckResult {
 /**
  * Hook to check user permissions for a specific project
  * Hierarchy: owner → superuser → team admin (with team access) → RPC (role/custom permissions)
- * @param projectId - The ID of the project to check permissions for
- * @returns Permission check result with utility functions
+ * Uses AuthContext for cached user/profile data — no redundant auth.getUser() or profile queries.
  */
 export function usePermissions(projectId: string | undefined): PermissionCheckResult {
+  const { userId, profile, isSuperuser: authIsSuperuser, isTeamAdmin: authIsTeamAdmin, loading: authLoading } = useAuth();
   const [permissions, setPermissions] = useState<UserPermissions>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
-  const [isSuperuser, setIsSuperuser] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
   const permissionsLoadedRef = useRef(false);
 
   const loadPermissions = useCallback(async () => {
-    if (!projectId) {
-      setIsLoading(false);
+    if (!projectId || !userId || authLoading) {
+      if (!authLoading) setIsLoading(false);
       return;
     }
 
@@ -48,50 +47,18 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
     permissionsLoadedRef.current = false;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.warn('⚠️ usePermissions: No authenticated user');
-        setPermissions({});
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('🔐 usePermissions: Loading for user:', user.id, 'project:', projectId);
-
-      // Check if user is project owner
+      // Step 1: Check project ownership (single query — profile already cached)
       const { data: project } = await supabase
         .from('projects')
         .select('owner_id')
         .eq('id', projectId)
         .single();
 
-      const isOwner = project?.owner_id === user.id;
+      const isOwner = project?.owner_id === userId;
       setIsProjectOwner(isOwner);
 
-      // Check user profile: superuser, team info
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_superuser, team_id, team_role')
-        .eq('id', user.id)
-        .single();
-
-      const userIsSuperuser = profile?.is_superuser === true;
-      const userIsTeamAdmin = profile?.team_role === 'team_admin' && !!profile?.team_id;
-      
-      setIsSuperuser(userIsSuperuser);
-      setIsTeamAdmin(userIsTeamAdmin);
-
-      console.log('🔐 usePermissions: User roles:', {
-        isOwner,
-        isSuperuser: userIsSuperuser,
-        isTeamAdmin: userIsTeamAdmin,
-        teamId: profile?.team_id,
-        teamRole: profile?.team_role
-      });
-
-      // Owner or superuser → full permissions (no need for RPC)
-      if (isOwner || userIsSuperuser) {
-        console.log('✅ usePermissions: Owner or superuser → full permissions');
+      // Owner or superuser → full permissions — fetch modules only
+      if (isOwner || authIsSuperuser) {
         const { data: modules } = await supabase
           .from('permission_modules')
           .select('module_key')
@@ -100,10 +67,7 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
         const fullPermissions: UserPermissions = {};
         (modules || []).forEach(module => {
           fullPermissions[module.module_key] = {
-            can_view: true,
-            can_create: true,
-            can_edit: true,
-            can_delete: true
+            can_view: true, can_create: true, can_edit: true, can_delete: true
           };
         });
 
@@ -114,28 +78,26 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
       }
 
       // Team admin: check if team has access to this project
-      if (userIsTeamAdmin && profile?.team_id) {
-        const { data: teamAccess } = await supabase
-          .from('team_project_access')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('team_id', profile.team_id)
-          .maybeSingle();
-
-        if (teamAccess) {
-          console.log('✅ usePermissions: Team admin with team access → full permissions');
-          const { data: modules } = await supabase
+      if (authIsTeamAdmin && profile?.team_id) {
+        // Parallelize: team_access + modules in one go
+        const [teamAccessResult, modulesResult] = await Promise.all([
+          supabase
+            .from('team_project_access')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('team_id', profile.team_id)
+            .maybeSingle(),
+          supabase
             .from('permission_modules')
             .select('module_key')
-            .eq('is_active', true);
+            .eq('is_active', true),
+        ]);
 
+        if (teamAccessResult.data) {
           const fullPermissions: UserPermissions = {};
-          (modules || []).forEach(module => {
+          (modulesResult.data || []).forEach(module => {
             fullPermissions[module.module_key] = {
-              can_view: true,
-              can_create: true,
-              can_edit: true,
-              can_delete: true
+              can_view: true, can_create: true, can_edit: true, can_delete: true
             };
           });
 
@@ -147,22 +109,17 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
       }
 
       // Regular user: get permissions via RPC
-      console.log('🔍 usePermissions: Regular user → calling RPC get_user_project_permissions');
-      
       const { data, error } = await supabase
         .rpc('get_user_project_permissions', {
-          p_user_id: user.id,
+          p_user_id: userId,
           p_project_id: projectId
         });
 
       if (error) {
-        console.error('❌ usePermissions: RPC error:', error);
+        console.error('usePermissions: RPC error:', error);
         setPermissions({});
       } else {
         const permsObj: UserPermissions = {};
-        let viewableCount = 0;
-        let restrictedCount = 0;
-
         (data || []).forEach((perm: any) => {
           permsObj[perm.module_key] = {
             can_view: !!perm.can_view,
@@ -170,68 +127,56 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
             can_edit: !!perm.can_edit,
             can_delete: !!perm.can_delete
           };
-          if (perm.can_view) viewableCount++;
-          else restrictedCount++;
         });
-
-        console.log('📊 usePermissions: RPC result:', {
-          totalModules: (data || []).length,
-          viewable: viewableCount,
-          restricted: restrictedCount,
-          details: Object.entries(permsObj).map(([key, val]) => 
-            `${key}: view=${val.can_view} create=${val.can_create} edit=${val.can_edit} delete=${val.can_delete}`
-          )
-        });
-
         setPermissions(permsObj);
       }
       
       permissionsLoadedRef.current = true;
     } catch (error) {
-      console.error('❌ usePermissions: Unexpected error:', error);
+      console.error('usePermissions: Unexpected error:', error);
       setPermissions({});
     } finally {
       setIsLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, userId, authIsSuperuser, authIsTeamAdmin, profile?.team_id, authLoading]);
 
   useEffect(() => {
     loadPermissions();
   }, [loadPermissions]);
 
   const canView = useCallback((moduleKey: string): boolean => {
-    if (isProjectOwner || isSuperuser) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
     const result = permissions[moduleKey]?.can_view === true;
     return result;
-  }, [isProjectOwner, isSuperuser, permissions]);
+  }, [isProjectOwner, authIsSuperuser, permissions]);
 
   const canCreate = useCallback((moduleKey: string): boolean => {
-    if (isProjectOwner || isSuperuser) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
     return permissions[moduleKey]?.can_create === true;
-  }, [isProjectOwner, isSuperuser, permissions]);
+  }, [isProjectOwner, authIsSuperuser, permissions]);
 
   const canEdit = useCallback((moduleKey: string): boolean => {
-    if (isProjectOwner || isSuperuser) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
     return permissions[moduleKey]?.can_edit === true;
-  }, [isProjectOwner, isSuperuser, permissions]);
+  }, [isProjectOwner, authIsSuperuser, permissions]);
 
   const canDelete = useCallback((moduleKey: string): boolean => {
-    if (isProjectOwner || isSuperuser) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
     return permissions[moduleKey]?.can_delete === true;
-  }, [isProjectOwner, isSuperuser, permissions]);
+  }, [isProjectOwner, authIsSuperuser, permissions]);
 
   const hasAnyPermission = useCallback((moduleKey: string): boolean => {
-    if (isProjectOwner || isSuperuser) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
     const perm = permissions[moduleKey];
     return perm ? (perm.can_view === true || perm.can_create === true || perm.can_edit === true || perm.can_delete === true) : false;
-  }, [isProjectOwner, isSuperuser, permissions]);
+  }, [isProjectOwner, authIsSuperuser, permissions]);
 
   return {
     permissions,
     isLoading,
     isProjectOwner,
-    isSuperuser,
-    isTeamAdmin,
+    isSuperuser: authIsSuperuser,
+    isTeamAdmin: authIsTeamAdmin,
     canView,
     canCreate,
     canEdit,

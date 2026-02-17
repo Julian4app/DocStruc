@@ -7,6 +7,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   Users, Plus, Trash2, Edit2, Shield, Eye, Check, Mail, Building, 
   Phone, UserPlus, Send, UserX, UserCheck, RefreshCw, MoreVertical, UsersRound,
@@ -64,11 +65,9 @@ interface ProjectMember {
 export function ProjectParticipants() {
   const { id: projectId } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId, profile, isSuperuser, isTeamAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
-  const [isSuperuser, setIsSuperuser] = useState(false);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
-  const [userTeamId, setUserTeamId] = useState<string | null>(null);
   const [hasTeamAccess, setHasTeamAccess] = useState(false);
   
   // Tab state
@@ -112,97 +111,73 @@ export function ProjectParticipants() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
-      // Check if user is project owner
+      // Check if user is project owner (single query — profile from AuthContext)
       const { data: project } = await supabase
         .from('projects')
         .select('owner_id')
         .eq('id', projectId)
         .single();
 
-      setIsProjectOwner(project?.owner_id === user.id);
+      setIsProjectOwner(project?.owner_id === userId);
       
-      // Check if user is team admin and check access to this project
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('team_id, team_role, is_superuser')
-        .eq('id', user.id)
-        .single();
-      
-      const userIsSuperuser = userProfile?.is_superuser === true;
-      setIsSuperuser(userIsSuperuser);
-      
-      if (userProfile?.team_role === 'team_admin' && userProfile?.team_id) {
-        console.log('🔍 ProjectParticipants: User is team admin', { team_id: userProfile.team_id });
-        setIsTeamAdmin(true);
-        setUserTeamId(userProfile.team_id);
+      const userTeamId = profile?.team_id || null;
+
+      // Check team admin access if applicable
+      if (isTeamAdmin && userTeamId) {
+        // Parallelize team access + member check
+        const [teamAccessResult, memberResult] = await Promise.all([
+          supabase
+            .from('team_project_access')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('team_id', userTeamId)
+            .maybeSingle(),
+          supabase
+            .from('project_members')
+            .select('id, role_id')
+            .eq('project_id', projectId)
+            .eq('user_id', userId)
+            .maybeSingle(),
+        ]);
         
-        // Check if team admin has access:
-        // 1. Via team_project_access (team has access to project)
-        const { data: teamAccess } = await supabase
-          .from('team_project_access')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('team_id', userProfile.team_id)
-          .maybeSingle();
-        
-        console.log('📊 ProjectParticipants: Team access check', { teamAccess });
-        
-        // 2. OR is a member of the project themselves
-        const { data: isMember } = await supabase
-          .from('project_members')
-          .select('id, role_id')
-          .eq('project_id', projectId)
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        console.log('📊 ProjectParticipants: Member check', { isMember });
-        
-        if (teamAccess || isMember) {
-          console.log('✅ ProjectParticipants: Team admin has access!');
+        if (teamAccessResult.data || memberResult.data) {
           setHasTeamAccess(true);
-          // Load team members for adding
-          await loadTeamMembers(userProfile.team_id);
-        } else {
-          console.log('❌ ProjectParticipants: Team admin has NO access to this project');
+          await loadTeamMembers(userTeamId);
         }
       }
 
-      // Load project members
-      await loadMembers();
+      // Load members, roles, and modules in parallel
+      const [_membersResult, projectRolesResult, modulesResult] = await Promise.all([
+        loadMembers(),
+        supabase
+          .from('project_available_roles')
+          .select(`
+            role_id,
+            role:roles(id, role_name, role_description)
+          `)
+          .eq('project_id', projectId),
+        supabase
+          .from('permission_modules')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order'),
+      ]);
 
-      // Load roles that are assigned to THIS PROJECT (via project_available_roles table)
-      const { data: projectRolesData, error: projectRolesError } = await supabase
-        .from('project_available_roles')
-        .select(`
-          role_id,
-          role:roles(id, role_name, role_description)
-        `)
-        .eq('project_id', projectId);
+      if (!projectRolesResult.error) {
+        const rolesForProject = (projectRolesResult.data || [])
+          .map(pr => pr.role)
+          .filter(Boolean);
+        setAvailableRoles(rolesForProject as any[]);
+      }
 
-      if (projectRolesError) throw projectRolesError;
-      
-      // Extract the role objects from the junction table
-      const rolesForProject = (projectRolesData || [])
-        .map(pr => pr.role)
-        .filter(Boolean);
-      
-      setAvailableRoles(rolesForProject as any[]);
-
-      // Load permission modules
-      const { data: modulesData, error: modulesError } = await supabase
-        .from('permission_modules')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order');
-
-      if (modulesError) throw modulesError;
-      setAvailableModules(modulesData || []);
+      if (!modulesResult.error) {
+        setAvailableModules(modulesResult.data || []);
+      }
 
       // Load Freigaben (content defaults) for superuser/owner
-      if (userIsSuperuser || project?.owner_id === user.id) {
+      if (isSuperuser || project?.owner_id === userId) {
         await loadContentDefaults();
         await loadProjectTeams();
       }
@@ -576,12 +551,12 @@ export function ProjectParticipants() {
       return;
     }
     
-    console.log('🔍 Adding team members to project:', { selectedTeamMemberIds, userTeamId, projectId });
+    console.log('🔍 Adding team members to project:', { selectedTeamMemberIds, userTeamId: profile?.team_id, projectId });
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !userTeamId) {
-        console.log('❌ No user or team ID:', { user: !!user, userTeamId });
+      const userTeamId = profile?.team_id;
+      if (!userId || !userTeamId) {
+        console.log('❌ No user or team ID:', { userId: !!userId, userTeamId });
         return;
       }
       
@@ -623,7 +598,7 @@ export function ProjectParticipants() {
           const { data: newAccessor, error: accessorError } = await supabase
             .from('user_accessors')
             .insert({
-              owner_id: user.id,
+              owner_id: userId,
               accessor_email: teamMember.email,
               accessor_first_name: teamMember.first_name,
               accessor_last_name: teamMember.last_name,
@@ -655,7 +630,7 @@ export function ProjectParticipants() {
             accessor_id: accessorId,
             member_type: 'employee',
             member_team_id: userTeamId,
-            added_by: user.id,
+            added_by: userId,
             status: 'active',
           });
         
@@ -704,8 +679,7 @@ export function ProjectParticipants() {
     if (!projectId) return;
     setSavingFreigaben(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       // Batch upsert all content defaults in a single query
       const now = new Date().toISOString();
@@ -713,7 +687,7 @@ export function ProjectParticipants() {
         project_id: projectId,
         module_key: cd.module_key,
         default_visibility: cd.default_visibility,
-        updated_by: user.id,
+        updated_by: userId,
         updated_at: now,
       }));
 

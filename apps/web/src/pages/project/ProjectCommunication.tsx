@@ -9,6 +9,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
+import { useAuth } from '../../contexts/AuthContext';
 import { MessageSquare, Send, StickyNote, Users, Clock, Pin, Trash2, Edit2, X, PinOff, Plus } from 'lucide-react';
 
 interface Message {
@@ -44,6 +45,7 @@ export function ProjectCommunication() {
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('communication') || false;
   const pCanDelete = ctx?.isProjectOwner || ctx?.canDelete?.('communication') || false;
   const { defaultVisibility, filterVisibleItems, setContentVisibility } = useContentVisibility(id, 'communication');
+  const { userId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [notes, setNotes] = useState<Message[]>([]);
@@ -53,7 +55,6 @@ export function ProjectCommunication() {
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [stats, setStats] = useState<CommunicationStats>({ totalMessages: 0, totalNotes: 0, activeUsers: 0 });
-  const [currentUserId, setCurrentUserId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
   const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
@@ -61,7 +62,6 @@ export function ProjectCommunication() {
   useEffect(() => {
     if (id) {
       loadCommunication();
-      getCurrentUser();
       
       // Subscribe to realtime updates
       const channel = supabase
@@ -94,47 +94,41 @@ export function ProjectCommunication() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const getCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) setCurrentUserId(user.id);
-  };
-
   const loadCommunication = async () => {
     if (!id) return;
     setLoading(true);
     
     try {
-      // Load messages
-      const { data: messagesData, error: messagesError } = await supabase
-        .from('project_messages')
-        .select(`
-          *,
-          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
-        `)
-        .eq('project_id', id)
-        .eq('message_type', 'message')
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: true });
+      // Parallelize messages + notes queries
+      const [messagesResult, notesResult] = await Promise.all([
+        supabase
+          .from('project_messages')
+          .select(`
+            *,
+            profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+          `)
+          .eq('project_id', id)
+          .eq('message_type', 'message')
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('project_messages')
+          .select(`
+            *,
+            profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
+          `)
+          .eq('project_id', id)
+          .eq('message_type', 'note')
+          .eq('is_deleted', false)
+          .order('is_pinned', { ascending: false })
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (messagesError) throw messagesError;
-
-      // Load notes
-      const { data: notesData, error: notesError } = await supabase
-        .from('project_messages')
-        .select(`
-          *,
-          profiles!project_messages_user_id_fkey(first_name, last_name, email, avatar_url)
-        `)
-        .eq('project_id', id)
-        .eq('message_type', 'note')
-        .eq('is_deleted', false)
-        .order('is_pinned', { ascending: false })
-        .order('created_at', { ascending: false });
-
-      if (notesError) throw notesError;
+      if (messagesResult.error) throw messagesResult.error;
+      if (notesResult.error) throw notesResult.error;
 
       // Transform messages
-      const transformedMessages: Message[] = (messagesData || []).map((msg: any) => ({
+      const transformedMessages: Message[] = (messagesResult.data || []).map((msg: any) => ({
         ...msg,
         user_name: msg.profiles 
           ? `${msg.profiles.first_name || ''} ${msg.profiles.last_name || ''}`.trim() || msg.profiles.email
@@ -142,7 +136,7 @@ export function ProjectCommunication() {
         user_avatar: msg.profiles?.avatar_url
       }));
 
-      const transformedNotes: Message[] = (notesData || []).map((note: any) => ({
+      const transformedNotes: Message[] = (notesResult.data || []).map((note: any) => ({
         ...note,
         user_name: note.profiles 
           ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() || note.profiles.email
@@ -180,14 +174,13 @@ export function ProjectCommunication() {
     
     setSending(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht authentifiziert');
+      if (!userId) throw new Error('Nicht authentifiziert');
 
       const { error } = await supabase
         .from('project_messages')
         .insert({
           project_id: id,
-          user_id: user.id,
+          user_id: userId,
           content: messageInput.trim(),
           message_type: 'message'
         });
@@ -208,8 +201,7 @@ export function ProjectCommunication() {
     if (!noteInput.trim()) return;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht authentifiziert');
+      if (!userId) throw new Error('Nicht authentifiziert');
 
       if (editingMessage) {
         // Update existing note
@@ -230,7 +222,7 @@ export function ProjectCommunication() {
           .from('project_messages')
           .insert({
             project_id: id,
-            user_id: user.id,
+            user_id: userId,
             content: noteInput.trim(),
             message_type: 'note'
           })
@@ -258,14 +250,13 @@ export function ProjectCommunication() {
 
   const handleTogglePin = async (message: Message) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht authentifiziert');
+      if (!userId) throw new Error('Nicht authentifiziert');
 
       const { error } = await supabase
         .from('project_messages')
         .update({
           is_pinned: !message.is_pinned,
-          pinned_by: !message.is_pinned ? user.id : null,
+          pinned_by: !message.is_pinned ? userId : null,
           pinned_at: !message.is_pinned ? new Date().toISOString() : null
         })
         .eq('id', message.id);
@@ -422,7 +413,7 @@ export function ProjectCommunication() {
                         <Pin size={16} color="#64748b" />
                       )}
                     </TouchableOpacity>
-                    {item.user_id === currentUserId && (
+                    {item.user_id === userId && (
                       <>
                         {activeTab === 'notes' && pCanEdit && (
                           <TouchableOpacity 

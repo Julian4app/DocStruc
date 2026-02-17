@@ -6,6 +6,7 @@ import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { CheckCircle, Clock, AlertTriangle, TrendingUp, AlertCircle, Calendar, Flag, ArrowRight } from 'lucide-react';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface DashboardStats {
   totalTasks: number;
@@ -49,6 +50,7 @@ export function ProjectDashboard() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const permissions = usePermissions(id);
+  const { userId, profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     totalTasks: 0,
@@ -64,57 +66,63 @@ export function ProjectDashboard() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [projectStatus, setProjectStatus] = useState<string>('active');
   const [statusDate, setStatusDate] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserTeamId, setCurrentUserTeamId] = useState<string | null>(null);
   const [teamStats, setTeamStats] = useState({ totalTasks: 0, completedTasks: 0 });
 
   useEffect(() => {
-    loadCurrentUser();
     loadDashboardData();
-  }, [id]);
-
-  const loadCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('team_id')
-        .eq('id', user.id)
-        .single();
-      if (profile) {
-        setCurrentUserTeamId(profile.team_id);
-      }
-    }
-  };
+  }, [id, userId, profile?.team_id]);
 
   const loadDashboardData = async () => {
     if (!id) return;
     setLoading(true);
     
     try {
-      // Load project info
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('status, status_date')
-        .eq('id', id)
-        .single();
-      
-      if (!projectError && projectData) {
-        setProjectStatus(projectData.status || 'active');
-        setStatusDate(projectData.status_date);
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Parallelize ALL independent queries in a single batch
+      const [projectResult, tasksResult, milestonesResult, eventsResult] = await Promise.all([
+        // Load project info
+        supabase
+          .from('projects')
+          .select('status, status_date')
+          .eq('id', id)
+          .single(),
+        // Load all tasks (needed for stats + recent tasks)
+        supabase
+          .from('tasks')
+          .select('*')
+          .eq('project_id', id)
+          .order('created_at', { ascending: false }),
+        // Load upcoming milestones
+        supabase
+          .from('timeline_events')
+          .select('*')
+          .eq('project_id', id)
+          .gte('event_date', todayStr)
+          .order('event_date', { ascending: true })
+          .limit(5),
+        // Load upcoming events (next 7 days)
+        supabase
+          .from('timeline_events')
+          .select('*')
+          .eq('project_id', id)
+          .gte('start_date', now.toISOString())
+          .lte('start_date', weekFromNow)
+          .neq('status', 'cancelled')
+          .order('start_date', { ascending: true })
+          .limit(5),
+      ]);
+
+      // Process project data
+      if (!projectResult.error && projectResult.data) {
+        setProjectStatus(projectResult.data.status || 'active');
+        setStatusDate(projectResult.data.status_date);
       }
 
-      // Load all tasks
-      const { data: tasks, error: tasksError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('project_id', id)
-        .order('created_at', { ascending: false });
-
-      if (tasksError) throw tasksError;
-
-      const allTasks = tasks || [];
+      // Process tasks
+      const allTasks = tasksResult.data || [];
       const taskItems = allTasks.filter(t => t.task_type === 'task' || !t.task_type);
       const defectItems = allTasks.filter(t => t.task_type === 'defect');
 
@@ -125,72 +133,56 @@ export function ProjectDashboard() {
         blockedTasks: taskItems.filter(t => t.status === 'blocked').length,
         openDefects: defectItems.filter(t => t.status !== 'done').length,
         criticalDefects: defectItems.filter(t => t.priority === 'critical' && t.status !== 'done').length,
-        upcomingEvents: 0
+        upcomingEvents: (eventsResult.data || []).length
       });
 
       setRecentTasks(allTasks.slice(0, 5));
 
-      // Calculate team-specific stats if user has a team
+      // Calculate team-specific stats using profile from AuthContext
+      const currentUserTeamId = profile?.team_id;
       if (currentUserTeamId) {
-        // Get all task creators' profiles
         const creatorIds = [...new Set(allTasks.map(t => t.created_by).filter(Boolean))];
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, team_id')
-          .in('id', creatorIds);
+        if (creatorIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, team_id')
+            .in('id', creatorIds);
 
-        const teamTasks = allTasks.filter(t => {
-          const creatorProfile = profiles?.find(p => p.id === t.created_by);
-          return creatorProfile?.team_id === currentUserTeamId && (t.task_type === 'task' || !t.task_type);
-        });
+          const teamTasks = allTasks.filter(t => {
+            const creatorProfile = profiles?.find(p => p.id === t.created_by);
+            return creatorProfile?.team_id === currentUserTeamId && (t.task_type === 'task' || !t.task_type);
+          });
 
-        setTeamStats({
-          totalTasks: teamTasks.length,
-          completedTasks: teamTasks.filter(t => t.status === 'done').length
-        });
+          setTeamStats({
+            totalTasks: teamTasks.length,
+            completedTasks: teamTasks.filter(t => t.status === 'done').length
+          });
+        }
       }
 
-      // Load upcoming milestones
-      const { data: milestonesData, error: milestonesError } = await supabase
-        .from('timeline_events')
-        .select('*')
-        .eq('project_id', id)
-        .gte('event_date', new Date().toISOString().split('T')[0])
-        .order('event_date', { ascending: true })
-        .limit(5);
+      // Process milestones — batch linked item counts instead of N+1
+      if (!milestonesResult.error && milestonesResult.data && milestonesResult.data.length > 0) {
+        const milestoneIds = milestonesResult.data.map(m => m.id);
+        const { data: allLinked } = await supabase
+          .from('milestone_tasks')
+          .select('milestone_id')
+          .in('milestone_id', milestoneIds);
 
-      if (!milestonesError && milestonesData) {
-        // Load linked items count for each milestone
-        const milestonesWithCounts = await Promise.all(
-          milestonesData.map(async (milestone) => {
-            const { data: linkedData, error: linkedError } = await supabase
-              .from('milestone_tasks')
-              .select('task_id', { count: 'exact' })
-              .eq('milestone_id', milestone.id);
+        // Count per milestone
+        const countMap = new Map<string, number>();
+        (allLinked || []).forEach(l => {
+          countMap.set(l.milestone_id, (countMap.get(l.milestone_id) || 0) + 1);
+        });
 
-            return {
-              ...milestone,
-              linkedItemsCount: linkedData?.length || 0
-            };
-          })
-        );
-        setMilestones(milestonesWithCounts);
+        setMilestones(milestonesResult.data.map(milestone => ({
+          ...milestone,
+          linkedItemsCount: countMap.get(milestone.id) || 0
+        })));
       }
 
-      // Load upcoming events
-      const { data: events, error: eventsError } = await supabase
-        .from('timeline_events')
-        .select('*')
-        .eq('project_id', id)
-        .gte('start_date', new Date().toISOString())
-        .lte('start_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
-        .neq('status', 'cancelled')
-        .order('start_date', { ascending: true })
-        .limit(5);
-
-      if (!eventsError) {
-        setUpcomingEvents(events || []);
-        setStats(prev => ({ ...prev, upcomingEvents: (events || []).length }));
+      // Process events
+      if (!eventsResult.error) {
+        setUpcomingEvents(eventsResult.data || []);
       }
 
     } catch (error) {
@@ -305,7 +297,7 @@ export function ProjectDashboard() {
       </Card>
 
       {/* Team-Specific Progress */}
-      {currentUserTeamId && teamStats.totalTasks > 0 && (() => {
+      {profile?.team_id && teamStats.totalTasks > 0 && (() => {
         const teamProgress = Math.round((teamStats.completedTasks / teamStats.totalTasks) * 100);
         
         return (

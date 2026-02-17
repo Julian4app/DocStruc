@@ -11,6 +11,7 @@ import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLeve
 import { DatePicker } from '../../components/DatePicker';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../contexts/AuthContext';
 import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock } from 'lucide-react';
 
 interface DiaryEntry {
@@ -43,6 +44,7 @@ interface ProjectMember {
 export function ProjectDiary() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const ctx = useProjectPermissionContext();
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('diary') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('diary') || false;
@@ -223,13 +225,12 @@ export function ProjectDiary() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht authentifiziert');
+      if (!userId) throw new Error('Nicht authentifiziert');
 
       // Get selected worker names
       const workerNames = selectedWorkers
-        .map(userId => {
-          const member = projectMembers.find(m => m.user_id === userId);
+        .map(wId => {
+          const member = projectMembers.find(m => m.user_id === wId);
           if (member?.profiles?.email) {
             return `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email;
           }
@@ -255,7 +256,7 @@ export function ProjectDiary() {
           progress_notes: progressNotes || null,
           special_events: specialEvents || null,
           deliveries: deliveries || null,
-          created_by: user.id
+          created_by: userId
         })
         .select()
         .single();

@@ -9,6 +9,7 @@ import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { ModernModal } from '../../components/ModernModal';
 import { Select } from '../../components/Select';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   FolderOpen, Upload, File, FileText, Image, Video, Folder, Download, 
   MoreVertical, Edit2, Trash2, Share2, X, Plus, FolderPlus, Clock,
@@ -90,6 +91,7 @@ interface UnifiedDocument {
 export function ProjectFiles() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const ctx = useProjectPermissionContext();
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('files') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('files') || false;
@@ -306,8 +308,7 @@ export function ProjectFiles() {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
 
     const { error } = await supabase
       .from('project_folders')
@@ -316,7 +317,7 @@ export function ProjectFiles() {
         parent_folder_id: folderFormData.parent_folder_id,
         name: folderFormData.name,
         description: folderFormData.description,
-        created_by: user.id
+        created_by: userId
       });
 
     if (error) {
@@ -393,8 +394,7 @@ export function ProjectFiles() {
     const file = event.target.files?.[0];
     if (!file || !id) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    if (!userId) {
       showToast('Sie müssen angemeldet sein', 'error');
       return;
     }
@@ -405,14 +405,14 @@ export function ProjectFiles() {
         .from('project_members')
         .select('id')
         .eq('project_id', id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .single();
 
       const { data: ownerCheck } = await supabase
         .from('projects')
         .select('id')
         .eq('id', id)
-        .eq('owner_id', user.id)
+        .eq('owner_id', userId)
         .single();
 
       if (!memberCheck && !ownerCheck) {
@@ -432,7 +432,7 @@ export function ProjectFiles() {
         folder_id: isUploadingToFolder,
         name: file.name,
         storage_path: filePath,
-        user_id: user.id
+        user_id: userId
       });
 
       // Insert database record first
@@ -445,7 +445,7 @@ export function ProjectFiles() {
           storage_path: filePath,
           file_size: file.size,
           mime_type: mimeType,
-          uploaded_by: user.id
+          uploaded_by: userId
         })
         .select()
         .single();
@@ -565,8 +565,7 @@ export function ProjectFiles() {
     const file = event.target.files?.[0];
     if (!file || !selectedFile || !id) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
 
     try {
       // Upload new version to storage
@@ -601,7 +600,7 @@ export function ProjectFiles() {
           storage_path: filePath,
           file_size: file.size,
           version: selectedFile.version + 1,
-          uploaded_by: user.id,
+          uploaded_by: userId,
           uploaded_at: new Date().toISOString()
         })
         .eq('id', selectedFile.id);
@@ -648,8 +647,7 @@ export function ProjectFiles() {
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
 
     const { error } = await supabase
       .from('project_file_shares')
@@ -661,7 +659,7 @@ export function ProjectFiles() {
         can_edit: shareFormData.can_edit,
         can_delete: shareFormData.can_delete,
         can_share: shareFormData.can_share,
-        shared_by: user.id
+        shared_by: userId
       });
 
     if (error) {
@@ -730,8 +728,7 @@ export function ProjectFiles() {
         showToast('Dokument erfolgreich verknüpft', 'success');
       } else {
         // For task documentation, we create a reference in project_files
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!userId) return;
 
         const { error } = await supabase
           .from('project_files')
@@ -742,7 +739,7 @@ export function ProjectFiles() {
             storage_path: selectedDocForLink.storage_path,
             file_size: selectedDocForLink.file_size || 0,
             mime_type: selectedDocForLink.mime_type || 'application/octet-stream',
-            uploaded_by: user.id,
+            uploaded_by: userId,
             description: `Verknüpft von: ${selectedDocForLink.source}`
           });
 

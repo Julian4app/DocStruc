@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export type VisibilityLevel = 'all_participants' | 'team_only' | 'owner_only';
 
@@ -21,32 +22,24 @@ export interface ContentDefaultInfo {
 
 /**
  * Hook to manage content visibility (Freigaben) for a project module.
- * Provides:
- * - The default visibility for the module
- * - A function to check if a specific content item is visible to the current user
- * - A function to set/override visibility for a specific content item
+ * Uses AuthContext for cached user/profile data — no redundant auth.getUser() or profile queries.
+ * Parallelises all independent Supabase queries for speed.
  */
 export function useContentVisibility(projectId: string | undefined, moduleKey: string) {
+  const { userId, profile, isSuperuser: authIsSuperuser, isTeamAdmin: authIsTeamAdmin } = useAuth();
   const [defaultVisibility, setDefaultVisibility] = useState<VisibilityLevel>('all_participants');
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [userTeamId, setUserTeamId] = useState<string | null>(null);
-  const [isTeamAdmin, setIsTeamAdmin] = useState(false);
-  const [isSuperuser, setIsSuperuser] = useState(false);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
   // Map of user_id → team_id for all project members (for team_only checks)
   const [memberTeamMap, setMemberTeamMap] = useState<Map<string, string | null>>(new Map());
 
   // Promise that resolves when the hook's initial data is loaded.
-  // filterVisibleItems will await this before doing any filtering,
-  // so pages that call it before the hook is ready will still get correct results.
   const readyResolverRef = useRef<(() => void) | null>(null);
   const readyPromiseRef = useRef<Promise<void>>(
     new Promise<void>((resolve) => { readyResolverRef.current = resolve; })
   );
 
   // Snapshot ref so filterVisibleItems always reads the latest loaded values
-  // even when called before React re-renders with the new state.
   const dataRef = useRef({
     defaultVisibility: 'all_participants' as VisibilityLevel,
     currentUserId: null as string | null,
@@ -56,10 +49,10 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     memberTeamMap: new Map<string, string | null>(),
   });
 
-  // Load the module default visibility and user info
+  // Load the module default visibility and membership data
+  // Auth data (userId, profile, isSuperuser) comes from AuthContext — zero extra queries.
   useEffect(() => {
     if (!projectId) {
-      // No project - mark as ready immediately with defaults
       setLoading(false);
       readyResolverRef.current?.();
       return;
@@ -69,58 +62,49 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     readyPromiseRef.current = new Promise<void>((resolve) => { readyResolverRef.current = resolve; });
     
     const loadData = async () => {
+      if (!userId) {
+        setLoading(false);
+        readyResolverRef.current?.();
+        return;
+      }
+
       setLoading(true);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          setLoading(false);
-          readyResolverRef.current?.();
-          return;
-        }
-        setCurrentUserId(user.id);
-
-        // Load user profile for team info
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_superuser, team_id, team_role')
-          .eq('id', user.id)
-          .single();
-
-        const _isSuperuser = profile?.is_superuser === true;
+        const _isSuperuser = authIsSuperuser;
         const _userTeamId = profile?.team_id || null;
-        setIsSuperuser(_isSuperuser);
-        setUserTeamId(_userTeamId);
-        setIsTeamAdmin(profile?.team_role === 'team_admin');
 
-        // Check if project owner
-        const { data: project } = await supabase
-          .from('projects')
-          .select('owner_id')
-          .eq('id', projectId)
-          .single();
+        // Parallelize all independent queries in a single round-trip batch
+        const [projectResult, defaultsResult, membersResult] = await Promise.all([
+          // Check if project owner
+          supabase
+            .from('projects')
+            .select('owner_id')
+            .eq('id', projectId)
+            .single(),
+          // Load the content default for this module
+          supabase
+            .from('project_content_defaults')
+            .select('default_visibility')
+            .eq('project_id', projectId)
+            .eq('module_key', moduleKey)
+            .maybeSingle(),
+          // Load team mapping for all project members
+          supabase
+            .from('project_members')
+            .select('user_id, member_team_id')
+            .eq('project_id', projectId),
+        ]);
 
-        const _isProjectOwner = project?.owner_id === user.id;
+        const _isProjectOwner = projectResult.data?.owner_id === userId;
         setIsProjectOwner(_isProjectOwner);
 
-        // Load the content default for this module
-        const { data: defaults } = await supabase
-          .from('project_content_defaults')
-          .select('default_visibility')
-          .eq('project_id', projectId)
-          .eq('module_key', moduleKey)
-          .maybeSingle();
-
-        const _defaultVisibility = (defaults?.default_visibility as VisibilityLevel) || 'all_participants';
+        const _defaultVisibility = (defaultsResult.data?.default_visibility as VisibilityLevel) || 'all_participants';
         setDefaultVisibility(_defaultVisibility);
 
-        // Load team mapping for all project members (needed for team_only filtering)
-        const { data: members } = await supabase
-          .from('project_members')
-          .select('user_id, member_team_id')
-          .eq('project_id', projectId);
+        // Build team map — load profile team_ids for members who lack member_team_id
+        const members = membersResult.data || [];
+        const memberIds = members.map(m => m.user_id);
 
-        // Also load profiles.team_id for members who don't have member_team_id set
-        const memberIds = (members || []).map(m => m.user_id);
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, team_id')
@@ -128,19 +112,19 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
 
         const profileTeamMap = new Map((profiles || []).map(p => [p.id, p.team_id]));
         const newMap = new Map<string, string | null>();
-        for (const m of (members || [])) {
+        for (const m of members) {
           newMap.set(m.user_id, m.member_team_id || profileTeamMap.get(m.user_id) || null);
         }
         // Also include the project owner
-        if (project?.owner_id && !newMap.has(project.owner_id)) {
-          newMap.set(project.owner_id, profileTeamMap.get(project.owner_id) || null);
+        if (projectResult.data?.owner_id && !newMap.has(projectResult.data.owner_id)) {
+          newMap.set(projectResult.data.owner_id, profileTeamMap.get(projectResult.data.owner_id) || null);
         }
         setMemberTeamMap(newMap);
 
         // Write all loaded values into the ref so filterVisibleItems can read them immediately
         dataRef.current = {
           defaultVisibility: _defaultVisibility,
-          currentUserId: user.id,
+          currentUserId: userId,
           userTeamId: _userTeamId,
           isSuperuser: _isSuperuser,
           isProjectOwner: _isProjectOwner,
@@ -150,13 +134,12 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
         console.error('useContentVisibility: Error loading data:', error);
       } finally {
         setLoading(false);
-        // Signal that the hook is ready — filterVisibleItems can proceed
         readyResolverRef.current?.();
       }
     };
 
     loadData();
-  }, [projectId, moduleKey]);
+  }, [projectId, moduleKey, userId, authIsSuperuser, profile?.team_id]);
 
   /**
    * Check if the current user can see a specific content item.
@@ -167,12 +150,11 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     contentId: string,
     contentCreatorTeamId?: string | null
   ): Promise<boolean> => {
-    if (!projectId || !currentUserId) return true;
-    if (isProjectOwner || isSuperuser) return true;
+    if (!projectId || !userId) return true;
+    if (isProjectOwner || authIsSuperuser) return true;
 
     // If default is all_participants and no override, skip the RPC
     if (defaultVisibility === 'all_participants') {
-      // Still check if there's an override for this specific item
       const { data: override } = await supabase
         .from('content_visibility_overrides')
         .select('visibility')
@@ -183,9 +165,8 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
       if (!override || override.visibility === 'all_participants') return true;
     }
 
-    // Use the SQL function for a definitive check
     const { data, error } = await supabase.rpc('can_user_see_content', {
-      p_user_id: currentUserId,
+      p_user_id: userId,
       p_project_id: projectId,
       p_module_key: moduleKey,
       p_content_id: contentId,
@@ -194,11 +175,11 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
 
     if (error) {
       console.error('useContentVisibility: RPC error:', error);
-      return true; // Fail open
+      return true;
     }
 
     return data === true;
-  }, [projectId, currentUserId, isProjectOwner, isSuperuser, defaultVisibility, moduleKey]);
+  }, [projectId, userId, isProjectOwner, authIsSuperuser, defaultVisibility, moduleKey]);
 
   /**
    * Get the user ID of whoever created this content item.
@@ -325,7 +306,7 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     contentId: string,
     visibility: VisibilityLevel
   ): Promise<boolean> => {
-    if (!projectId || !currentUserId) return false;
+    if (!projectId || !userId) return false;
 
     try {
       const { error } = await supabase
@@ -335,7 +316,7 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
           module_key: moduleKey,
           content_id: contentId,
           visibility,
-          created_by: currentUserId,
+          created_by: userId,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'module_key,content_id'
@@ -347,7 +328,7 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
       console.error('useContentVisibility: Error setting visibility:', error);
       return false;
     }
-  }, [projectId, currentUserId, moduleKey]);
+  }, [projectId, userId, moduleKey]);
 
   /**
    * Get the visibility info for a specific content item
@@ -401,7 +382,7 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
     defaultVisibility,
     loading,
     isProjectOwner,
-    isSuperuser,
+    isSuperuser: authIsSuperuser,
     canSeeContent,
     filterVisibleItems,
     setContentVisibility,

@@ -12,6 +12,7 @@ import { VisibilityBadge, VisibilityDropdown, VisibilitySelector, VisibilityLeve
 import { TaskModal, TaskDetailModal } from './TaskModals';
 import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
+import { useAuth } from '../../contexts/AuthContext';
 import { 
   Plus, Search, Filter, CheckCircle, Clock, XCircle, AlertCircle, 
   Calendar, List, LayoutGrid, Edit, Trash2, Image as ImageIcon, 
@@ -78,6 +79,7 @@ type ViewMode = 'kanban' | 'list' | 'calendar';
 export function ProjectTasks() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const ctx = useProjectPermissionContext();
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('tasks') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('tasks') || false;
@@ -159,14 +161,49 @@ export function ProjectTasks() {
 
   useEffect(() => {
     if (id) {
-      loadTasks();
-      loadProjectMembers();
+      loadInitialData();
     }
   }, [id]);
 
   useEffect(() => {
     filterTasks();
   }, [tasks, searchQuery, statusFilter, priorityFilter, defaultVisibility]);
+
+  const loadInitialData = async () => {
+    if (!id) return;
+    setLoading(true);
+
+    try {
+      // Parallelize tasks + members
+      const [tasksResult, membersResult] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select(`
+            *,
+            profiles:assigned_to(id, email, first_name, last_name)
+          `)
+          .eq('project_id', id)
+          .order('board_position', { ascending: true }),
+        supabase
+          .from('project_members')
+          .select(`
+            user_id,
+            role,
+            profiles:user_id(id, email, first_name, last_name)
+          `)
+          .eq('project_id', id),
+      ]);
+
+      if (tasksResult.error) throw tasksResult.error;
+      setTasks(tasksResult.data || []);
+      setProjectMembers((membersResult.data || []) as any);
+    } catch (error: any) {
+      console.error('Error loading tasks:', error);
+      showToast('Fehler beim Laden der Aufgaben', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadTasks = async () => {
     if (!id) return;
@@ -284,8 +321,6 @@ export function ProjectTasks() {
     }
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      
       // Create the task first
       const { data: newTask, error: taskError } = await supabase.from('tasks').insert({
         project_id: id,
@@ -296,7 +331,7 @@ export function ProjectTasks() {
         assigned_to: createFormData.assigned_to || null,
         due_date: createFormData.due_date || null,
         story_points: createFormData.story_points ? parseInt(createFormData.story_points) : null,
-        creator_id: userData.user?.id,
+        creator_id: userId,
         board_position: tasks.length
       }).select().single();
 
@@ -324,7 +359,7 @@ export function ProjectTasks() {
           await supabase.from('task_images').insert({
             task_id: newTask.id,
             project_id: id,
-            uploaded_by: userData.user?.id,
+            uploaded_by: userId,
             storage_path: filePath,
             file_name: file.name,
             file_size: file.size,
@@ -451,12 +486,10 @@ export function ProjectTasks() {
     }
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      
       const { error } = await supabase.from('task_documentation').insert({
         task_id: selectedTask.id,
         project_id: id,
-        user_id: userData.user?.id,
+        user_id: userId,
         content: type === 'text' ? docFormData.content.trim() : null,
         documentation_type: type
       });
@@ -479,8 +512,6 @@ export function ProjectTasks() {
     if (files.length === 0) return;
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const fileExt = file.name.split('.').pop();
@@ -501,7 +532,7 @@ export function ProjectTasks() {
         await supabase.from('task_images').insert({
           task_id: selectedTask.id,
           project_id: id,
-          uploaded_by: userData.user?.id,
+          uploaded_by: userId,
           storage_path: filePath,
           file_name: file.name,
           file_size: file.size,
