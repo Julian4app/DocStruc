@@ -139,7 +139,7 @@ export default function HelpMessages() {
   }, {});
 
   if (loading) return (
-    <View style={s.centered}><ActivityIndicator size="large" color="#38bdf8" /></View>
+    <View style={s.centered}><ActivityIndicator size="large" color="#2563eb" /></View>
   );
 
   return (
@@ -196,7 +196,7 @@ export default function HelpMessages() {
           <ScrollView style={s.msgList} showsVerticalScrollIndicator={false}>
             {filtered.length === 0 && (
               <View style={s.emptyState}>
-                <MessageCircle size={32} color="#334155" />
+                <MessageCircle size={32} color="#cbd5e1" />
                 <Text style={s.emptyText}>Keine Nachrichten gefunden</Text>
               </View>
             )}
@@ -237,7 +237,7 @@ export default function HelpMessages() {
         <View style={s.rightPanel}>
           {!selected ? (
             <View style={s.noSelection}>
-              <MessageCircle size={48} color="#334155" />
+              <MessageCircle size={48} color="#cbd5e1" />
               <Text style={s.noSelectionText}>Nachricht auswählen</Text>
               <Text style={s.noSelectionSub}>Klicken Sie auf eine Nachricht, um die Details anzuzeigen</Text>
             </View>
@@ -313,7 +313,7 @@ export default function HelpMessages() {
                   disabled={saving}
                   activeOpacity={0.8}
                 >
-                  {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
+                  {saving ? <ActivityIndicator size="small" color="#fff" /> : <><Save size={16} color="#fff" /><Text style={s.saveBtnText}>Speichern</Text></>}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.deleteBtn}
@@ -356,7 +356,7 @@ export default function HelpMessages() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a', position: 'relative' as any },
+  root: { flex: 1, backgroundColor: '#f8fafc', position: 'relative' as any },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute' as any, top: 16, right: 16, backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, zIndex: 9999, flexDirection: 'row', alignItems: 'center', gap: 8 },
   toastError: { backgroundColor: '#ef4444' },
@@ -364,58 +364,58 @@ const s = StyleSheet.create({
   body: { flex: 1, flexDirection: 'row', gap: 0 },
 
   // Left panel
-  leftPanel: { width: 380, borderRightWidth: 1, borderRightColor: '#1e293b', paddingRight: 16, flexShrink: 0 },
+  leftPanel: { width: 380, borderRightWidth: 1, borderRightColor: '#e2e8f0', paddingRight: 16, flexShrink: 0 },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  statChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#334155' },
-  statChipActive: { backgroundColor: '#38bdf820', borderColor: '#38bdf8' },
+  statChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  statChipActive: { backgroundColor: '#eff6ff', borderColor: '#2563eb' },
   statChipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
-  statChipTextActive: { color: '#38bdf8' },
-  searchInput: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#f1f5f9', marginBottom: 12 },
+  statChipTextActive: { color: '#2563eb' },
+  searchInput: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#0f172a', marginBottom: 12 },
   msgList: { flex: 1 },
   emptyState: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { color: '#475569', fontSize: 15, fontWeight: '600' },
+  emptyText: { color: '#94a3b8', fontSize: 15, fontWeight: '600' },
 
   // Message card
-  msgCard: { backgroundColor: '#1e293b', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#1e293b' },
-  msgCardSelected: { borderColor: '#38bdf8', backgroundColor: '#38bdf808' },
+  msgCard: { backgroundColor: '#ffffff', borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  msgCardSelected: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
   msgCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8 },
   senderInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#38bdf820', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 15, fontWeight: '700', color: '#38bdf8' },
-  senderName: { fontSize: 14, fontWeight: '700', color: '#f1f5f9' },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText: { fontSize: 15, fontWeight: '700', color: '#2563eb' },
+  senderName: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
   senderEmail: { fontSize: 12, color: '#64748b' },
-  msgSubject: { fontSize: 13, fontWeight: '600', color: '#94a3b8', marginBottom: 4 },
+  msgSubject: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 4 },
   msgPreview: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 6 },
-  msgDate: { fontSize: 11, color: '#475569' },
+  msgDate: { fontSize: 11, color: '#94a3b8' },
 
   // Right panel
   rightPanel: { flex: 1, paddingLeft: 24 },
   noSelection: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  noSelectionText: { fontSize: 18, fontWeight: '700', color: '#475569' },
-  noSelectionSub: { fontSize: 14, color: '#334155', textAlign: 'center' as any, maxWidth: 280 },
+  noSelectionText: { fontSize: 18, fontWeight: '700', color: '#94a3b8' },
+  noSelectionSub: { fontSize: 14, color: '#cbd5e1', textAlign: 'center' as any, maxWidth: 280 },
 
   // Detail
   detailHeader: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  detailSubject: { fontSize: 20, fontWeight: '700', color: '#f1f5f9', marginBottom: 8 },
+  detailSubject: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
   detailMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   detailMetaText: { fontSize: 13, color: '#64748b' },
-  closeBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
-  msgBody: { backgroundColor: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#334155' },
-  msgBodyText: { fontSize: 15, color: '#cbd5e1', lineHeight: 24 },
+  closeBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  msgBody: { backgroundColor: '#f8fafc', borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  msgBodyText: { fontSize: 15, color: '#334155', lineHeight: 24 },
 
   section: { marginBottom: 20 },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: '#64748b', marginBottom: 10, textTransform: 'uppercase' as any, letterSpacing: 0.8 },
+  sectionLabel: { fontSize: 13, fontWeight: '700', color: '#94a3b8', marginBottom: 10, textTransform: 'uppercase' as any, letterSpacing: 0.8 },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statusOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#334155' },
+  statusOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   statusOptionText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
 
-  notesInput: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#f1f5f9', minHeight: 120, textAlignVertical: 'top' as any },
+  notesInput: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#0f172a', minHeight: 120, textAlignVertical: 'top' as any },
 
   detailActions: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  saveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#38bdf8', borderRadius: 10, paddingVertical: 13 },
+  saveBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 13 },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
   deleteBtn: { paddingHorizontal: 20, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: '#ef444460', backgroundColor: '#ef444415', alignItems: 'center', justifyContent: 'center' },
   deleteBtnText: { fontSize: 14, fontWeight: '600', color: '#ef4444' },
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput, ActivityIndicator, Modal } from 'react-native';
+import ReactDOM from 'react-dom';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput, ActivityIndicator } from 'react-native';
 import { LayoutContext } from '../layouts/LayoutContext';
+import { useNavigate } from 'react-router-dom';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import {
@@ -83,121 +85,92 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
 
   if (!visible) return null;
 
-  return (
-    <View style={cm.overlay}>
-      <View style={cm.card}>
-        <View style={cm.header}>
-          <Text style={cm.title}>Support kontaktieren</Text>
-          <TouchableOpacity onPress={onClose}><X size={20} color="#94a3b8" /></TouchableOpacity>
-        </View>
+  const el = (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #f1f5f9' }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Support kontaktieren</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}><X size={20} color="#94a3b8" /></button>
+        </div>
         {sent ? (
-          <View style={cm.success}>
-            <Text style={cm.successIcon}>✓</Text>
-            <Text style={cm.successTitle}>Nachricht gesendet!</Text>
-            <Text style={cm.successSub}>Wir melden uns so schnell wie möglich bei Ihnen.</Text>
-          </View>
+          <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 40 }}>✓</span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>Nachricht gesendet!</span>
+            <span style={{ fontSize: 15, color: '#64748b', textAlign: 'center' }}>Wir melden uns so schnell wie möglich bei Ihnen.</span>
+          </div>
         ) : (
-          <ScrollView style={cm.body}>
-            {error ? <Text style={cm.error}>{error}</Text> : null}
-            <Text style={cm.label}>Ihr Name *</Text>
-            <RNTextInput style={cm.input as any} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))} placeholder="Max Mustermann" placeholderTextColor="#94a3b8" />
-            <Text style={cm.label}>E-Mail *</Text>
-            <RNTextInput style={cm.input as any} value={form.email} onChangeText={v => setForm(f => ({ ...f, email: v }))} placeholder="max@firma.de" placeholderTextColor="#94a3b8" keyboardType="email-address" />
-            <Text style={cm.label}>Betreff *</Text>
-            <RNTextInput style={cm.input as any} value={form.subject} onChangeText={v => setForm(f => ({ ...f, subject: v }))} placeholder="Worum geht es?" placeholderTextColor="#94a3b8" />
-            <Text style={cm.label}>Nachricht *</Text>
-            <RNTextInput style={[cm.input, cm.textarea] as any} value={form.message} onChangeText={v => setForm(f => ({ ...f, message: v }))} placeholder="Beschreiben Sie Ihr Anliegen..." placeholderTextColor="#94a3b8" multiline numberOfLines={5} textAlignVertical="top" />
-            <TouchableOpacity style={[cm.sendBtn, sending && { opacity: 0.6 }]} onPress={send} disabled={sending} activeOpacity={0.8}>
-              {sending ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={16} color="#fff" /><Text style={cm.sendBtnText}>Nachricht senden</Text></>}
-            </TouchableOpacity>
-          </ScrollView>
+          <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+            {error ? <div style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 14 }}>{error}</div> : null}
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 6, marginTop: 12 }}>Ihr Name *</label>
+            <input style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 15, color: '#0f172a', outline: 'none' }} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Max Mustermann" />
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 6, marginTop: 12 }}>E-Mail *</label>
+            <input type="email" style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 15, color: '#0f172a', outline: 'none' }} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="max@firma.de" />
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 6, marginTop: 12 }}>Betreff *</label>
+            <input style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 15, color: '#0f172a', outline: 'none' }} value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Worum geht es?" />
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 6, marginTop: 12 }}>Nachricht *</label>
+            <textarea style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', fontSize: 15, color: '#0f172a', outline: 'none', resize: 'vertical', minHeight: 120, fontFamily: 'inherit', lineHeight: '1.5' }} value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))} placeholder="Beschreiben Sie Ihr Anliegen..." rows={5} />
+            <button
+              onClick={send}
+              disabled={sending}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, color: '#fff', border: 'none', borderRadius: 12, padding: '14px 0', width: '100%', fontSize: 15, fontWeight: 700, cursor: sending ? 'not-allowed' : 'pointer', marginTop: 20, opacity: sending ? 0.6 : 1, fontFamily: 'inherit' }}
+            >
+              {sending ? '...' : <><Send size={16} color="#fff" /><span>Nachricht senden</span></>}
+            </button>
+          </div>
         )}
-      </View>
-    </View>
+      </div>
+    </div>
   );
+  return ReactDOM.createPortal(el, document.body) as any;
 }
-const cm = StyleSheet.create({
-  overlay: { position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  card: { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '85%' as any, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 30, elevation: 8 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  title: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-  body: { padding: 24 },
-  label: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 6, marginTop: 12 },
-  input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: '#0f172a' },
-  textarea: { height: 120, textAlignVertical: 'top' },
-  sendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, marginTop: 20 },
-  sendBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  error: { backgroundColor: '#fef2f2', color: '#dc2626', padding: 10, borderRadius: 8, marginBottom: 8, fontSize: 14 },
-  success: { padding: 40, alignItems: 'center', gap: 12 },
-  successIcon: { fontSize: 40, color: '#10b981' },
-  successTitle: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
-  successSub: { fontSize: 15, color: '#64748b', textAlign: 'center' as any },
-});
 
 // ─── Walkthrough Steps Viewer ─────────────────────────────────────────────────
 function WalkthroughViewer({ wt, onClose }: { wt: HelpWalkthrough; onClose: () => void }) {
   const [step, setStep] = useState(0);
   const steps = wt.steps || [];
   const cur = steps[step];
-  return (
-    <View style={wv.overlay}>
-      <View style={wv.card}>
-        <View style={wv.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={wv.title}>{wt.title}</Text>
-            <Text style={wv.progress}>Schritt {step + 1} von {steps.length}</Text>
-          </View>
-          <TouchableOpacity onPress={onClose}><X size={20} color="#94a3b8" /></TouchableOpacity>
-        </View>
+
+  const el = (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', padding: 24, borderBottom: '1px solid #f1f5f9', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{wt.title}</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Schritt {step + 1} von {steps.length}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}><X size={20} color="#94a3b8" /></button>
+        </div>
         {cur ? (
-          <ScrollView style={wv.body}>
+          <div style={{ padding: 24, flex: 1, overflowY: 'auto' }}>
             {cur.image_url ? (
               <img src={cur.image_url} alt={cur.title} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 12, marginBottom: 20 }} />
             ) : null}
-            <Text style={wv.stepTitle}>{cur.title}</Text>
-            {cur.description ? <Text style={wv.stepDesc}>{cur.description}</Text> : null}
-          </ScrollView>
-        ) : <Text style={wv.stepDesc}>Keine Schritte vorhanden.</Text>}
-        <View style={wv.footer}>
-          <TouchableOpacity style={[wv.navBtn, step === 0 && wv.navBtnDisabled]} onPress={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}>
-            <Text style={[wv.navBtnText, step === 0 && { color: '#94a3b8' }]}>← Zurück</Text>
-          </TouchableOpacity>
-          <View style={wv.dots}>
-            {steps.map((_, i) => <View key={i} style={[wv.dot, i === step && wv.dotActive]} />)}
-          </View>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 12 }}>{cur.title}</div>
+            {cur.description ? <div style={{ fontSize: 15, color: '#475569', lineHeight: '24px' }}>{cur.description}</div> : null}
+          </div>
+        ) : <div style={{ padding: 24, color: '#475569', fontSize: 15 }}>Keine Schritte vorhanden.</div>}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderTop: '1px solid #f1f5f9' }}>
+          <button
+            style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'none', cursor: step === 0 ? 'not-allowed' : 'pointer', opacity: step === 0 ? 0.4 : 1, fontSize: 14, fontWeight: 600, color: '#0f172a', fontFamily: 'inherit' }}
+            onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
+          >← Zurück</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {steps.map((_, i) => (
+              <div key={i} style={{ width: i === step ? 20 : 8, height: 8, borderRadius: 4, backgroundColor: i === step ? colors.primary : '#e2e8f0', transition: 'width 0.2s' }} />
+            ))}
+          </div>
           {step < steps.length - 1 ? (
-            <TouchableOpacity style={wv.nextBtn} onPress={() => setStep(s => s + 1)}>
-              <Text style={wv.nextBtnText}>Weiter →</Text>
-            </TouchableOpacity>
+            <button style={{ padding: '10px 18px', borderRadius: 10, backgroundColor: colors.primary, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'inherit' }} onClick={() => setStep(s => s + 1)}>Weiter →</button>
           ) : (
-            <TouchableOpacity style={[wv.nextBtn, { backgroundColor: '#10b981' }]} onPress={onClose}>
-              <Text style={wv.nextBtnText}>Fertig ✓</Text>
-            </TouchableOpacity>
+            <button style={{ padding: '10px 18px', borderRadius: 10, backgroundColor: '#10b981', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#fff', fontFamily: 'inherit' }} onClick={onClose}>Fertig ✓</button>
           )}
-        </View>
-      </View>
-    </View>
+        </div>
+      </div>
+    </div>
   );
+  return ReactDOM.createPortal(el, document.body) as any;
 }
-const wv = StyleSheet.create({
-  overlay: { position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  card: { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '85%' as any },
-  header: { flexDirection: 'row', alignItems: 'flex-start', padding: 24, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', gap: 12 },
-  title: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
-  progress: { fontSize: 13, color: '#64748b', marginTop: 2 },
-  body: { padding: 24, flex: 1 },
-  stepTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
-  stepDesc: { fontSize: 15, color: '#475569', lineHeight: 24 },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
-  navBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
-  navBtnDisabled: { opacity: 0.4 },
-  navBtnText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
-  nextBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, backgroundColor: colors.primary },
-  nextBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
-  dotActive: { backgroundColor: colors.primary, width: 20 },
-});
+
 
 export function Help() {
   const { setTitle, setSubtitle } = useContext(LayoutContext);
@@ -207,6 +180,7 @@ export function Help() {
   const [activeSection, setActiveSection] = useState<SectionId>(null);
   const [contactVisible, setContactVisible] = useState(false);
   const [activeWalkthrough, setActiveWalkthrough] = useState<HelpWalkthrough | null>(null);
+  const navigate = useNavigate();
 
   // Data
   const [tags, setTags] = useState<HelpTag[]>([]);
@@ -282,11 +256,11 @@ export function Help() {
   const quickLinks = [
     {
       icon: BookOpen, title: 'Erste Schritte', desc: 'Schritt-für-Schritt Anleitungen', color: '#3b82f6',
-      onPress: () => { setActiveSection('walkthroughs'); setActiveTag(null); setTimeout(() => scrollTo(walkthroughsRef), 100); },
+      onPress: () => navigate('/help/erste-schritte'),
     },
     {
       icon: Video, title: 'Video Tutorials', desc: 'Visuelle Schritt-für-Schritt Guides', color: '#8b5cf6',
-      onPress: () => { setActiveSection('videos'); setActiveTag(null); setTimeout(() => scrollTo(videosRef), 100); },
+      onPress: () => navigate('/help/video-tutorials'),
     },
     {
       icon: MessageCircle, title: 'Support kontaktieren', desc: 'Persönliche Hilfe erhalten', color: '#10b981',
@@ -294,7 +268,7 @@ export function Help() {
     },
     {
       icon: FileText, title: 'Dokumentation', desc: 'Vollständige Referenz & Downloads', color: '#f59e0b',
-      onPress: () => { setActiveSection('documents'); setActiveTag(null); setTimeout(() => scrollTo(documentsRef), 100); },
+      onPress: () => navigate('/help/dokumentation'),
     },
   ];
 

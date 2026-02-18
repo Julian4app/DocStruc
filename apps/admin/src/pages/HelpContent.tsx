@@ -33,9 +33,9 @@ function TagPicker({ selected, allTags, onChange }: { selected: string[]; allTag
             onClick={() => toggle(t.name)}
             style={{
               paddingLeft: 12, paddingRight: 12, paddingTop: 5, paddingBottom: 5,
-              borderRadius: 20, border: `1px solid ${active ? t.color : '#334155'}`,
-              backgroundColor: active ? t.color : 'transparent',
-              color: active ? '#fff' : '#94a3b8', fontSize: 12, fontWeight: 500,
+              borderRadius: 20, border: `1px solid ${active ? t.color : '#e2e8f0'}`,
+              backgroundColor: active ? t.color : '#f8fafc',
+              color: active ? '#fff' : '#64748b', fontSize: 12, fontWeight: 500,
               cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
@@ -52,19 +52,19 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   // Render into document.body so position:fixed covers the full viewport
   const el = (
     <div style={{
-      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)',
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
       zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
     }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        backgroundColor: '#1e293b', borderRadius: 16, width: '100%', maxWidth: 680,
+        backgroundColor: '#ffffff', borderRadius: 16, width: '100%', maxWidth: 680,
         maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-        border: '1px solid #334155', boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+        border: '1px solid #e2e8f0', boxShadow: '0 25px 60px rgba(0,0,0,0.15)',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
-          <span style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>{title}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{title}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
             <X size={20} color="#94a3b8" />
           </button>
@@ -83,7 +83,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 7 }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 7 }}>{label}</label>
       {children}
     </div>
   );
@@ -91,9 +91,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function FInput({ value, onChangeText, placeholder, multiline, numberOfLines }: any) {
   const rows = numberOfLines || (multiline ? 4 : 1);
   const baseStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box', backgroundColor: '#0f172a',
-    border: '1px solid #334155', borderRadius: 8, padding: '10px 14px',
-    fontSize: 14, color: '#f1f5f9', outline: 'none', resize: multiline ? 'vertical' : 'none',
+    width: '100%', boxSizing: 'border-box', backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px',
+    fontSize: 14, color: '#0f172a', outline: 'none', resize: multiline ? 'vertical' : 'none',
     fontFamily: 'inherit', lineHeight: '1.5',
   };
   if (multiline) {
@@ -105,14 +105,14 @@ function FInput({ value, onChangeText, placeholder, multiline, numberOfLines }: 
 // ─── Shared button styles for modal actions ────────────────────────────────────
 const btnStyle = (disabled?: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-  backgroundColor: disabled ? '#1e3a4a' : '#38bdf8', color: '#0f172a',
+  backgroundColor: disabled ? '#93c5fd' : '#2563eb', color: '#ffffff',
   border: 'none', borderRadius: 10, padding: '13px 0', width: '100%',
   fontSize: 15, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
   marginTop: 20, fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
 });
 const iconBtnStyle: React.CSSProperties = {
-  background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
-  width: 28, height: 28, cursor: 'pointer', fontSize: 13, color: '#94a3b8',
+  background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6,
+  width: 28, height: 28, cursor: 'pointer', fontSize: 13, color: '#64748b',
   display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit',
 };
 
@@ -195,16 +195,18 @@ export default function HelpContent() {
     if (!form.question?.trim() || !form.answer?.trim()) return showToast('Frage und Antwort sind Pflichtfelder', 'error');
     setSaving(true);
     try {
-      const payload = { question: form.question, answer: form.answer, tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true, updated_at: new Date().toISOString() };
+      const payload = { question: form.question, answer: form.answer, tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true };
       if (modal?.data?.id) {
-        await supabase.from('help_faqs').update(payload).eq('id', modal.data.id);
+        const { error } = await supabase.from('help_faqs').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', modal.data.id);
+        if (error) throw error;
       } else {
-        await supabase.from('help_faqs').insert(payload);
+        const { error } = await supabase.from('help_faqs').insert(payload);
+        if (error) throw error;
       }
       showToast('FAQ gespeichert');
       setModal(null);
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Speichern fehlgeschlagen – RLS prüfen', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -212,28 +214,32 @@ export default function HelpContent() {
     if (!form.title?.trim()) return showToast('Titel ist Pflichtfeld', 'error');
     setSaving(true);
     try {
-      const payload = { title: form.title, description: form.description || '', tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true, updated_at: new Date().toISOString() };
+      const payload = { title: form.title, description: form.description || '', tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true };
       let wtId = modal?.data?.id;
       if (wtId) {
-        await supabase.from('help_walkthroughs').update(payload).eq('id', wtId);
+        const { error } = await supabase.from('help_walkthroughs').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', wtId);
+        if (error) throw error;
       } else {
-        const { data } = await supabase.from('help_walkthroughs').insert(payload).select().single();
+        const { data, error } = await supabase.from('help_walkthroughs').insert(payload).select().single();
+        if (error) throw error;
         wtId = data?.id;
       }
       // Save steps
       if (wtId) {
-        await supabase.from('help_walkthrough_steps').delete().eq('walkthrough_id', wtId);
+        const { error: delErr } = await supabase.from('help_walkthrough_steps').delete().eq('walkthrough_id', wtId);
+        if (delErr) throw delErr;
         const validSteps = steps.filter(s => s.title?.trim());
         if (validSteps.length > 0) {
-          await supabase.from('help_walkthrough_steps').insert(
-            validSteps.map((s, i) => ({ walkthrough_id: wtId, title: s.title, description: s.description || '', image_url: s.image_url || '', step_order: i, updated_at: new Date().toISOString() }))
+          const { error: insErr } = await supabase.from('help_walkthrough_steps').insert(
+            validSteps.map((s, i) => ({ walkthrough_id: wtId, title: s.title, description: s.description || '', image_url: s.image_url || '', step_order: i }))
           );
+          if (insErr) throw insErr;
         }
       }
       showToast('Walkthrough gespeichert');
       setModal(null);
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Speichern fehlgeschlagen – RLS prüfen', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -241,16 +247,18 @@ export default function HelpContent() {
     if (!form.title?.trim() || !form.video_url?.trim()) return showToast('Titel und Video-URL sind Pflichtfelder', 'error');
     setSaving(true);
     try {
-      const payload = { title: form.title, description: form.description || '', video_url: form.video_url, thumbnail_url: form.thumbnail_url || '', tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true, updated_at: new Date().toISOString() };
+      const payload = { title: form.title, description: form.description || '', video_url: form.video_url, thumbnail_url: form.thumbnail_url || '', tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true };
       if (modal?.data?.id) {
-        await supabase.from('help_videos').update(payload).eq('id', modal.data.id);
+        const { error } = await supabase.from('help_videos').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', modal.data.id);
+        if (error) throw error;
       } else {
-        await supabase.from('help_videos').insert(payload);
+        const { error } = await supabase.from('help_videos').insert(payload);
+        if (error) throw error;
       }
       showToast('Video gespeichert');
       setModal(null);
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Speichern fehlgeschlagen – RLS prüfen', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -258,16 +266,18 @@ export default function HelpContent() {
     if (!form.title?.trim() || !form.file_url?.trim()) return showToast('Titel und Datei-URL sind Pflichtfelder', 'error');
     setSaving(true);
     try {
-      const payload = { title: form.title, description: form.description || '', file_url: form.file_url, file_name: form.file_name || form.title, file_size_bytes: Number(form.file_size_bytes) || 0, tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true, updated_at: new Date().toISOString() };
+      const payload = { title: form.title, description: form.description || '', file_url: form.file_url, file_name: form.file_name || form.title, file_size_bytes: Number(form.file_size_bytes) || 0, tags: form.tags || [], sort_order: Number(form.sort_order) || 0, is_published: form.is_published ?? true };
       if (modal?.data?.id) {
-        await supabase.from('help_documents').update(payload).eq('id', modal.data.id);
+        const { error } = await supabase.from('help_documents').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', modal.data.id);
+        if (error) throw error;
       } else {
-        await supabase.from('help_documents').insert(payload);
+        const { error } = await supabase.from('help_documents').insert(payload);
+        if (error) throw error;
       }
       showToast('Dokument gespeichert');
       setModal(null);
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Speichern fehlgeschlagen – RLS prüfen', 'error'); }
     finally { setSaving(false); }
   };
 
@@ -277,31 +287,35 @@ export default function HelpContent() {
     try {
       const payload = { name: form.name.trim(), color: form.color || '#3b82f6' };
       if (modal?.data?.id) {
-        await supabase.from('help_tags').update(payload).eq('id', modal.data.id);
+        const { error } = await supabase.from('help_tags').update(payload).eq('id', modal.data.id);
+        if (error) throw error;
       } else {
-        await supabase.from('help_tags').insert(payload);
+        const { error } = await supabase.from('help_tags').insert(payload);
+        if (error) throw error;
       }
       showToast('Tag gespeichert');
       setModal(null);
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Speichern fehlgeschlagen – RLS prüfen', 'error'); }
     finally { setSaving(false); }
   };
 
   const deleteItem = async (table: string, id: string) => {
     if (!confirm('Wirklich löschen?')) return;
     try {
-      await supabase.from(table).delete().eq('id', id);
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
       showToast('Gelöscht');
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Löschen fehlgeschlagen', 'error'); }
   };
 
   const togglePublished = async (table: string, id: string, current: boolean) => {
     try {
-      await supabase.from(table).update({ is_published: !current, updated_at: new Date().toISOString() }).eq('id', id);
+      const { error } = await supabase.from(table).update({ is_published: !current, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
       loadAll();
-    } catch (e: any) { showToast(e.message, 'error'); }
+    } catch (e: any) { showToast(e.message || 'Aktualisierung fehlgeschlagen', 'error'); }
   };
 
   // ── Steps helpers ──────────────────────────────────────────────────────────
@@ -349,7 +363,7 @@ export default function HelpContent() {
   ];
 
   if (loading) return (
-    <View style={s.centered}><ActivityIndicator size="large" color="#38bdf8" /></View>
+    <View style={s.centered}><ActivityIndicator size="large" color="#2563eb" /></View>
   );
 
   return (
@@ -368,7 +382,7 @@ export default function HelpContent() {
           const active = activeTab === t.key;
           return (
             <TouchableOpacity key={t.key} style={[s.tab, active && s.tabActive]} onPress={() => setActiveTab(t.key)} activeOpacity={0.7}>
-              <Icon size={16} color={active ? '#38bdf8' : '#64748b'} />
+              <Icon size={16} color={active ? '#2563eb' : '#64748b'} />
               <Text style={[s.tabLabel, active && s.tabLabelActive]}>{t.label}</Text>
             </TouchableOpacity>
           );
@@ -412,7 +426,7 @@ export default function HelpContent() {
                     {faq.is_published ? <Eye size={16} color="#10b981" /> : <EyeOff size={16} color="#64748b" />}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => openEdit('faqs', faq)}>
-                    <Edit2 size={16} color="#38bdf8" />
+                    <Edit2 size={16} color="#2563eb" />
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => deleteItem('help_faqs', faq.id)}>
                     <Trash2 size={16} color="#ef4444" />
@@ -447,7 +461,7 @@ export default function HelpContent() {
                     {wt.is_published ? <Eye size={16} color="#10b981" /> : <EyeOff size={16} color="#64748b" />}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => openEdit('walkthroughs', wt)}>
-                    <Edit2 size={16} color="#38bdf8" />
+                    <Edit2 size={16} color="#2563eb" />
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => deleteItem('help_walkthroughs', wt.id)}>
                     <Trash2 size={16} color="#ef4444" />
@@ -482,7 +496,7 @@ export default function HelpContent() {
                     {vid.is_published ? <Eye size={16} color="#10b981" /> : <EyeOff size={16} color="#64748b" />}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => openEdit('videos', vid)}>
-                    <Edit2 size={16} color="#38bdf8" />
+                    <Edit2 size={16} color="#2563eb" />
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => deleteItem('help_videos', vid.id)}>
                     <Trash2 size={16} color="#ef4444" />
@@ -517,7 +531,7 @@ export default function HelpContent() {
                     {doc.is_published ? <Eye size={16} color="#10b981" /> : <EyeOff size={16} color="#64748b" />}
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => openEdit('documents', doc)}>
-                    <Edit2 size={16} color="#38bdf8" />
+                    <Edit2 size={16} color="#2563eb" />
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => deleteItem('help_documents', doc.id)}>
                     <Trash2 size={16} color="#ef4444" />
@@ -540,7 +554,7 @@ export default function HelpContent() {
                 <Text style={s.tagName}>{tag.name}</Text>
                 <View style={s.actions}>
                   <TouchableOpacity style={s.iconBtn} onPress={() => openEdit('tags', tag)}>
-                    <Edit2 size={14} color="#38bdf8" />
+                    <Edit2 size={14} color="#2563eb" />
                   </TouchableOpacity>
                   <TouchableOpacity style={s.iconBtn} onPress={() => deleteItem('help_tags', tag.id)}>
                     <Trash2 size={14} color="#ef4444" />
@@ -591,20 +605,20 @@ export default function HelpContent() {
           <Field label="Tags">
             <TagPicker selected={form.tags || []} allTags={allTags} onChange={tags => setForm((f: any) => ({ ...f, tags }))} />
           </Field>
-          <hr style={{ border: 'none', borderTop: '1px solid #334155', margin: '16px 0' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '16px 0' }} />
 
           {/* Steps */}
           <div style={{ marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Schritte ({steps.length})</span>
-              <button onClick={addStep} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid #38bdf8', borderRadius: 8, padding: '6px 12px', color: '#38bdf8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Schritte ({steps.length})</span>
+              <button onClick={addStep} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#eff6ff', border: '1px solid #2563eb', borderRadius: 8, padding: '6px 12px', color: '#2563eb', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                 + Schritt hinzufügen
               </button>
             </div>
             {steps.map((step, idx) => (
-              <div key={idx} style={{ background: '#0f172a', borderRadius: 10, padding: 14, marginBottom: 10, border: '1px solid #334155' }}>
+              <div key={idx} style={{ background: '#f8fafc', borderRadius: 10, padding: 14, marginBottom: 10, border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>Schritt {idx + 1}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>Schritt {idx + 1}</span>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={() => moveStep(idx, -1)} style={iconBtnStyle}>↑</button>
                     <button onClick={() => moveStep(idx, 1)} style={iconBtnStyle}>↓</button>
@@ -620,7 +634,7 @@ export default function HelpContent() {
                     <FInput value={step.image_url || ''} onChangeText={(v: string) => updateStep(idx, 'image_url', v)} placeholder="Bild-URL oder hochladen..." />
                   </div>
                   <button
-                    style={{ width: 42, height: 42, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    style={{ width: 42, height: 42, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                     onClick={() => {
                       const input = document.createElement('input');
                       input.type = 'file'; input.accept = 'image/*';
@@ -628,7 +642,7 @@ export default function HelpContent() {
                       input.click();
                     }}
                   >
-                    <Upload size={14} color="#38bdf8" />
+                    <Upload size={14} color="#2563eb" />
                   </button>
                 </div>
                 {step.image_url && (
@@ -686,7 +700,7 @@ export default function HelpContent() {
                 <FInput value={form.file_url || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, file_url: v }))} placeholder="https://... oder Datei hochladen" />
               </div>
               <button
-                style={{ width: 42, height: 42, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                style={{ width: 42, height: 42, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                 onClick={() => {
                   const input = document.createElement('input');
                   input.type = 'file';
@@ -695,7 +709,7 @@ export default function HelpContent() {
                   input.click();
                 }}
               >
-                <Upload size={14} color="#38bdf8" />
+                <Upload size={14} color="#2563eb" />
               </button>
             </div>
             {form.file_name && <p style={{ color: '#10b981', fontSize: 12, margin: '4px 0 0' }}>✓ {form.file_name}</p>}
@@ -739,44 +753,44 @@ export default function HelpContent() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a', position: 'relative' as any },
+  root: { flex: 1, backgroundColor: '#f8fafc', position: 'relative' as any },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   toast: { position: 'absolute' as any, top: 16, right: 16, backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, zIndex: 9999, flexDirection: 'row', alignItems: 'center', gap: 8 },
   toastError: { backgroundColor: '#ef4444' },
   toastText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  tabBar: { flexDirection: 'row', gap: 4, paddingHorizontal: 0, marginBottom: 20, backgroundColor: '#1e293b', borderRadius: 12, padding: 4 },
+  tabBar: { flexDirection: 'row', gap: 4, paddingHorizontal: 0, marginBottom: 20, backgroundColor: '#e2e8f0', borderRadius: 12, padding: 4 },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
-  tabActive: { backgroundColor: '#0f172a' },
-  tabLabel: { fontSize: 13, fontWeight: '600', color: '#64748b' },
-  tabLabelActive: { color: '#38bdf8' },
+  tabActive: { backgroundColor: '#ffffff' },
+  tabLabel: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
+  tabLabelActive: { color: '#2563eb' },
   toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   count: { fontSize: 14, color: '#64748b' },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#38bdf8', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9 },
-  addBtnText: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#2563eb', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9 },
+  addBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   list: { flex: 1 },
-  empty: { color: '#475569', textAlign: 'center' as any, marginTop: 40, fontSize: 15 },
-  card: { backgroundColor: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: '#334155' },
+  empty: { color: '#94a3b8', textAlign: 'center' as any, marginTop: 40, fontSize: 15 },
+  card: { backgroundColor: '#ffffff', borderRadius: 12, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   cardTop: { flexDirection: 'row', gap: 12 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#f1f5f9', marginBottom: 4 },
-  cardSub: { fontSize: 13, color: '#94a3b8', marginBottom: 8 },
-  url: { fontSize: 12, color: '#475569', marginBottom: 8 },
-  stepCount: { fontSize: 12, color: '#38bdf8', marginBottom: 8 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 4 },
+  cardSub: { fontSize: 13, color: '#64748b', marginBottom: 8 },
+  url: { fontSize: 12, color: '#94a3b8', marginBottom: 8 },
+  stepCount: { fontSize: 12, color: '#2563eb', marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
   chipTxt: { fontSize: 11, fontWeight: '600' },
   actions: { flexDirection: 'column', gap: 8, justifyContent: 'flex-start' },
-  iconBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
   tagsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tagCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1e293b', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, minWidth: 160 },
+  tagCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ffffff', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, minWidth: 160 },
   tagDot: { width: 10, height: 10, borderRadius: 5 },
-  tagName: { flex: 1, color: '#f1f5f9', fontSize: 14, fontWeight: '600' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#38bdf8', borderRadius: 10, paddingVertical: 13, marginTop: 20 },
+  tagName: { flex: 1, color: '#0f172a', fontSize: 14, fontWeight: '600' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 13, marginTop: 20 },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
-  miniBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#38bdf8', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  miniBtnText: { fontSize: 12, color: '#38bdf8', fontWeight: '600' },
-  stepCard: { backgroundColor: '#0f172a', borderRadius: 10, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#334155' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
+  miniBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#2563eb', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  miniBtnText: { fontSize: 12, color: '#2563eb', fontWeight: '600' },
+  stepCard: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   stepHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  stepNum: { fontSize: 13, fontWeight: '700', color: '#38bdf8' },
-  uploadBtn: { width: 42, height: 42, backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  stepNum: { fontSize: 13, fontWeight: '700', color: '#2563eb' },
+  uploadBtn: { width: 42, height: 42, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 });

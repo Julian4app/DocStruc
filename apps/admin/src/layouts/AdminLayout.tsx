@@ -117,7 +117,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
                     onPress={() => navigate(item.path)}
                     activeOpacity={0.7}
                   >
-                    <Icon size={20} color={isActive ? '#38bdf8' : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
+                    <Icon size={20} color={isActive ? '#2563eb' : '#94a3b8'} strokeWidth={isActive ? 2.5 : 2} />
                     <Text style={[styles.navText, isActive && styles.navTextActive]}>
                       {item.label}
                     </Text>
@@ -182,13 +182,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#0f172a', // Slate 900
+    backgroundColor: '#f8fafc',
   },
   sidebar: {
     width: 280,
-    backgroundColor: '#0f172a', // Slate 900
+    backgroundColor: '#ffffff',
     borderRightWidth: 1,
-    borderRightColor: '#1e293b',
+    borderRightColor: '#e2e8f0',
     display: 'flex',
     flexDirection: 'column'
   },
@@ -198,12 +198,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b'
+    borderBottomColor: '#e2e8f0'
   },
   logoBadge: {
       width: 32,
       height: 32,
-      backgroundColor: '#38bdf8', // Sky 400
+      backgroundColor: '#38bdf8',
       borderRadius: 8,
       alignItems: 'center',
       justifyContent: 'center',
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#0f172a',
     letterSpacing: 0.5
   },
   navScroll: {
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
       marginBottom: 24
   },
   menuGroupTitle: {
-      color: '#475569',
+      color: '#94a3b8',
       fontSize: 11,
       fontWeight: '700',
       paddingHorizontal: 24,
@@ -243,15 +243,15 @@ const styles = StyleSheet.create({
     position: 'relative'
   },
   navItemActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.1)'
+    backgroundColor: '#eff6ff'
   },
   navText: {
     fontSize: 14,
-    color: '#94a3b8',
+    color: '#64748b',
     fontWeight: '500'
   },
   navTextActive: {
-    color: '#38bdf8', // Sky 400
+    color: '#2563eb',
     fontWeight: '600'
   },
   activeIndicator: {
@@ -260,29 +260,29 @@ const styles = StyleSheet.create({
       top: 0,
       bottom: 0,
       width: 3,
-      backgroundColor: '#38bdf8',
+      backgroundColor: '#2563eb',
       borderTopLeftRadius: 4,
       borderBottomLeftRadius: 4
   },
   userProfile: {
       padding: 16,
-      backgroundColor: '#020617',
+      backgroundColor: '#f8fafc',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
       borderTopWidth: 1,
-      borderTopColor: '#1e293b',
+      borderTopColor: '#e2e8f0',
   },
   avatar: {
       width: 36,
       height: 36,
       borderRadius: 18,
-      backgroundColor: '#334155',
+      backgroundColor: '#dbeafe',
       alignItems: 'center',
       justifyContent: 'center'
   },
   userName: {
-      color: '#f8fafc',
+      color: '#0f172a',
       fontSize: 13,
       fontWeight: '600'
   },
@@ -295,19 +295,19 @@ const styles = StyleSheet.create({
   main: {
     flex: 1,
     flexDirection: 'column',
-    position: 'relative'
+    position: 'relative',
+    backgroundColor: '#f8fafc',
   },
   header: {
     height: 80,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: '#ffffff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 32,
     position: 'relative' as any,
-    // borderBottomWidth: 1,
-    // borderBottomColor: '#e2e8f0',
-    // backdropFilter: 'blur(10px)', // Glassmorphism
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
     zIndex: 100
   },
   headerLeft: {
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   },
   pageBreadcrumb: {
       fontSize: 12,
-      color: '#64748b'
+      color: '#94a3b8'
   },
   pageTitle: {
       fontSize: 24,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   searchBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'white',
+      backgroundColor: '#f8fafc',
       paddingHorizontal: 16,
       paddingVertical: 8,
       borderRadius: 20,
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 20,
-      backgroundColor: 'white',
+      backgroundColor: '#f8fafc',
       borderWidth: 1,
       borderColor: '#e2e8f0'
   },
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   headerActions: {
       position: 'absolute',
       right: 32,
-      top: 80 + 24 // Below header? No, just passed as prop logic needs adjustment
+      top: 80 + 24
   },
   
   contentScroll: {

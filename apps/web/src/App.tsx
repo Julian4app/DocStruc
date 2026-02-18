@@ -19,6 +19,9 @@ const Datenschutz = lazy(() => import('./pages/Datenschutz').then(m => ({ defaul
 const Impressum = lazy(() => import('./pages/Impressum').then(m => ({ default: m.Impressum })));
 const Feedback = lazy(() => import('./pages/Feedback').then(m => ({ default: m.Feedback })));
 const Help = lazy(() => import('./pages/Help').then(m => ({ default: m.Help })));
+const HelpWalkthroughs = lazy(() => import('./pages/HelpWalkthroughs').then(m => ({ default: m.HelpWalkthroughs })));
+const HelpVideos = lazy(() => import('./pages/HelpVideos').then(m => ({ default: m.HelpVideos })));
+const HelpDocuments = lazy(() => import('./pages/HelpDocuments').then(m => ({ default: m.HelpDocuments })));
 const AcceptInvitation = lazy(() => import('./pages/AcceptInvitation').then(m => ({ default: m.AcceptInvitation })));
 const ProjectDashboard = lazy(() => import('./pages/project/ProjectDashboard').then(m => ({ default: m.ProjectDashboard })));
 const ProjectTasks = lazy(() => import('./pages/project/ProjectTasks').then(m => ({ default: m.ProjectTasks })));
@@ -216,6 +219,9 @@ function App() {
               <Route path="/impressum" element={<Impressum />} />
               <Route path="/feedback" element={<Feedback />} />
               <Route path="/help" element={<Help />} />
+              <Route path="/help/erste-schritte" element={<HelpWalkthroughs />} />
+              <Route path="/help/video-tutorials" element={<HelpVideos />} />
+              <Route path="/help/dokumentation" element={<HelpDocuments />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
