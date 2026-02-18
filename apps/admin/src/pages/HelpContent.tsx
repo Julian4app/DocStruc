@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, TextInput as RNTextInput } from 'react-native';
+import ReactDOM from 'react-dom';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
 import {
   HelpCircle, Video, FileText, BookOpen, Tag, Plus, Trash2, Edit2,
-  Save, X, ChevronDown, ChevronUp, GripVertical, Upload, Eye, EyeOff,
-  ArrowUp, ArrowDown, Image as ImageIcon, Link
+  Save, X, Eye, EyeOff, Upload, Link
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -24,74 +24,97 @@ function TagPicker({ selected, allTags, onChange }: { selected: string[]; allTag
     else onChange([...selected, name]);
   };
   return (
-    <View style={tp.wrap}>
-      {allTags.map(t => (
-        <TouchableOpacity
-          key={t.id}
-          onPress={() => toggle(t.name)}
-          style={[tp.chip, selected.includes(t.name) && { backgroundColor: t.color, borderColor: t.color }]}
-          activeOpacity={0.7}
-        >
-          <Text style={[tp.chipText, selected.includes(t.name) && { color: '#fff' }]}>{t.name}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+      {allTags.map(t => {
+        const active = selected.includes(t.name);
+        return (
+          <button
+            key={t.id}
+            onClick={() => toggle(t.name)}
+            style={{
+              paddingLeft: 12, paddingRight: 12, paddingTop: 5, paddingBottom: 5,
+              borderRadius: 20, border: `1px solid ${active ? t.color : '#334155'}`,
+              backgroundColor: active ? t.color : 'transparent',
+              color: active ? '#fff' : '#94a3b8', fontSize: 12, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            {t.name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
-const tp = StyleSheet.create({
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#334155' },
-  chipText: { fontSize: 12, color: '#94a3b8', fontWeight: '500' },
-});
 
 // ─── Modal Shell ─────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <View style={mod.overlay}>
-      <View style={mod.card}>
-        <View style={mod.header}>
-          <Text style={mod.title}>{title}</Text>
-          <TouchableOpacity onPress={onClose}><X size={20} color="#94a3b8" /></TouchableOpacity>
-        </View>
-        <ScrollView style={mod.body} contentContainerStyle={{ paddingBottom: 16 }}>{children as any}</ScrollView>
-      </View>
-    </View>
+  // Render into document.body so position:fixed covers the full viewport
+  const el = (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)',
+      zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+    }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{
+        backgroundColor: '#1e293b', borderRadius: 16, width: '100%', maxWidth: 680,
+        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+        border: '1px solid #334155', boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #334155', flexShrink: 0 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+            <X size={20} color="#94a3b8" />
+          </button>
+        </div>
+        {/* Body — scrollable */}
+        <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
+          {children}
+        </div>
+      </div>
+    </div>
   );
+  return ReactDOM.createPortal(el, document.body) as any;
 }
-const mod = StyleSheet.create({
-  overlay: { position: 'absolute' as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: '#1e293b', borderRadius: 16, width: '100%', maxWidth: 700, maxHeight: '90%' as any, borderWidth: 1, borderColor: '#334155' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#334155' },
-  title: { fontSize: 17, fontWeight: '700', color: '#f1f5f9' },
-  body: { padding: 20 },
-});
 
-// ─── Form Field ──────────────────────────────────────────────────────────────
+// ─── Form Field & Input (HTML-native for use inside portal) ──────────────────
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={fld.label}>{label}</Text>
-      {children as any}
-    </View>
+    <div style={{ marginBottom: 18 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 7 }}>{label}</label>
+      {children}
+    </div>
   );
 }
 function FInput({ value, onChangeText, placeholder, multiline, numberOfLines }: any) {
-  return (
-    <RNTextInput
-      style={[fld.input, multiline && { height: (numberOfLines || 3) * 22 + 20, textAlignVertical: 'top' as any }] as any}
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      placeholderTextColor="#475569"
-      multiline={multiline}
-      numberOfLines={numberOfLines}
-    />
-  );
+  const rows = numberOfLines || (multiline ? 4 : 1);
+  const baseStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', backgroundColor: '#0f172a',
+    border: '1px solid #334155', borderRadius: 8, padding: '10px 14px',
+    fontSize: 14, color: '#f1f5f9', outline: 'none', resize: multiline ? 'vertical' : 'none',
+    fontFamily: 'inherit', lineHeight: '1.5',
+  };
+  if (multiline) {
+    return <textarea rows={rows} value={value} onChange={e => onChangeText(e.target.value)} placeholder={placeholder} style={{ ...baseStyle, minHeight: rows * 24 + 20 }} />;
+  }
+  return <input type="text" value={value} onChange={e => onChangeText(e.target.value)} placeholder={placeholder} style={baseStyle} />;
 }
-const fld = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '600', color: '#94a3b8', marginBottom: 6 },
-  input: { backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#f1f5f9', minHeight: 42 },
+
+// ─── Shared button styles for modal actions ────────────────────────────────────
+const btnStyle = (disabled?: boolean): React.CSSProperties => ({
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  backgroundColor: disabled ? '#1e3a4a' : '#38bdf8', color: '#0f172a',
+  border: 'none', borderRadius: 10, padding: '13px 0', width: '100%',
+  fontSize: 15, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
+  marginTop: 20, fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
 });
+const iconBtnStyle: React.CSSProperties = {
+  background: '#1e293b', border: '1px solid #334155', borderRadius: 6,
+  width: 28, height: 28, cursor: 'pointer', fontSize: 13, color: '#94a3b8',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit',
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function HelpContent() {
@@ -538,7 +561,7 @@ export default function HelpContent() {
             <FInput value={form.question || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, question: v }))} placeholder="Wie kann ich...?" />
           </Field>
           <Field label="Antwort *">
-            <FInput value={form.answer || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, answer: v }))} placeholder="Die Antwort ist..." multiline numberOfLines={5} />
+            <FInput value={form.answer || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, answer: v }))} placeholder="Die Antwort ist..." multiline numberOfLines={6} />
           </Field>
           <Field label="Reihenfolge">
             <FInput value={String(form.sort_order || 0)} onChangeText={(v: string) => setForm((f: any) => ({ ...f, sort_order: v }))} placeholder="0" />
@@ -546,14 +569,13 @@ export default function HelpContent() {
           <Field label="Tags">
             <TagPicker selected={form.tags || []} allTags={allTags} onChange={tags => setForm((f: any) => ({ ...f, tags }))} />
           </Field>
-          <TouchableOpacity
-            style={[s.saveBtn, saving && s.saveBtnDisabled]}
-            onPress={saveFaq}
+          <button
+            onClick={saveFaq}
             disabled={saving}
-            activeOpacity={0.8}
+            style={btnStyle(saving)}
           >
-            {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
-          </TouchableOpacity>
+            {saving ? '...' : '💾  Speichern'}
+          </button>
         </Modal>
       )}
 
@@ -569,61 +591,56 @@ export default function HelpContent() {
           <Field label="Tags">
             <TagPicker selected={form.tags || []} allTags={allTags} onChange={tags => setForm((f: any) => ({ ...f, tags }))} />
           </Field>
+          <hr style={{ border: 'none', borderTop: '1px solid #334155', margin: '16px 0' }} />
 
           {/* Steps */}
-          <View style={{ marginTop: 8 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={fld.label}>Schritte ({steps.length})</Text>
-              <TouchableOpacity style={s.miniBtn} onPress={addStep} activeOpacity={0.8}>
-                <Plus size={14} color="#38bdf8" />
-                <Text style={s.miniBtnText}>Schritt hinzufügen</Text>
-              </TouchableOpacity>
-            </View>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Schritte ({steps.length})</span>
+              <button onClick={addStep} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid #38bdf8', borderRadius: 8, padding: '6px 12px', color: '#38bdf8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                + Schritt hinzufügen
+              </button>
+            </div>
             {steps.map((step, idx) => (
-              <View key={idx} style={s.stepCard}>
-                <View style={s.stepHeader}>
-                  <Text style={s.stepNum}>Schritt {idx + 1}</Text>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <TouchableOpacity onPress={() => moveStep(idx, -1)}><ArrowUp size={14} color="#64748b" /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => moveStep(idx, 1)}><ArrowDown size={14} color="#64748b" /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeStep(idx)}><X size={14} color="#ef4444" /></TouchableOpacity>
-                  </View>
-                </View>
+              <div key={idx} style={{ background: '#0f172a', borderRadius: 10, padding: 14, marginBottom: 10, border: '1px solid #334155' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>Schritt {idx + 1}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => moveStep(idx, -1)} style={iconBtnStyle}>↑</button>
+                    <button onClick={() => moveStep(idx, 1)} style={iconBtnStyle}>↓</button>
+                    <button onClick={() => removeStep(idx)} style={{ ...iconBtnStyle, color: '#ef4444' }}>✕</button>
+                  </div>
+                </div>
                 <FInput value={step.title || ''} onChangeText={(v: string) => updateStep(idx, 'title', v)} placeholder="Schritt-Titel *" />
-                <View style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 8 }}>
                   <FInput value={step.description || ''} onChangeText={(v: string) => updateStep(idx, 'description', v)} placeholder="Beschreibung..." multiline numberOfLines={3} />
-                </View>
-                <View style={{ marginTop: 8, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <View style={{ flex: 1 }}>
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
                     <FInput value={step.image_url || ''} onChangeText={(v: string) => updateStep(idx, 'image_url', v)} placeholder="Bild-URL oder hochladen..." />
-                  </View>
-                  <TouchableOpacity
-                    style={s.uploadBtn}
-                    onPress={() => {
+                  </div>
+                  <button
+                    style={{ width: 42, height: 42, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    onClick={() => {
                       const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/*';
-                      input.onchange = (e: any) => {
-                        const file = e.target.files?.[0];
-                        if (file) uploadStepImage(idx, file);
-                      };
+                      input.type = 'file'; input.accept = 'image/*';
+                      input.onchange = (e: any) => { const file = e.target.files?.[0]; if (file) uploadStepImage(idx, file); };
                       input.click();
                     }}
-                    activeOpacity={0.8}
                   >
                     <Upload size={14} color="#38bdf8" />
-                  </TouchableOpacity>
-                </View>
+                  </button>
+                </div>
                 {step.image_url && (
                   <img src={step.image_url} alt="preview" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
                 )}
-              </View>
+              </div>
             ))}
-          </View>
+          </div>
 
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnDisabled]} onPress={saveWalkthrough} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
-          </TouchableOpacity>
+          <button onClick={saveWalkthrough} disabled={saving} style={{ ...btnStyle(saving), marginTop: 8 }}>
+            {saving ? '...' : '💾  Speichern'}
+          </button>
         </Modal>
       )}
 
@@ -648,9 +665,9 @@ export default function HelpContent() {
           <Field label="Tags">
             <TagPicker selected={form.tags || []} allTags={allTags} onChange={tags => setForm((f: any) => ({ ...f, tags }))} />
           </Field>
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnDisabled]} onPress={saveVideo} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
-          </TouchableOpacity>
+          <button onClick={saveVideo} disabled={saving} style={btnStyle(saving)}>
+            {saving ? '...' : '💾  Speichern'}
+          </button>
         </Modal>
       )}
 
@@ -664,28 +681,24 @@ export default function HelpContent() {
             <FInput value={form.description || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, description: v }))} placeholder="Kurze Beschreibung..." multiline numberOfLines={3} />
           </Field>
           <Field label="Datei hochladen oder URL eingeben *">
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
                 <FInput value={form.file_url || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, file_url: v }))} placeholder="https://... oder Datei hochladen" />
-              </View>
-              <TouchableOpacity
-                style={s.uploadBtn}
-                onPress={() => {
+              </div>
+              <button
+                style={{ width: 42, height: 42, background: '#1e293b', border: '1px solid #334155', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                onClick={() => {
                   const input = document.createElement('input');
                   input.type = 'file';
                   input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip';
-                  input.onchange = (e: any) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadDocFile(file);
-                  };
+                  input.onchange = (e: any) => { const file = e.target.files?.[0]; if (file) uploadDocFile(file); };
                   input.click();
                 }}
-                activeOpacity={0.8}
               >
                 <Upload size={14} color="#38bdf8" />
-              </TouchableOpacity>
-            </View>
-            {form.file_name && <Text style={{ color: '#10b981', fontSize: 12, marginTop: 4 }}>✓ {form.file_name}</Text>}
+              </button>
+            </div>
+            {form.file_name && <p style={{ color: '#10b981', fontSize: 12, margin: '4px 0 0' }}>✓ {form.file_name}</p>}
           </Field>
           <Field label="Reihenfolge">
             <FInput value={String(form.sort_order || 0)} onChangeText={(v: string) => setForm((f: any) => ({ ...f, sort_order: v }))} placeholder="0" />
@@ -693,9 +706,9 @@ export default function HelpContent() {
           <Field label="Tags">
             <TagPicker selected={form.tags || []} allTags={allTags} onChange={tags => setForm((f: any) => ({ ...f, tags }))} />
           </Field>
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnDisabled]} onPress={saveDocument} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
-          </TouchableOpacity>
+          <button onClick={saveDocument} disabled={saving} style={btnStyle(saving)}>
+            {saving ? '...' : '💾  Speichern'}
+          </button>
         </Modal>
       )}
 
@@ -706,20 +719,19 @@ export default function HelpContent() {
             <FInput value={form.name || ''} onChangeText={(v: string) => setForm((f: any) => ({ ...f, name: v }))} placeholder="z.B. Erste Schritte" />
           </Field>
           <Field label="Farbe">
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
               {TAG_COLORS.map(c => (
-                <TouchableOpacity
+                <button
                   key={c}
-                  style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: c }, form.color === c && { borderWidth: 3, borderColor: '#fff' }]}
-                  onPress={() => setForm((f: any) => ({ ...f, color: c }))}
-                  activeOpacity={0.8}
+                  onClick={() => setForm((f: any) => ({ ...f, color: c }))}
+                  style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: c, border: form.color === c ? '3px solid #fff' : '3px solid transparent', cursor: 'pointer', outline: form.color === c ? '2px solid ' + c : 'none', outlineOffset: 2 }}
                 />
               ))}
-            </View>
+            </div>
           </Field>
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnDisabled]} onPress={saveTag} disabled={saving} activeOpacity={0.8}>
-            {saving ? <ActivityIndicator size="small" color="#0f172a" /> : <><Save size={16} color="#0f172a" /><Text style={s.saveBtnText}>Speichern</Text></>}
-          </TouchableOpacity>
+          <button onClick={saveTag} disabled={saving} style={btnStyle(saving)}>
+            {saving ? '...' : '💾  Speichern'}
+          </button>
         </Modal>
       )}
     </View>
