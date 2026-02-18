@@ -1,15 +1,73 @@
 -- ============================================================================
--- FIX: Help Center RLS Policies
--- The original "manage" policies only cover INSERT/UPDATE/DELETE when combined
--- with FOR ALL, but Postgres RLS evaluates USING for both SELECT and the
--- write-side.  We need explicit INSERT/UPDATE/DELETE policies so that the
--- USING clause is correctly applied.
--- We also add a fallback "allow any authenticated user to INSERT" policy for
--- support_messages so guests who are not superusers can still send messages.
+-- FIX: Help Center RLS Policies  (idempotent – safe to run multiple times)
+--
+-- Root cause: Postgres "FOR ALL USING (...)" does NOT allow INSERT.
+-- INSERT needs "WITH CHECK", not "USING".  The original migration used
+-- FOR ALL which silently blocks every write from the admin panel.
+--
+-- This script drops every possible policy name (old + new) and recreates
+-- them correctly.  Run it once in the Supabase SQL Editor.
 -- ============================================================================
 
+-- ─── Helper: drop every known policy variant ─────────────────────────────────
+DO $$ BEGIN
+
+  -- help_tags
+  DROP POLICY IF EXISTS "Superusers can manage help tags"    ON public.help_tags;
+  DROP POLICY IF EXISTS "Superusers can insert help tags"    ON public.help_tags;
+  DROP POLICY IF EXISTS "Superusers can update help tags"    ON public.help_tags;
+  DROP POLICY IF EXISTS "Superusers can delete help tags"    ON public.help_tags;
+  DROP POLICY IF EXISTS "Superusers can select all help tags" ON public.help_tags;
+
+  -- help_faqs
+  DROP POLICY IF EXISTS "Superusers can manage faqs"         ON public.help_faqs;
+  DROP POLICY IF EXISTS "Superusers can select all faqs"     ON public.help_faqs;
+  DROP POLICY IF EXISTS "Superusers can insert faqs"         ON public.help_faqs;
+  DROP POLICY IF EXISTS "Superusers can update faqs"         ON public.help_faqs;
+  DROP POLICY IF EXISTS "Superusers can delete faqs"         ON public.help_faqs;
+
+  -- help_walkthroughs
+  DROP POLICY IF EXISTS "Superusers can manage walkthroughs"        ON public.help_walkthroughs;
+  DROP POLICY IF EXISTS "Superusers can select all walkthroughs"    ON public.help_walkthroughs;
+  DROP POLICY IF EXISTS "Superusers can insert walkthroughs"        ON public.help_walkthroughs;
+  DROP POLICY IF EXISTS "Superusers can update walkthroughs"        ON public.help_walkthroughs;
+  DROP POLICY IF EXISTS "Superusers can delete walkthroughs"        ON public.help_walkthroughs;
+
+  -- help_walkthrough_steps
+  DROP POLICY IF EXISTS "Superusers can manage walkthrough steps"       ON public.help_walkthrough_steps;
+  DROP POLICY IF EXISTS "Superusers can select all walkthrough steps"   ON public.help_walkthrough_steps;
+  DROP POLICY IF EXISTS "Superusers can insert walkthrough steps"       ON public.help_walkthrough_steps;
+  DROP POLICY IF EXISTS "Superusers can update walkthrough steps"       ON public.help_walkthrough_steps;
+  DROP POLICY IF EXISTS "Superusers can delete walkthrough steps"       ON public.help_walkthrough_steps;
+
+  -- help_videos
+  DROP POLICY IF EXISTS "Superusers can manage videos"         ON public.help_videos;
+  DROP POLICY IF EXISTS "Superusers can select all videos"     ON public.help_videos;
+  DROP POLICY IF EXISTS "Superusers can insert videos"         ON public.help_videos;
+  DROP POLICY IF EXISTS "Superusers can update videos"         ON public.help_videos;
+  DROP POLICY IF EXISTS "Superusers can delete videos"         ON public.help_videos;
+
+  -- help_documents
+  DROP POLICY IF EXISTS "Superusers can manage documents"         ON public.help_documents;
+  DROP POLICY IF EXISTS "Superusers can select all documents"     ON public.help_documents;
+  DROP POLICY IF EXISTS "Superusers can insert documents"         ON public.help_documents;
+  DROP POLICY IF EXISTS "Superusers can update documents"         ON public.help_documents;
+  DROP POLICY IF EXISTS "Superusers can delete documents"         ON public.help_documents;
+
+  -- support_messages
+  DROP POLICY IF EXISTS "Superusers can manage all support messages"    ON public.support_messages;
+  DROP POLICY IF EXISTS "Superusers can select all support messages"    ON public.support_messages;
+  DROP POLICY IF EXISTS "Superusers can update support messages"        ON public.support_messages;
+  DROP POLICY IF EXISTS "Superusers can delete support messages"        ON public.support_messages;
+
+  -- storage objects (help-assets)
+  DROP POLICY IF EXISTS "Superusers can upload help assets"  ON storage.objects;
+  DROP POLICY IF EXISTS "Superusers can update help assets"  ON storage.objects;
+
+END $$;
+
 -- ─── 1. HELP TAGS ────────────────────────────────────────────────────────────
-DROP POLICY IF EXISTS "Superusers can manage help tags" ON public.help_tags;
+-- Public can still SELECT (from original migration: "Anyone can view help tags")
 
 CREATE POLICY "Superusers can insert help tags" ON public.help_tags
     FOR INSERT WITH CHECK (

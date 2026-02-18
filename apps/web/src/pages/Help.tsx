@@ -44,14 +44,24 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
     if (visible) {
       setSent(false);
       setError('');
-      // Pre-fill from user session if logged in
+      // Reset form first, then pre-fill from profile
+      setForm({ name: '', email: '', subject: '', message: '' });
       supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) {
-          setForm(f => ({ ...f, email: user.email || '' }));
-          supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single().then(({ data }) => {
-            if (data) setForm(f => ({ ...f, name: `${data.first_name || ''} ${data.last_name || ''}`.trim() }));
+        if (!user) return;
+        const email = user.email || '';
+        setForm(f => ({ ...f, email }));
+        supabase
+          .from('profiles')
+          .select('first_name, last_name, email')
+          .eq('id', user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              const name = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+              const profileEmail = data.email || email;
+              setForm(f => ({ ...f, name, email: profileEmail }));
+            }
           });
-        }
       });
     }
   }, [visible]);
