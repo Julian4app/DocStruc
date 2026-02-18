@@ -22,6 +22,8 @@ import Datenschutz from './pages/Datenschutz';
 import Impressum from './pages/Impressum';
 import Feedback from './pages/Feedback';
 import Help from './pages/Help';
+import HelpContent from './pages/HelpContent';
+import HelpMessages from './pages/HelpMessages';
 import { AdminLayout } from './layouts/AdminLayout';
 import { Button } from '@docstruc/ui';
 import { ToastProvider } from './components/ToastContext';
@@ -212,6 +214,22 @@ export default function App() {
           <ProtectedRoute>
              <LayoutWrapper title="Hilfe Center">
                 <Help />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/help-content" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Help Center Inhalte">
+                <HelpContent />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/help-messages" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Support Nachrichten">
+                <HelpMessages />
              </LayoutWrapper>
           </ProtectedRoute>
         } />

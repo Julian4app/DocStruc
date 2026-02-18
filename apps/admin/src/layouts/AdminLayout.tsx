@@ -14,7 +14,9 @@ import {
   Search,
   ChevronRight,
   Settings,
-  UserCircle
+  UserCircle,
+  BookOpen,
+  MessageCircle
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -68,8 +70,15 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
         { label: 'Dashboard', path: '/', icon: LayoutDashboard },
         { label: 'Customers', path: '/customers', icon: Users },
         { label: 'Contact Persons', path: '/contacts', icon: Contact },
-        { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard }, // Reusing SubscriptionTypes generic path
+        { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard },
         { label: 'Tags', path: '/tags', icon: Tags },
+      ]
+    },
+    {
+      title: 'HELP CENTER',
+      items: [
+        { label: 'Help Inhalte', path: '/help-content', icon: BookOpen },
+        { label: 'Nachrichten', path: '/help-messages', icon: MessageCircle },
       ]
     }
   ];

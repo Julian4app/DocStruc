@@ -1,401 +1,615 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput, ActivityIndicator, Modal } from 'react-native';
 import { LayoutContext } from '../layouts/LayoutContext';
 import { colors } from '@docstruc/theme';
-import { 
-  HelpCircle, 
-  Search, 
-  BookOpen, 
-  Video, 
+import { supabase } from '../lib/supabase';
+import {
+  HelpCircle,
+  Search,
+  BookOpen,
+  Video,
   MessageCircle,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   FileText,
-  Lightbulb
+  Download,
+  X,
+  Send,
+  Tag,
+  Play,
 } from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface HelpTag { id: string; name: string; color: string; }
+interface HelpFaq { id: string; question: string; answer: string; tags: string[]; }
+interface WalkthroughStep { id: string; title: string; description: string; image_url: string; step_order: number; }
+interface HelpWalkthrough { id: string; title: string; description: string; tags: string[]; steps: WalkthroughStep[]; }
+interface HelpVideo { id: string; title: string; description: string; video_url: string; thumbnail_url: string; tags: string[]; }
+interface HelpDocument { id: string; title: string; description: string; file_url: string; file_name: string; file_size_bytes: number; tags: string[]; }
+
+type SectionId = 'walkthroughs' | 'videos' | 'faqs' | 'documents' | null;
+
+// ─── Contact Modal ─────────────────────────────────────────────────────────────
+function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setSent(false);
+      setError('');
+      // Pre-fill from user session if logged in
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          setForm(f => ({ ...f, email: user.email || '' }));
+          supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single().then(({ data }) => {
+            if (data) setForm(f => ({ ...f, name: `${data.first_name || ''} ${data.last_name || ''}`.trim() }));
+          });
+        }
+      });
+    }
+  }, [visible]);
+
+  const send = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.subject.trim() || !form.message.trim()) {
+      setError('Bitte füllen Sie alle Felder aus.');
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: err } = await supabase.from('support_messages').insert({
+        user_id: user?.id || null,
+        sender_name: form.name,
+        sender_email: form.email,
+        subject: form.subject,
+        message: form.message,
+        status: 'open',
+      });
+      if (err) throw err;
+      setSent(true);
+      setTimeout(onClose, 2500);
+    } catch (e: any) {
+      setError(e.message || 'Fehler beim Senden');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={cm.overlay}>
+      <View style={cm.card}>
+        <View style={cm.header}>
+          <Text style={cm.title}>Support kontaktieren</Text>
+          <TouchableOpacity onPress={onClose}><X size={20} color="#94a3b8" /></TouchableOpacity>
+        </View>
+        {sent ? (
+          <View style={cm.success}>
+            <Text style={cm.successIcon}>✓</Text>
+            <Text style={cm.successTitle}>Nachricht gesendet!</Text>
+            <Text style={cm.successSub}>Wir melden uns so schnell wie möglich bei Ihnen.</Text>
+          </View>
+        ) : (
+          <ScrollView style={cm.body}>
+            {error ? <Text style={cm.error}>{error}</Text> : null}
+            <Text style={cm.label}>Ihr Name *</Text>
+            <RNTextInput style={cm.input as any} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))} placeholder="Max Mustermann" placeholderTextColor="#94a3b8" />
+            <Text style={cm.label}>E-Mail *</Text>
+            <RNTextInput style={cm.input as any} value={form.email} onChangeText={v => setForm(f => ({ ...f, email: v }))} placeholder="max@firma.de" placeholderTextColor="#94a3b8" keyboardType="email-address" />
+            <Text style={cm.label}>Betreff *</Text>
+            <RNTextInput style={cm.input as any} value={form.subject} onChangeText={v => setForm(f => ({ ...f, subject: v }))} placeholder="Worum geht es?" placeholderTextColor="#94a3b8" />
+            <Text style={cm.label}>Nachricht *</Text>
+            <RNTextInput style={[cm.input, cm.textarea] as any} value={form.message} onChangeText={v => setForm(f => ({ ...f, message: v }))} placeholder="Beschreiben Sie Ihr Anliegen..." placeholderTextColor="#94a3b8" multiline numberOfLines={5} textAlignVertical="top" />
+            <TouchableOpacity style={[cm.sendBtn, sending && { opacity: 0.6 }]} onPress={send} disabled={sending} activeOpacity={0.8}>
+              {sending ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={16} color="#fff" /><Text style={cm.sendBtnText}>Nachricht senden</Text></>}
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+      </View>
+    </View>
+  );
+}
+const cm = StyleSheet.create({
+  overlay: { position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  card: { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 480, maxHeight: '85%' as any, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 30, elevation: 8 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  title: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
+  body: { padding: 24 },
+  label: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 6, marginTop: 12 },
+  input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: '#0f172a' },
+  textarea: { height: 120, textAlignVertical: 'top' },
+  sendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, marginTop: 20 },
+  sendBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  error: { backgroundColor: '#fef2f2', color: '#dc2626', padding: 10, borderRadius: 8, marginBottom: 8, fontSize: 14 },
+  success: { padding: 40, alignItems: 'center', gap: 12 },
+  successIcon: { fontSize: 40, color: '#10b981' },
+  successTitle: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
+  successSub: { fontSize: 15, color: '#64748b', textAlign: 'center' as any },
+});
+
+// ─── Walkthrough Steps Viewer ─────────────────────────────────────────────────
+function WalkthroughViewer({ wt, onClose }: { wt: HelpWalkthrough; onClose: () => void }) {
+  const [step, setStep] = useState(0);
+  const steps = wt.steps || [];
+  const cur = steps[step];
+  return (
+    <View style={wv.overlay}>
+      <View style={wv.card}>
+        <View style={wv.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={wv.title}>{wt.title}</Text>
+            <Text style={wv.progress}>Schritt {step + 1} von {steps.length}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose}><X size={20} color="#94a3b8" /></TouchableOpacity>
+        </View>
+        {cur ? (
+          <ScrollView style={wv.body}>
+            {cur.image_url ? (
+              <img src={cur.image_url} alt={cur.title} style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 12, marginBottom: 20 }} />
+            ) : null}
+            <Text style={wv.stepTitle}>{cur.title}</Text>
+            {cur.description ? <Text style={wv.stepDesc}>{cur.description}</Text> : null}
+          </ScrollView>
+        ) : <Text style={wv.stepDesc}>Keine Schritte vorhanden.</Text>}
+        <View style={wv.footer}>
+          <TouchableOpacity style={[wv.navBtn, step === 0 && wv.navBtnDisabled]} onPress={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}>
+            <Text style={[wv.navBtnText, step === 0 && { color: '#94a3b8' }]}>← Zurück</Text>
+          </TouchableOpacity>
+          <View style={wv.dots}>
+            {steps.map((_, i) => <View key={i} style={[wv.dot, i === step && wv.dotActive]} />)}
+          </View>
+          {step < steps.length - 1 ? (
+            <TouchableOpacity style={wv.nextBtn} onPress={() => setStep(s => s + 1)}>
+              <Text style={wv.nextBtnText}>Weiter →</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[wv.nextBtn, { backgroundColor: '#10b981' }]} onPress={onClose}>
+              <Text style={wv.nextBtnText}>Fertig ✓</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+const wv = StyleSheet.create({
+  overlay: { position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  card: { backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '85%' as any },
+  header: { flexDirection: 'row', alignItems: 'flex-start', padding: 24, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', gap: 12 },
+  title: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
+  progress: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  body: { padding: 24, flex: 1 },
+  stepTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 12 },
+  stepDesc: { fontSize: 15, color: '#475569', lineHeight: 24 },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  navBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  navBtnDisabled: { opacity: 0.4 },
+  navBtnText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  nextBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, backgroundColor: colors.primary },
+  nextBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  dots: { flexDirection: 'row', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
+  dotActive: { backgroundColor: colors.primary, width: 20 },
+});
 
 export function Help() {
   const { setTitle, setSubtitle } = useContext(LayoutContext);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [expandedFaq, setExpandedFaq] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>(null);
+  const [contactVisible, setContactVisible] = useState(false);
+  const [activeWalkthrough, setActiveWalkthrough] = useState<HelpWalkthrough | null>(null);
+
+  // Data
+  const [tags, setTags] = useState<HelpTag[]>([]);
+  const [faqs, setFaqs] = useState<HelpFaq[]>([]);
+  const [walkthroughs, setWalkthroughs] = useState<HelpWalkthrough[]>([]);
+  const [videos, setVideos] = useState<HelpVideo[]>([]);
+  const [documents, setDocuments] = useState<HelpDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Section refs for scroll
+  const walkthroughsRef = useRef<any>(null);
+  const videosRef = useRef<any>(null);
+  const faqsRef = useRef<any>(null);
+  const documentsRef = useRef<any>(null);
 
   useEffect(() => {
     setTitle('Hilfe Center');
     setSubtitle('Finden Sie Antworten und Anleitungen');
-    return () => {
-      setTitle('DocStruc');
-      setSubtitle('');
-    };
+    return () => { setTitle('DocStruc'); setSubtitle(''); };
   }, [setTitle, setSubtitle]);
 
-  const quickLinks = [
-    { icon: BookOpen, title: 'Erste Schritte', desc: 'Lernen Sie die Grundlagen', color: '#3b82f6' },
-    { icon: Video, title: 'Video Tutorials', desc: 'Schritt-für-Schritt Anleitungen', color: '#8b5cf6' },
-    { icon: MessageCircle, title: 'Support kontaktieren', desc: 'Persönliche Hilfe erhalten', color: '#10b981' },
-    { icon: FileText, title: 'Dokumentation', desc: 'Vollständige Referenz', color: '#f59e0b' },
-  ];
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const [tagsRes, faqRes, walkRes, vidRes, docRes] = await Promise.all([
+        supabase.from('help_tags').select('*').order('name'),
+        supabase.from('help_faqs').select('*').eq('is_published', true).order('sort_order'),
+        supabase.from('help_walkthroughs').select('*, help_walkthrough_steps(*)').eq('is_published', true).order('sort_order'),
+        supabase.from('help_videos').select('*').eq('is_published', true).order('sort_order'),
+        supabase.from('help_documents').select('*').eq('is_published', true).order('sort_order'),
+      ]);
+      setTags(tagsRes.data || []);
+      setFaqs(faqRes.data || []);
+      setWalkthroughs((walkRes.data || []).map((w: any) => ({
+        ...w,
+        steps: (w.help_walkthrough_steps || []).sort((a: any, b: any) => a.step_order - b.step_order),
+      })));
+      setVideos(vidRes.data || []);
+      setDocuments(docRes.data || []);
+      setLoading(false);
+    };
+    load();
+  }, []);
 
-  const faqs = [
-    {
-      question: 'Wie erstelle ich ein neues Projekt?',
-      answer: 'Um ein neues Projekt zu erstellen, klicken Sie auf der Dashboard-Seite auf den Button "Neues Projekt". Geben Sie die erforderlichen Informationen wie Projektname, Adresse und Beschreibung ein. Nach dem Speichern können Sie sofort mit der Strukturierung beginnen.',
-    },
-    {
-      question: 'Wie füge ich Teammitglieder hinzu?',
-      answer: 'Öffnen Sie ein Projekt und navigieren Sie zur Registerkarte "Mitglieder". Klicken Sie auf "Mitglied hinzufügen" und geben Sie die E-Mail-Adresse der Person ein. Sie können auch Berechtigungen festlegen (Anzeigen, Bearbeiten, Verwalten).',
-    },
-    {
-      question: 'Wie exportiere ich Projektdaten?',
-      answer: 'In jedem Projekt finden Sie im Menü die Option "Exportieren". Wählen Sie das gewünschte Format (PDF, Excel, CSV) und die zu exportierenden Daten aus. Der Export wird automatisch heruntergeladen.',
-    },
-    {
-      question: 'Sind meine Daten sicher?',
-      answer: 'Ja, wir nehmen Datensicherheit sehr ernst. Alle Daten werden verschlüsselt übertragen und in ISO 27001 zertifizierten Rechenzentren gespeichert. Wir führen regelmäßige Sicherheitsaudits durch und sind vollständig DSGVO-konform.',
-    },
-    {
-      question: 'Kann ich DocStruc auf dem Smartphone nutzen?',
-      answer: 'Ja, DocStruc ist vollständig responsive und funktioniert auf allen Geräten. Zusätzlich bieten wir native Apps für iOS und Android mit erweiterten Funktionen wie Offline-Zugriff und Push-Benachrichtigungen.',
-    },
-    {
-      question: 'Wie funktioniert die Zusammenarbeit im Team?',
-      answer: 'DocStruc ermöglicht Echtzeit-Zusammenarbeit. Mehrere Benutzer können gleichzeitig an einem Projekt arbeiten. Änderungen werden sofort synchronisiert und Sie sehen, wer gerade online ist. Über Kommentare und @-Mentions können Sie direkt kommunizieren.',
-    },
-    {
-      question: 'Welche Zahlungsmethoden werden akzeptiert?',
-      answer: 'Wir akzeptieren alle gängigen Kreditkarten (Visa, Mastercard, American Express), SEPA-Lastschrift und PayPal. Für Firmenkunden bieten wir auch Rechnungszahlung an.',
-    },
-    {
-      question: 'Kann ich mein Abonnement jederzeit kündigen?',
-      answer: 'Ja, Sie können Ihr Abonnement jederzeit mit einem Klick kündigen. Es gibt keine Kündigungsfrist. Sie haben bis zum Ende des bezahlten Zeitraums vollen Zugriff auf alle Funktionen.',
-    },
-  ];
+  // Filter helpers
+  const matchesFilter = (itemTags: string[]) =>
+    !activeTag || itemTags.includes(activeTag);
 
-  const categories = [
-    { title: 'Projektmanagement', icon: Lightbulb, articles: 12 },
-    { title: 'Strukturverwaltung', icon: FileText, articles: 8 },
-    { title: 'Teamarbeit', icon: MessageCircle, articles: 6 },
-    { title: 'Sicherheit', icon: HelpCircle, articles: 5 },
-  ];
+  const matchesSearch = (texts: string[]) =>
+    !searchQuery || texts.some(t => t?.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const filteredFaqs = faqs.filter(faq =>
-    faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredFaqs = faqs.filter(f =>
+    matchesFilter(f.tags || []) && matchesSearch([f.question, f.answer])
+  );
+  const filteredWalkthroughs = walkthroughs.filter(w =>
+    matchesFilter(w.tags || []) && matchesSearch([w.title, w.description])
+  );
+  const filteredVideos = videos.filter(v =>
+    matchesFilter(v.tags || []) && matchesSearch([v.title, v.description])
+  );
+  const filteredDocuments = documents.filter(d =>
+    matchesFilter(d.tags || []) && matchesSearch([d.title, d.description])
   );
 
+  const scrollTo = (ref: any) => {
+    if (ref?.current?.scrollIntoView) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (ref?.current?.measureLayout) {
+      // RN scroll handled by parent
+    }
+  };
+
+  const quickLinks = [
+    {
+      icon: BookOpen, title: 'Erste Schritte', desc: 'Schritt-für-Schritt Anleitungen', color: '#3b82f6',
+      onPress: () => { setActiveSection('walkthroughs'); setActiveTag(null); setTimeout(() => scrollTo(walkthroughsRef), 100); },
+    },
+    {
+      icon: Video, title: 'Video Tutorials', desc: 'Visuelle Schritt-für-Schritt Guides', color: '#8b5cf6',
+      onPress: () => { setActiveSection('videos'); setActiveTag(null); setTimeout(() => scrollTo(videosRef), 100); },
+    },
+    {
+      icon: MessageCircle, title: 'Support kontaktieren', desc: 'Persönliche Hilfe erhalten', color: '#10b981',
+      onPress: () => setContactVisible(true),
+    },
+    {
+      icon: FileText, title: 'Dokumentation', desc: 'Vollständige Referenz & Downloads', color: '#f59e0b',
+      onPress: () => { setActiveSection('documents'); setActiveTag(null); setTimeout(() => scrollTo(documentsRef), 100); },
+    },
+  ];
+
+  const getYouTubeEmbedUrl = (url: string) => {
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match) return `https://www.youtube.com/embed/${match[1]}`;
+    return url;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <HelpCircle size={32} color="#fff" />
+    <>
+      {/* Contact Modal */}
+      <ContactModal visible={contactVisible} onClose={() => setContactVisible(false)} />
+
+      {/* Walkthrough Viewer */}
+      {activeWalkthrough && (
+        <WalkthroughViewer wt={activeWalkthrough} onClose={() => setActiveWalkthrough(null)} />
+      )}
+
+      <ScrollView style={styles.container}>
+        <View style={styles.content}>
+          {/* ── Header ── */}
+          <View style={styles.header}>
+            <View style={styles.iconCircle}>
+              <HelpCircle size={32} color="#fff" />
+            </View>
+            <Text style={styles.title}>Wie können wir helfen?</Text>
+            <Text style={styles.subtitle}>
+              Durchsuchen Sie unsere Wissensdatenbank oder kontaktieren Sie unser Support-Team
+            </Text>
+            <View style={styles.searchBar}>
+              <Search size={20} color="#94a3b8" />
+              <RNTextInput
+                style={styles.searchInput as any}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Suchen Sie nach Themen oder Fragen..."
+                placeholderTextColor="#94a3b8"
+              />
+              {searchQuery ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <X size={18} color="#94a3b8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
-          <Text style={styles.title}>Wie können wir helfen?</Text>
-          <Text style={styles.subtitle}>
-            Durchsuchen Sie unsere Wissensdatenbank oder kontaktieren Sie unser Support-Team
-          </Text>
 
-          {/* Search */}
-          <View style={styles.searchBar}>
-            <Search size={20} color="#94a3b8" />
-            <RNTextInput
-              style={styles.searchInput as any}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Suchen Sie nach Themen oder Fragen..."
-              placeholderTextColor="#94a3b8"
-            />
-          </View>
-        </View>
-
-        {/* Quick Links */}
-        <View style={styles.quickLinksGrid}>
-          {quickLinks.map((link, index) => {
-            const Icon = link.icon;
-            return (
-              <TouchableOpacity key={index} style={styles.quickLinkCard} activeOpacity={0.7}>
-                <View style={[styles.quickLinkIcon, { backgroundColor: link.color + '20' }]}>
-                  <Icon size={24} color={link.color} />
-                </View>
-                <Text style={styles.quickLinkTitle}>{link.title}</Text>
-                <Text style={styles.quickLinkDesc}>{link.desc}</Text>
-                <ChevronRight size={18} color="#94a3b8" style={{ marginTop: 8 }} />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Kategorien durchsuchen</Text>
-          <View style={styles.categoriesGrid}>
-            {categories.map((cat, index) => {
-              const Icon = cat.icon;
+          {/* ── Quick Links ── */}
+          <View style={styles.quickLinksGrid}>
+            {quickLinks.map((link, index) => {
+              const Icon = link.icon;
               return (
-                <TouchableOpacity key={index} style={styles.categoryCard} activeOpacity={0.7}>
-                  <Icon size={20} color={colors.primary} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.categoryTitle}>{cat.title}</Text>
-                    <Text style={styles.categoryCount}>{cat.articles} Artikel</Text>
+                <TouchableOpacity key={index} style={styles.quickLinkCard} onPress={link.onPress} activeOpacity={0.7}>
+                  <View style={[styles.quickLinkIcon, { backgroundColor: link.color + '20' }]}>
+                    <Icon size={24} color={link.color} />
                   </View>
-                  <ChevronRight size={18} color="#cbd5e1" />
+                  <Text style={styles.quickLinkTitle}>{link.title}</Text>
+                  <Text style={styles.quickLinkDesc}>{link.desc}</Text>
+                  <ChevronRight size={18} color="#94a3b8" style={{ marginTop: 8 }} />
                 </TouchableOpacity>
               );
             })}
           </View>
-        </View>
 
-        {/* FAQs */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Häufig gestellte Fragen</Text>
-          <View style={styles.faqList}>
-            {filteredFaqs.map((faq, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.faqItem}
-                activeOpacity={0.7}
-                onPress={() => setExpandedFaq(expandedFaq === index ? null : index)}
-              >
-                <View style={styles.faqHeader}>
-                  <Text style={styles.faqQuestion}>{faq.question}</Text>
-                  <ChevronRight
-                    size={20}
-                    color="#94a3b8"
-                    style={{
-                      transform: [{ rotate: expandedFaq === index ? '90deg' : '0deg' }],
-                    } as any}
-                  />
+          {loading ? (
+            <View style={{ alignItems: 'center', padding: 48 }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (
+            <>
+              {/* ── Tag Categories ── */}
+              {tags.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Kategorien durchsuchen</Text>
+                  <View style={styles.tagsRow}>
+                    <TouchableOpacity
+                      style={[styles.tagChip, !activeTag && styles.tagChipActive]}
+                      onPress={() => setActiveTag(null)}
+                      activeOpacity={0.7}
+                    >
+                      <Tag size={14} color={!activeTag ? '#fff' : '#64748b'} />
+                      <Text style={[styles.tagChipText, !activeTag && styles.tagChipTextActive]}>Alle</Text>
+                    </TouchableOpacity>
+                    {tags.map(tag => {
+                      const isActive = activeTag === tag.name;
+                      return (
+                        <TouchableOpacity
+                          key={tag.id}
+                          style={[styles.tagChip, isActive && { backgroundColor: tag.color, borderColor: tag.color }]}
+                          onPress={() => setActiveTag(isActive ? null : tag.name)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.tagChipText, isActive && styles.tagChipTextActive]}>{tag.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
-                {expandedFaq === index && (
-                  <Text style={styles.faqAnswer}>{faq.answer}</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+              )}
 
-        {/* Contact Support */}
-        <View style={styles.supportCard}>
-          <Text style={styles.supportTitle}>Haben Sie noch Fragen?</Text>
-          <Text style={styles.supportText}>
-            Unser Support-Team ist für Sie da und hilft Ihnen gerne weiter.
-          </Text>
-          <View style={styles.supportButtons}>
-            <TouchableOpacity style={styles.supportButton} activeOpacity={0.7}>
-              <MessageCircle size={18} color="#fff" />
-              <Text style={styles.supportButtonText}>Chat starten</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.supportButton, styles.supportButtonSecondary]} activeOpacity={0.7}>
-              <ExternalLink size={18} color={colors.primary} />
-              <Text style={[styles.supportButtonText, { color: colors.primary }]}>
-                E-Mail senden
-              </Text>
-            </TouchableOpacity>
+              {/* ── Walkthroughs ── */}
+              {filteredWalkthroughs.length > 0 && (
+                <View style={styles.section} ref={walkthroughsRef}>
+                  <Text style={styles.sectionTitle}>Erste Schritte</Text>
+                  <View style={styles.cardGrid}>
+                    {filteredWalkthroughs.map(wt => (
+                      <TouchableOpacity key={wt.id} style={styles.wtCard} onPress={() => setActiveWalkthrough(wt)} activeOpacity={0.7}>
+                        <View style={styles.wtIconWrap}>
+                          <BookOpen size={22} color="#3b82f6" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.wtTitle}>{wt.title}</Text>
+                          {wt.description ? <Text style={styles.wtDesc} numberOfLines={2}>{wt.description}</Text> : null}
+                          <Text style={styles.wtSteps}>{wt.steps?.length || 0} Schritte</Text>
+                        </View>
+                        <ChevronRight size={18} color="#94a3b8" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* ── Videos ── */}
+              {filteredVideos.length > 0 && (
+                <View style={styles.section} ref={videosRef}>
+                  <Text style={styles.sectionTitle}>Video Tutorials</Text>
+                  <View style={styles.videoGrid}>
+                    {filteredVideos.map(vid => (
+                      <View key={vid.id} style={styles.videoCard}>
+                        {vid.video_url ? (
+                          <iframe
+                            src={getYouTubeEmbedUrl(vid.video_url)}
+                            style={{ width: '100%', height: 200, borderRadius: 10, border: 'none', marginBottom: 14 }}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        ) : vid.thumbnail_url ? (
+                          <img src={vid.thumbnail_url} style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 10, marginBottom: 14 }} />
+                        ) : (
+                          <View style={styles.videoPlaceholder}>
+                            <Play size={32} color="#8b5cf6" />
+                          </View>
+                        )}
+                        <Text style={styles.videoTitle}>{vid.title}</Text>
+                        {vid.description ? <Text style={styles.videoDesc} numberOfLines={3}>{vid.description}</Text> : null}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* ── FAQs ── */}
+              {filteredFaqs.length > 0 && (
+                <View style={styles.section} ref={faqsRef}>
+                  <Text style={styles.sectionTitle}>Häufig gestellte Fragen</Text>
+                  <View style={styles.faqList}>
+                    {filteredFaqs.map(faq => {
+                      const open = expandedFaq === faq.id;
+                      return (
+                        <TouchableOpacity
+                          key={faq.id}
+                          style={[styles.faqItem, open && styles.faqItemOpen]}
+                          activeOpacity={0.7}
+                          onPress={() => setExpandedFaq(open ? null : faq.id)}
+                        >
+                          <View style={styles.faqHeader}>
+                            <Text style={styles.faqQuestion}>{faq.question}</Text>
+                            {open ? <ChevronUp size={20} color={colors.primary} /> : <ChevronDown size={20} color="#94a3b8" />}
+                          </View>
+                          {open && <Text style={styles.faqAnswer}>{faq.answer}</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {/* ── Documents ── */}
+              {filteredDocuments.length > 0 && (
+                <View style={styles.section} ref={documentsRef}>
+                  <Text style={styles.sectionTitle}>Dokumentation</Text>
+                  <View style={styles.docList}>
+                    {filteredDocuments.map(doc => (
+                      <TouchableOpacity
+                        key={doc.id}
+                        style={styles.docCard}
+                        activeOpacity={0.8}
+                        onPress={() => { if (doc.file_url) window.open(doc.file_url, '_blank'); }}
+                      >
+                        <View style={styles.docIcon}>
+                          <FileText size={20} color="#f59e0b" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.docTitle}>{doc.title}</Text>
+                          {doc.description ? <Text style={styles.docDesc} numberOfLines={2}>{doc.description}</Text> : null}
+                          {doc.file_name && (
+                            <Text style={styles.docMeta}>{doc.file_name}{doc.file_size_bytes ? ` · ${formatFileSize(doc.file_size_bytes)}` : ''}</Text>
+                          )}
+                        </View>
+                        <Download size={18} color="#f59e0b" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Empty state */}
+              {searchQuery && filteredFaqs.length === 0 && filteredWalkthroughs.length === 0 && filteredVideos.length === 0 && filteredDocuments.length === 0 && (
+                <View style={styles.emptyState}>
+                  <HelpCircle size={40} color="#cbd5e1" />
+                  <Text style={styles.emptyTitle}>Keine Ergebnisse gefunden</Text>
+                  <Text style={styles.emptyText}>Versuchen Sie einen anderen Suchbegriff oder kontaktieren Sie uns direkt.</Text>
+                </View>
+              )}
+            </>
+          )}
+
+          {/* ── Support Card ── */}
+          <View style={styles.supportCard}>
+            <Text style={styles.supportTitle}>Haben Sie noch Fragen?</Text>
+            <Text style={styles.supportText}>
+              Unser Support-Team ist für Sie da und hilft Ihnen gerne weiter.
+            </Text>
+            <View style={styles.supportButtons}>
+              <TouchableOpacity style={styles.supportButton} onPress={() => setContactVisible(true)} activeOpacity={0.7}>
+                <MessageCircle size={18} color="#fff" />
+                <Text style={styles.supportButtonText}>Nachricht senden</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.supportButton, styles.supportButtonSecondary]} onPress={() => setContactVisible(true)} activeOpacity={0.7}>
+                <ExternalLink size={18} color={colors.primary} />
+                <Text style={[styles.supportButtonText, { color: colors.primary }]}>
+                  E-Mail senden
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    maxWidth: 1000,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 12,
-    textAlign: 'center' as any,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center' as any,
-    maxWidth: 600,
-    marginBottom: 32,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 20,
-    height: 56,
-    width: '100%',
-    maxWidth: 600,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#0f172a',
-    outline: 'none',
-    border: 'none',
-  },
-  quickLinksGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 20,
-    marginBottom: 48,
-  },
-  quickLinkCard: {
-    flex: 1,
-    minWidth: 220,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    alignItems: 'center',
-    cursor: 'pointer' as any,
-  },
-  quickLinkIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  quickLinkTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 6,
-    textAlign: 'center' as any,
-  },
-  quickLinkDesc: {
-    fontSize: 14,
-    color: '#64748b',
-    textAlign: 'center' as any,
-  },
-  section: {
-    marginBottom: 48,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 24,
-  },
-  categoriesGrid: {
-    gap: 12,
-  },
-  categoryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    cursor: 'pointer' as any,
-  },
-  categoryTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0f172a',
-    marginBottom: 4,
-  },
-  categoryCount: {
-    fontSize: 13,
-    color: '#94a3b8',
-  },
-  faqList: {
-    gap: 12,
-  },
-  faqItem: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    cursor: 'pointer' as any,
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-  },
-  faqQuestion: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  faqAnswer: {
-    marginTop: 16,
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#64748b',
-  },
-  supportCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  supportTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 8,
-    textAlign: 'center' as any,
-  },
-  supportText: {
-    fontSize: 15,
-    color: '#64748b',
-    textAlign: 'center' as any,
-    marginBottom: 24,
-    maxWidth: 500,
-  },
-  supportButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  supportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-    cursor: 'pointer' as any,
-  },
-  supportButtonSecondary: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  supportButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
+  container: { flex: 1 },
+  content: { maxWidth: 1000, width: '100%', alignSelf: 'center' },
+  header: { alignItems: 'center', marginBottom: 48 },
+  iconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  title: { fontSize: 32, fontWeight: '800', color: '#0f172a', marginBottom: 12, textAlign: 'center' as any },
+  subtitle: { fontSize: 15, color: '#64748b', textAlign: 'center' as any, maxWidth: 600, marginBottom: 32 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', paddingHorizontal: 20, height: 56, width: '100%', maxWidth: 600 },
+  searchInput: { flex: 1, fontSize: 15, color: '#0f172a', outline: 'none', border: 'none' },
+  quickLinksGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginBottom: 48 },
+  quickLinkCard: { flex: 1, minWidth: 220, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#F1F5F9', alignItems: 'center', cursor: 'pointer' as any },
+  quickLinkIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  quickLinkTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 6, textAlign: 'center' as any },
+  quickLinkDesc: { fontSize: 14, color: '#64748b', textAlign: 'center' as any },
+  section: { marginBottom: 48 },
+  sectionTitle: { fontSize: 24, fontWeight: '800', color: '#0f172a', marginBottom: 24 },
+
+  // Tags
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tagChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 24, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#fff', cursor: 'pointer' as any },
+  tagChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tagChipText: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+  tagChipTextActive: { color: '#fff' },
+
+  // Walkthroughs
+  cardGrid: { gap: 12 },
+  wtCard: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: '#FFFFFF', borderRadius: 14, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', cursor: 'pointer' as any },
+  wtIconWrap: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#3b82f620', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  wtTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 3 },
+  wtDesc: { fontSize: 13, color: '#64748b', marginBottom: 4 },
+  wtSteps: { fontSize: 12, color: '#3b82f6', fontWeight: '600' },
+
+  // Videos
+  videoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
+  videoCard: { flex: 1, minWidth: 280, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#F1F5F9' },
+  videoPlaceholder: { width: '100%', height: 160, backgroundColor: '#8b5cf610', borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  videoTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 6 },
+  videoDesc: { fontSize: 13, color: '#64748b', lineHeight: 20 },
+
+  // FAQs
+  faqList: { gap: 12 },
+  faqItem: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', cursor: 'pointer' as any },
+  faqItemOpen: { borderColor: colors.primary + '40' },
+  faqHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16 },
+  faqQuestion: { flex: 1, fontSize: 15, fontWeight: '600', color: '#0f172a' },
+  faqAnswer: { marginTop: 14, fontSize: 14, lineHeight: 22, color: '#475569' },
+
+  // Documents
+  docList: { gap: 10 },
+  docCard: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#F1F5F9', cursor: 'pointer' as any },
+  docIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#f59e0b20', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  docTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginBottom: 3 },
+  docDesc: { fontSize: 13, color: '#64748b', marginBottom: 3 },
+  docMeta: { fontSize: 12, color: '#94a3b8' },
+
+  // Empty state
+  emptyState: { alignItems: 'center', paddingVertical: 48, gap: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#64748b' },
+  emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center' as any, maxWidth: 320 },
+
+  // Support card
+  supportCard: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 32, alignItems: 'center', marginBottom: 40 },
+  supportTitle: { fontSize: 22, fontWeight: '800', color: '#0f172a', marginBottom: 8, textAlign: 'center' as any },
+  supportText: { fontSize: 15, color: '#64748b', textAlign: 'center' as any, marginBottom: 24, maxWidth: 500 },
+  supportButtons: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' as any, justifyContent: 'center' },
+  supportButton: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, cursor: 'pointer' as any },
+  supportButtonSecondary: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: colors.primary },
+  supportButtonText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 });
