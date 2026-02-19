@@ -927,6 +927,7 @@ export function ProjectObjektplan() {
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [planMode, setPlanMode] = useState<PlanMode | null>(null);
   const [planElements, setPlanElements] = useState<CanvasElement[]>([]);
+  const [expandedApartments, setExpandedApartments] = useState<Set<string>>(new Set());
 
   const [isStaircaseModalOpen, setIsStaircaseModalOpen] = useState(false);
   const [isFloorModalOpen, setIsFloorModalOpen] = useState(false);
@@ -1053,18 +1054,38 @@ export function ProjectObjektplan() {
     try { await supabase.from('building_apartments').delete().eq('id', apt.id); showToast('Wohnung gelöscht', 'success'); if (selectedApartment?.id === apt.id) { setSelectedApartment(null); setPlanMode(null); } loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
   };
 
-  const openPlan = (apt: Apartment, m: PlanMode) => {
-    setSelectedApartment(apt); setPlanMode(m);
-    const data = m === 'free' ? apt.floor_plan_data : apt.technical_plan_data;
-    setPlanElements(data ? JSON.parse(data) : []);
+  const parseElements = (raw: any): CanvasElement[] => {
+    try {
+      if (!raw) return [];
+      const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   };
+
+  const openPlan = (apt: Apartment, m: PlanMode) => {
+    setSelectedApartment(apt);
+    setPlanMode(m);
+    setPlanElements(parseElements(m === 'free' ? apt.floor_plan_data : apt.technical_plan_data));
+  };
+
+  const switchPlanMode = (apt: Apartment, newMode: PlanMode) => {
+    setPlanMode(newMode);
+    setPlanElements(parseElements(newMode === 'free' ? apt.floor_plan_data : apt.technical_plan_data));
+  };
+
   const savePlan = async () => {
     if (!selectedApartment || !planMode) return;
     try {
       const field = planMode === 'free' ? 'floor_plan_data' : 'technical_plan_data';
-      const { error } = await supabase.from('building_apartments').update({ [field]: JSON.stringify(planElements) }).eq('id', selectedApartment.id);
+      const { error } = await supabase.from('building_apartments').update({ [field]: planElements }).eq('id', selectedApartment.id);
       if (error) throw error;
-      showToast('Plan gespeichert', 'success'); loadData();
+      // Update selectedApartment in-memory so mode switch works without reload
+      const updated = { ...selectedApartment, [field]: planElements };
+      setSelectedApartment(updated as Apartment);
+      showToast('Plan gespeichert', 'success');
+      loadData();
     } catch { showToast('Fehler beim Speichern', 'error'); }
   };
   const closePlan = () => { setSelectedApartment(null); setPlanMode(null); setPlanElements([]); };
@@ -1089,56 +1110,84 @@ export function ProjectObjektplan() {
 
   const toggleStaircase = (id: string) => { setExpandedStaircases(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleFloor = (id: string) => { setExpandedFloors(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
+  const toggleApartment = (id: string) => { setExpandedApartments(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
 
-  // Reusable apartment card
-  const renderApartmentCard = (apt: Apartment) => (
-    <View key={apt.id} style={pageStyles.apartmentCard}>
-      <View style={pageStyles.apartmentHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-          <Home size={16} color="#8B5CF6" />
-          <Text style={pageStyles.apartmentName}>{apt.name}</Text>
-        </View>
-        <View style={pageStyles.actionRow}>
-          {pCanEdit && (
-            <TouchableOpacity onPress={() => { if (apt.floor_id) { setEditingApartment(apt); setParentFloorId(apt.floor_id); setFormName(apt.name); setIsApartmentModalOpen(true); } else { setEditingStandaloneApt(apt); setFormName(apt.name); setIsStandaloneAptModalOpen(true); } }}>
-              <Edit2 size={14} color="#64748b" />
-            </TouchableOpacity>
-          )}
-          {pCanDelete && <TouchableOpacity onPress={() => handleDeleteApartment(apt)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
-        </View>
-      </View>
-      <View style={pageStyles.planActions}>
-        <TouchableOpacity style={pageStyles.planButton} onPress={() => openPlan(apt, 'free')}>
-          <Pencil size={16} color={colors.primary} />
-          <View><Text style={pageStyles.planButtonTitle}>Freies Zeichnen</Text><Text style={pageStyles.planButtonDesc}>Unbegrenzte Leinwand</Text></View>
-          {apt.floor_plan_data && <View style={pageStyles.dataDot} />}
+  // Reusable apartment card — collapsible
+  const renderApartmentCard = (apt: Apartment) => {
+    const isExpanded = expandedApartments.has(apt.id);
+    return (
+      <View key={apt.id} style={pageStyles.apartmentCard}>
+        {/* Collapsible header */}
+        <TouchableOpacity style={pageStyles.apartmentHeader} onPress={() => toggleApartment(apt.id)} activeOpacity={0.7}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+            {isExpanded ? <ChevronDown size={16} color="#8B5CF6" /> : <ChevronRight size={16} color="#8B5CF6" />}
+            <Home size={16} color="#8B5CF6" />
+            <Text style={pageStyles.apartmentName} numberOfLines={1}>{apt.name}</Text>
+            {/* indicator dots */}
+            {apt.floor_plan_data && <View style={[pageStyles.dataDot, { position: 'relative', top: 0, right: 0 }]} />}
+            {apt.technical_plan_data && <View style={[pageStyles.dataDot, { position: 'relative', top: 0, right: 0, backgroundColor: '#F59E0B' }]} />}
+            {apt.attachments.length > 0 && <View style={[pageStyles.badge, { backgroundColor: '#dcfce7' }]}><Text style={[pageStyles.badgeText, { color: '#166534' }]}>{apt.attachments.length}</Text></View>}
+          </View>
+          <View style={pageStyles.actionRow}>
+            {pCanEdit && (
+              <TouchableOpacity onPress={e => { e.stopPropagation?.(); if (apt.floor_id) { setEditingApartment(apt); setParentFloorId(apt.floor_id); setFormName(apt.name); setIsApartmentModalOpen(true); } else { setEditingStandaloneApt(apt); setFormName(apt.name); setIsStandaloneAptModalOpen(true); } }}>
+                <Edit2 size={14} color="#64748b" />
+              </TouchableOpacity>
+            )}
+            {pCanDelete && <TouchableOpacity onPress={e => { e.stopPropagation?.(); handleDeleteApartment(apt); }}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
+          </View>
         </TouchableOpacity>
-        <TouchableOpacity style={pageStyles.planButton} onPress={() => openPlan(apt, 'technical')}>
-          <Ruler size={16} color="#F59E0B" />
-          <View><Text style={pageStyles.planButtonTitle}>Technischer Grundriss</Text><Text style={pageStyles.planButtonDesc}>Wände, Türen, Fenster mit Maßen</Text></View>
-          {apt.technical_plan_data && <View style={pageStyles.dataDot} />}
-        </TouchableOpacity>
-        <TouchableOpacity style={pageStyles.planButton} onPress={() => { setSelectedApartment(apt); setIsAttachmentModalOpen(true); }}>
-          <Upload size={16} color="#22c55e" />
-          <View><Text style={pageStyles.planButtonTitle}>Plan hochladen</Text><Text style={pageStyles.planButtonDesc}>PDF, Bild oder CAD anhängen</Text></View>
-          {apt.attachments.length > 0 && <View style={[pageStyles.badge, { backgroundColor: '#dcfce7' }]}><Text style={[pageStyles.badgeText, { color: '#166534' }]}>{apt.attachments.length}</Text></View>}
-        </TouchableOpacity>
-      </View>
-      {apt.attachments.length > 0 && (
-        <View style={pageStyles.attachmentsList}>
-          {apt.attachments.map(att => (
-            <View key={att.id} style={pageStyles.attachmentItem}>
-              <FileImage size={14} color="#64748b" />
-              <Text style={pageStyles.attachmentName} numberOfLines={1}>{att.name}</Text>
-              <Text style={pageStyles.attachmentSize}>{(att.size / 1024).toFixed(0)} KB</Text>
-              <TouchableOpacity onPress={() => window.open(att.url, '_blank')}><Download size={14} color={colors.primary} /></TouchableOpacity>
-              {pCanDelete && <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
+
+        {/* Expanded content */}
+        {isExpanded && (
+          <View style={{ paddingTop: 10 }}>
+            <View style={pageStyles.planActions}>
+              <TouchableOpacity style={pageStyles.planButton} onPress={() => openPlan(apt, 'free')}>
+                <View style={pageStyles.planButtonIcon}><Pencil size={18} color={colors.primary} /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={pageStyles.planButtonTitle}>Freies Zeichnen</Text>
+                  <Text style={pageStyles.planButtonDesc}>Unbegrenzte Leinwand</Text>
+                </View>
+                {apt.floor_plan_data && <View style={pageStyles.dataDotInline} />}
+                <ChevronRight size={16} color="#cbd5e1" />
+              </TouchableOpacity>
+              <TouchableOpacity style={pageStyles.planButton} onPress={() => openPlan(apt, 'technical')}>
+                <View style={[pageStyles.planButtonIcon, { backgroundColor: '#fffbeb' }]}><Ruler size={18} color="#F59E0B" /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={pageStyles.planButtonTitle}>Technischer Grundriss</Text>
+                  <Text style={pageStyles.planButtonDesc}>Wände, Türen, Fenster & Maße</Text>
+                </View>
+                {apt.technical_plan_data && <View style={[pageStyles.dataDotInline, { backgroundColor: '#F59E0B' }]} />}
+                <ChevronRight size={16} color="#cbd5e1" />
+              </TouchableOpacity>
+              <TouchableOpacity style={pageStyles.planButton} onPress={() => { setSelectedApartment(apt); setIsAttachmentModalOpen(true); }}>
+                <View style={[pageStyles.planButtonIcon, { backgroundColor: '#f0fdf4' }]}><Upload size={18} color="#22c55e" /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={pageStyles.planButtonTitle}>Plan hochladen</Text>
+                  <Text style={pageStyles.planButtonDesc}>PDF, Bild oder CAD anhängen</Text>
+                </View>
+                {apt.attachments.length > 0 && <View style={[pageStyles.badge, { backgroundColor: '#dcfce7' }]}><Text style={[pageStyles.badgeText, { color: '#166534' }]}>{apt.attachments.length}</Text></View>}
+                <ChevronRight size={16} color="#cbd5e1" />
+              </TouchableOpacity>
             </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
+            {apt.attachments.length > 0 && (
+              <View style={pageStyles.attachmentsList}>
+                {apt.attachments.map(att => (
+                  <View key={att.id} style={pageStyles.attachmentItem}>
+                    <FileImage size={14} color="#64748b" />
+                    <Text style={pageStyles.attachmentName} numberOfLines={1}>{att.name}</Text>
+                    <Text style={pageStyles.attachmentSize}>{(att.size / 1024).toFixed(0)} KB</Text>
+                    <TouchableOpacity onPress={() => window.open(att.url, '_blank')}><Download size={14} color={colors.primary} /></TouchableOpacity>
+                    {pCanDelete && <TouchableOpacity onPress={() => handleDeleteAttachment(att)}><Trash2 size={14} color="#EF4444" /></TouchableOpacity>}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   if (loading) return <View style={pageStyles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
 
@@ -1153,7 +1202,7 @@ export function ProjectObjektplan() {
             <div style={{ fontSize: 12, color: '#64748b' }}>{planMode === 'free' ? 'Freies Zeichnen — Unbegrenzte Leinwand' : 'Technischer Grundriss — Wände, Türen, Fenster'}</div>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={() => setPlanMode(planMode === 'free' ? 'technical' : 'free')}
+          <button onClick={() => switchPlanMode(selectedApartment, planMode === 'free' ? 'technical' : 'free')}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
             {planMode === 'free' ? <Ruler size={14} /> : <Pencil size={14} />}
             {planMode === 'free' ? 'Technischer Modus' : 'Freies Zeichnen'}
@@ -1340,39 +1389,41 @@ export function ProjectObjektplan() {
 }
 
 const pageStyles = StyleSheet.create({
-  container: { flex: 1, padding: 24 },
+  container: { flex: 1, padding: 16 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  pageTitle: { fontSize: 28, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
-  pageSubtitle: { fontSize: 15, color: '#64748b', marginTop: 4 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 },
+  pageTitle: { fontSize: 24, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
+  pageSubtitle: { fontSize: 13, color: '#64748b', marginTop: 2 },
   emptyCard: { padding: 48 },
   emptyState: { alignItems: 'center', gap: 12 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#334155' },
   emptyText: { fontSize: 14, color: '#94a3b8', textAlign: 'center', maxWidth: 400 },
   staircaseCard: { marginBottom: 16, padding: 0, overflow: 'hidden' },
-  staircaseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  staircaseHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  staircaseName: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  staircaseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: '#f8fafc', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexWrap: 'wrap', gap: 8 },
+  staircaseHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, flexShrink: 1 },
+  staircaseName: { fontSize: 15, fontWeight: '700', color: '#0f172a', flexShrink: 1 },
   badge: { backgroundColor: '#EFF6FF', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
   badgeText: { fontSize: 11, fontWeight: '600', color: '#1d4ed8' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#EFF6FF' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#EFF6FF' },
   smallBtnText: { fontSize: 12, fontWeight: '600', color: '#1d4ed8' },
   floorSection: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  floorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, paddingLeft: 40, backgroundColor: '#fff' },
-  floorName: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
-  apartmentCard: { marginLeft: 16, marginRight: 16, marginBottom: 12, padding: 14, backgroundColor: '#fafbfc', borderRadius: 12, borderWidth: 1, borderColor: '#f1f5f9' },
-  apartmentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  apartmentName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  planActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  planButton: { flex: 1, minWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
-  planButtonTitle: { fontSize: 13, fontWeight: '600', color: '#1e293b' },
-  planButtonDesc: { fontSize: 11, color: '#94a3b8' },
+  floorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, paddingLeft: 32, backgroundColor: '#fff', flexWrap: 'wrap', gap: 8 },
+  floorName: { fontSize: 14, fontWeight: '600', color: '#1e293b', flexShrink: 1 },
+  apartmentCard: { marginLeft: 12, marginRight: 12, marginBottom: 10, backgroundColor: '#fafbfc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
+  apartmentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: '#fff' },
+  apartmentName: { fontSize: 14, fontWeight: '700', color: '#1e293b', flexShrink: 1 },
+  planActions: { flexDirection: 'column', gap: 0, paddingHorizontal: 12, paddingBottom: 12 },
+  planButton: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 14, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 8 },
+  planButtonIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  planButtonTitle: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
+  planButtonDesc: { fontSize: 12, color: '#94a3b8', marginTop: 1 },
   dataDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', position: 'absolute', top: 8, right: 8 },
-  attachmentsList: { marginTop: 10, gap: 4 },
+  dataDotInline: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e', flexShrink: 0 },
+  attachmentsList: { marginTop: 4, paddingHorizontal: 12, paddingBottom: 12, gap: 4 },
   attachmentItem: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#f1f5f9' },
   attachmentName: { flex: 1, fontSize: 13, color: '#334155' },
-  attachmentSize: { fontSize: 11, color: '#94a3b8' },
+  attachmentSize: { fontSize: 11, color: '#94a3b8', flexShrink: 0 },
   modalBody: { gap: 16 },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
 });
