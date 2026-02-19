@@ -22,6 +22,12 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Diese App benötigt Zugriff auf das Mikrofon, um Sprachnachrichten aufzunehmen.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Diese App benötigt Zugriff auf die Kamera, um Fotos hochzuladen.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Diese App benötigt Zugriff auf Ihre Fotos, um Bilder hochzuladen.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -79,8 +79,14 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
   String _scheduleStatus = 'unknown';
   DateTime _calMonth = DateTime.now();
 
+  // Search
+  bool _searchOpen = false;
+  String _search = '';
+  final _searchCtrl = TextEditingController();
+  final _searchFocusNode = FocusNode();
+
   @override void initState() { super.initState(); _tabs = TabController(length:3,vsync:this); _load(); }
-  @override void dispose() { _tabs.dispose(); super.dispose(); }
+  @override void dispose() { _tabs.dispose(); _searchCtrl.dispose(); _searchFocusNode.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -93,7 +99,6 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
       final raw = (r[0] as List).cast<Map<String,dynamic>>();
       final dates = r[1] as Map<String,dynamic>?;
       final tasks = (r[2] as List).cast<Map<String,dynamic>>();
-      // load linked items per milestone
       final withItems = await Future.wait(raw.map((m) async {
         final items = await SupabaseService.getMilestoneTasks(m['id'] as String);
         return {...m, 'linkedItems': items};
@@ -136,9 +141,44 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
 
   Future<void> _toggleMilestone(Map<String,dynamic> m) async {
     final id = m['id'] as String;
-    final newStatus = m['status']=='completed' ? 'open' : 'completed';
-    await SupabaseService.updateTimelineEvent(id, {'status': newStatus});
-    _load();
+    // DB allows: 'scheduled', 'in_progress', 'completed', 'cancelled'
+    // Use 'scheduled' when resetting from completed
+    final currentStatus = m['status'] as String?;
+    final newStatus = currentStatus == 'completed' ? 'scheduled' : 'completed';
+    // Optimistically update local state immediately so sheets see it
+    if (mounted) {
+      setState(() {
+        final idx = _milestones.indexWhere((x) => x['id'] == id);
+        if (idx != -1) {
+          _milestones[idx] = {..._milestones[idx], 'status': newStatus};
+        }
+      });
+    }
+    try {
+      await SupabaseService.updateTimelineEvent(id, {'status': newStatus});
+    } catch (e) {
+      // Revert on failure
+      if (mounted) {
+        setState(() {
+          final idx = _milestones.indexWhere((x) => x['id'] == id);
+          if (idx != -1) {
+            _milestones[idx] = {..._milestones[idx], 'status': currentStatus};
+          }
+        });
+      }
+    }
+    // No _load() here — optimistic update already reflects the new state.
+    // Calling _load() without await created a race condition that could
+    // re-read the old DB status before the write committed.
+  }
+
+  List<Map<String,dynamic>> get _filteredMilestones {
+    if (_search.isEmpty) return _milestones;
+    final q = _search.toLowerCase();
+    return _milestones.where((m) =>
+      (m['title'] as String? ?? '').toLowerCase().contains(q) ||
+      (m['description'] as String? ?? '').toLowerCase().contains(q),
+    ).toList();
   }
 
   @override
@@ -148,12 +188,14 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
       appBar: AppBar(
         leading: burgerMenuLeading(context),
         title: const Text('Zeitplan'),
-        actions: [
-          IconButton(icon: const Icon(LucideIcons.plus), onPressed: () => _showCreateSheet(context)),
-        ],
         bottom: TabBar(controller: _tabs, tabs: const [
           Tab(text: 'Liste'), Tab(text: 'Timeline'), Tab(text: 'Kalender'),
         ]),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showCreateSheet(context),
+        backgroundColor: AppColors.primary,
+        child: const Icon(LucideIcons.plus, color: Colors.white),
       ),
       body: _loading ? const Center(child: CircularProgressIndicator())
         : TabBarView(controller: _tabs, children: [
@@ -235,17 +277,110 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
     child:Column(children:[Text(v,style:TextStyle(fontSize:16,fontWeight:FontWeight.w800,color:c)),Text(l,style:const TextStyle(fontSize:10,color:AppColors.textSecondary))]),
   ));
 
+  // ── Search bar ─────────────────────────────────────────────────────────────
+  Widget _searchBar() {
+    return Column(mainAxisSize:MainAxisSize.min, children:[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: Row(children: [
+          Expanded(
+            child: const Text('Meilensteine', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+          ),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _searchOpen = !_searchOpen;
+                if (_searchOpen) {
+                  Future.microtask(() => _searchFocusNode.requestFocus());
+                } else {
+                  _searchCtrl.clear();
+                  _search = '';
+                  _searchFocusNode.unfocus();
+                }
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _searchOpen
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : AppColors.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _searchOpen
+                      ? AppColors.primary.withValues(alpha: 0.4)
+                      : AppColors.border,
+                ),
+              ),
+              child: Icon(
+                _searchOpen ? LucideIcons.x : LucideIcons.search,
+                size: 17,
+                color: _searchOpen ? AppColors.primary : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ]),
+      ),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeInOut,
+        child: _searchOpen
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: TextField(
+                  controller: _searchCtrl,
+                  focusNode: _searchFocusNode,
+                  onChanged: (v) => setState(() => _search = v),
+                  style: const TextStyle(fontSize: 14, color: AppColors.text),
+                  decoration: InputDecoration(
+                    hintText: 'Meilensteine durchsuchen…',
+                    hintStyle: const TextStyle(fontSize: 13),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    prefixIcon: const Icon(LucideIcons.search, size: 16),
+                    suffixIcon: _search.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(LucideIcons.x, size: 16),
+                            onPressed: () { _searchCtrl.clear(); setState(() => _search = ''); },
+                          )
+                        : null,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+    ]);
+  }
+
   // ── LIST TAB ──────────────────────────────────────────────────────────────
   Widget _listTab() {
+    final filtered = _filteredMilestones;
     return RefreshIndicator(onRefresh:_load, child:ListView(
       children:[
         _overviewCard(),
         _statsRow(),
-        const SizedBox(height:12),
-        Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:4),child:const Text('Meilensteine',style:TextStyle(fontSize:16,fontWeight:FontWeight.w700,color:AppColors.text))),
-        if(_milestones.isEmpty) Padding(padding:const EdgeInsets.all(32),child:Center(child:Column(children:const[Icon(LucideIcons.calendar,size:48,color:AppColors.textTertiary),SizedBox(height:12),Text('Noch keine Meilensteine',style:TextStyle(fontSize:15,color:AppColors.textSecondary))])))
-        else ..._milestones.map((m)=>_MilestoneListCard(m:m, onToggle:()=>_toggleMilestone(m), onTap:()=>_showDetail(context,m), onEdit:()=>_showCreateSheet(context,milestone:m), onDelete:()=>_deleteMilestone(m))),
-        const SizedBox(height:80),
+        const SizedBox(height:4),
+        _searchBar(),
+        const SizedBox(height:8),
+        if(filtered.isEmpty) Padding(padding:const EdgeInsets.all(32),child:Center(child:Column(children:[
+          Icon(_search.isNotEmpty ? LucideIcons.searchX : LucideIcons.calendar, size:48,color:AppColors.textTertiary),
+          const SizedBox(height:12),
+          Text(_search.isNotEmpty ? 'Keine Treffer' : 'Noch keine Meilensteine', style:const TextStyle(fontSize:15,color:AppColors.textSecondary)),
+        ])))
+        else ...filtered.map((m)=>_MilestoneListCard(
+          m:m,
+          onToggle:() => _toggleMilestone(m),
+          onTap:()=>_showDetail(context,m),
+          onEdit:()=>_showCreateSheet(context,milestone:m),
+          onDelete:()=>_deleteMilestone(m),
+        )),
+
+        const SizedBox(height:100),
       ],
     ));
   }
@@ -262,7 +397,7 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
           final idx=e.key; final m=e.value;
           return _TimelineCard(m:m, isLast:idx==_milestones.length-1, onTap:()=>_showDetail(context,m));
         }),
-        const SizedBox(height:80),
+        const SizedBox(height:100),
       ],
     ));
   }
@@ -271,15 +406,14 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
   Widget _calendarTab() {
     return ListView(children:[
       _buildCalendar(),
-      const SizedBox(height:80),
+      const SizedBox(height:100),
     ]);
   }
 
   Widget _buildCalendar() {
     final firstDay = DateTime(_calMonth.year,_calMonth.month,1);
     final daysInMonth = DateUtils.getDaysInMonth(_calMonth.year,_calMonth.month);
-    final startWeekday = firstDay.weekday % 7; // 0=Sunday
-    // map milestones to their dates
+    final startWeekday = firstDay.weekday % 7;
     final Map<int,List<Map<String,dynamic>>> byDay={};
     for(final m in _milestones){
       final ds=m['start_date'] as String?; if(ds==null) continue;
@@ -287,16 +421,13 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
       if(dt.year==_calMonth.year&&dt.month==_calMonth.month){ byDay.putIfAbsent(dt.day,()=>[]).add(m); }
     }
     return Column(children:[
-      // header
       Container(padding:const EdgeInsets.fromLTRB(16,16,16,8),child:Row(children:[
         IconButton(icon:const Icon(LucideIcons.chevronLeft),onPressed:()=>setState(()=>_calMonth=DateTime(_calMonth.year,_calMonth.month-1,1))),
         Expanded(child:Center(child:Text(DateFormat('MMMM yyyy','de').format(_calMonth),style:const TextStyle(fontSize:16,fontWeight:FontWeight.w700,color:AppColors.text)))),
         IconButton(icon:const Icon(LucideIcons.chevronRight),onPressed:()=>setState(()=>_calMonth=DateTime(_calMonth.year,_calMonth.month+1,1))),
       ])),
-      // weekday labels
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Row(children:['Mo','Di','Mi','Do','Fr','Sa','So'].map((d)=>Expanded(child:Center(child:Text(d,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:AppColors.textTertiary))))).toList())),
       const SizedBox(height:8),
-      // grid
       Padding(padding:const EdgeInsets.symmetric(horizontal:12),child:GridView.builder(
         shrinkWrap:true, physics:const NeverScrollableScrollPhysics(),
         gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:7,childAspectRatio:1,crossAxisSpacing:2,mainAxisSpacing:2),
@@ -322,7 +453,6 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
         },
       )),
       const SizedBox(height:16),
-      // legend
       Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Wrap(spacing:16,runSpacing:8,children:[
         _calLegend('Meilenstein',const Color(0xFF3B82F6)),
         _calLegend('Deadline',const Color(0xFFEF4444)),
@@ -351,65 +481,187 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
 
   // ── Milestone Detail Sheet ─────────────────────────────────────────────────
   void _showDetail(BuildContext ctx, Map<String,dynamic> m) {
-    final linkedItems = (m['linkedItems'] as List?)?.cast<Map<String,dynamic>>() ?? [];
-    final tc = _typeColor(m['event_type'] as String?);
-    final isCompleted = m['status']=='completed';
+    // Use StatefulBuilder so isCompleted reflects live _milestones state
     showModalBottomSheet(context:ctx, isScrollControlled:true, backgroundColor:Colors.transparent,
-      builder:(_)=>Container(
-        constraints:BoxConstraints(maxHeight:MediaQuery.of(ctx).size.height*0.88),
-        decoration:const BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.vertical(top:Radius.circular(20))),
-        child:Column(mainAxisSize:MainAxisSize.min,children:[
-          Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
-          Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,24),children:[
-            Row(children:[
-              Container(width:14,height:14,decoration:BoxDecoration(color:tc,shape:BoxShape.circle)),
-              const SizedBox(width:10),
-              Expanded(child:Text(m['title']??'',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w700,color:AppColors.text))),
-              Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),decoration:BoxDecoration(color:tc.withValues(alpha:0.12),borderRadius:BorderRadius.circular(8)),child:Text(_typeLabel(m['event_type'] as String?),style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:tc))),
+      builder:(sheetCtx)=>StatefulBuilder(
+        builder:(sheetCtx, ss) {
+          // Always look up the latest data from _milestones
+          final current = _milestones.firstWhere((x) => x['id'] == m['id'], orElse: () => m);
+          final linkedItems = (current['linkedItems'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+          final tc = _typeColor(current['event_type'] as String?);
+          final isCompleted = current['status']=='completed';
+
+          return Container(
+            constraints:BoxConstraints(maxHeight:MediaQuery.of(ctx).size.height*0.88),
+            decoration:const BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.vertical(top:Radius.circular(20))),
+            child:Column(mainAxisSize:MainAxisSize.min,children:[
+              Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
+              Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,24),children:[
+                Row(children:[
+                  Container(width:14,height:14,decoration:BoxDecoration(color:tc,shape:BoxShape.circle)),
+                  const SizedBox(width:10),
+                  Expanded(child:Text(current['title']??'',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w700,color:AppColors.text))),
+                  Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),decoration:BoxDecoration(color:tc.withValues(alpha:0.12),borderRadius:BorderRadius.circular(8)),child:Text(_typeLabel(current['event_type'] as String?),style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:tc))),
+                ]),
+                const SizedBox(height:12),
+                if(current['description']!=null&&(current['description'] as String).isNotEmpty)...[
+                  Text(current['description'] as String,style:const TextStyle(fontSize:14,color:AppColors.textSecondary)),
+                  const SizedBox(height:12),
+                ],
+                Row(children:[
+                  const Icon(LucideIcons.calendar,size:14,color:AppColors.textTertiary),const SizedBox(width:6),
+                  Text(_fmt(current['start_date'] as String?),style:const TextStyle(fontSize:13,color:AppColors.textSecondary)),
+                  if(current['end_date']!=null)...[const Text(' – ',style:TextStyle(color:AppColors.textTertiary)),Text(_fmt(current['end_date'] as String?),style:const TextStyle(fontSize:13,color:AppColors.textSecondary))],
+                ]),
+                if(isCompleted)...[
+                  const SizedBox(height:8),
+                  Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:AppColors.success.withValues(alpha:0.12),borderRadius:BorderRadius.circular(8)),child:const Text('Abgeschlossen',style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:AppColors.success))),
+                ],
+                const SizedBox(height:16),
+                if(linkedItems.isNotEmpty)...[
+                  const Text('Verknüpfte Aufgaben & Mängel',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:AppColors.text)),
+                  const SizedBox(height:8),
+                  ...linkedItems.map((li) {
+                    final isDefect = li['task_type']=='defect';
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(sheetCtx);
+                        // Navigate to task or defect detail
+                        _openLinkedItem(ctx, li);
+                      },
+                      child: Container(
+                        margin:const EdgeInsets.only(bottom:8),
+                        padding:const EdgeInsets.all(12),
+                        decoration:BoxDecoration(color:AppColors.background,borderRadius:BorderRadius.circular(10),border:Border.all(color:AppColors.border)),
+                        child:Row(children:[
+                          Container(width:8,height:8,decoration:BoxDecoration(color:_taskStatusColor(li['status'] as String?),shape:BoxShape.circle)),
+                          const SizedBox(width:8),
+                          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                            Text(li['title']??'',style:const TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:AppColors.text),maxLines:1,overflow:TextOverflow.ellipsis),
+                            Row(children:[
+                              Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),margin:const EdgeInsets.only(top:2),decoration:BoxDecoration(color:_taskStatusColor(li['status'] as String?).withValues(alpha:0.1),borderRadius:BorderRadius.circular(4)),child:Text(_taskStatusLabel(li['status'] as String?),style:TextStyle(fontSize:10,color:_taskStatusColor(li['status'] as String?)))),
+                              const SizedBox(width:6),
+                              if(isDefect) Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),margin:const EdgeInsets.only(top:2),decoration:BoxDecoration(color:_priorityColor(li['priority'] as String?).withValues(alpha:0.1),borderRadius:BorderRadius.circular(4)),child:Text(_priorityLabel(li['priority'] as String?),style:TextStyle(fontSize:10,color:_priorityColor(li['priority'] as String?)))),
+                            ]),
+                          ])),
+                          Icon(isDefect?LucideIcons.alertTriangle:LucideIcons.checkSquare,size:14,color:AppColors.primary),
+                          const SizedBox(width:4),
+                          const Icon(LucideIcons.chevronRight,size:14,color:AppColors.textTertiary),
+                        ]),
+                      ),
+                    );
+                  }),
+                ],
+                const SizedBox(height:16),
+                Row(children:[
+                  Expanded(child:OutlinedButton.icon(icon:const Icon(LucideIcons.edit2,size:15),label:const Text('Bearbeiten'),onPressed:(){Navigator.pop(sheetCtx);_showCreateSheet(ctx,milestone:current);})),
+                  const SizedBox(width:8),
+                  Expanded(child:ElevatedButton.icon(
+                    icon:Icon(isCompleted?LucideIcons.rotateCcw:LucideIcons.check,size:15),
+                    label:Text(isCompleted?'Öffnen':'Abschließen'),
+                    style: isCompleted ? ElevatedButton.styleFrom(backgroundColor: AppColors.warning) : null,
+                    onPressed:() async {
+                      await _toggleMilestone(current);
+                      // Refresh sheet state so it shows updated status
+                      if (sheetCtx.mounted) ss(() {});
+                    },
+                  )),
+                ]),
+                const SizedBox(height:8),
+                SizedBox(width:double.infinity,child:TextButton.icon(icon:const Icon(LucideIcons.trash2,size:15,color:AppColors.danger),label:const Text('Löschen',style:TextStyle(color:AppColors.danger)),onPressed:(){Navigator.pop(sheetCtx);_deleteMilestone(current);})),
+              ])),
             ]),
-            const SizedBox(height:12),
-            if(m['description']!=null&&(m['description'] as String).isNotEmpty)...[
-              Text(m['description'] as String,style:const TextStyle(fontSize:14,color:AppColors.textSecondary)),
-              const SizedBox(height:12),
-            ],
-            Row(children:[
-              const Icon(LucideIcons.calendar,size:14,color:AppColors.textTertiary),const SizedBox(width:6),
-              Text(_fmt(m['start_date'] as String?),style:const TextStyle(fontSize:13,color:AppColors.textSecondary)),
-              if(m['end_date']!=null)...[const Text(' – ',style:TextStyle(color:AppColors.textTertiary)),Text(_fmt(m['end_date'] as String?),style:const TextStyle(fontSize:13,color:AppColors.textSecondary))],
+          );
+        }
+      ),
+    );
+  }
+
+  void _openLinkedItem(BuildContext ctx, Map<String,dynamic> li) {
+    final isDefect = li['task_type'] == 'defect';
+    final statusColor = _taskStatusColor(li['status'] as String?);
+    final priorityColor = _priorityColor(li['priority'] as String?);
+    final typeColor = isDefect ? priorityColor : AppColors.primary;
+
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(padding: const EdgeInsets.only(top: 12), child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+          Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 40), children: [
+            // Type + Status badges
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(isDefect ? LucideIcons.alertTriangle : LucideIcons.checkSquare, size: 13, color: typeColor),
+                  const SizedBox(width: 5),
+                  Text(isDefect ? 'Mangel' : 'Aufgabe', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: typeColor)),
+                ]),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                child: Text(_taskStatusLabel(li['status'] as String?), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: statusColor)),
+              ),
             ]),
-            if(isCompleted)...[
-              const SizedBox(height:8),
-              Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:AppColors.success.withValues(alpha:0.12),borderRadius:BorderRadius.circular(8)),child:const Text('Abgeschlossen',style:TextStyle(fontSize:12,fontWeight:FontWeight.w600,color:AppColors.success))),
-            ],
-            const SizedBox(height:16),
-            if(linkedItems.isNotEmpty)...[
-              const Text('Verknüpfte Aufgaben & Mängel',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:AppColors.text)),
-              const SizedBox(height:8),
-              ...linkedItems.map((li)=>Container(margin:const EdgeInsets.only(bottom:8),padding:const EdgeInsets.all(12),decoration:BoxDecoration(color:AppColors.background,borderRadius:BorderRadius.circular(10),border:Border.all(color:AppColors.border)),child:Row(children:[
-                Container(width:8,height:8,decoration:BoxDecoration(color:_taskStatusColor(li['status'] as String?),shape:BoxShape.circle)),
-                const SizedBox(width:8),
-                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Text(li['title']??'',style:const TextStyle(fontSize:13,fontWeight:FontWeight.w600,color:AppColors.text),maxLines:1,overflow:TextOverflow.ellipsis),
-                  Row(children:[
-                    Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),margin:const EdgeInsets.only(top:2),decoration:BoxDecoration(color:_taskStatusColor(li['status'] as String?).withValues(alpha:0.1),borderRadius:BorderRadius.circular(4)),child:Text(_taskStatusLabel(li['status'] as String?),style:TextStyle(fontSize:10,color:_taskStatusColor(li['status'] as String?)))),
-                    const SizedBox(width:6),
-                    if(li['task_type']=='defect') Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),margin:const EdgeInsets.only(top:2),decoration:BoxDecoration(color:_priorityColor(li['priority'] as String?).withValues(alpha:0.1),borderRadius:BorderRadius.circular(4)),child:Text(_priorityLabel(li['priority'] as String?),style:TextStyle(fontSize:10,color:_priorityColor(li['priority'] as String?)))),
-                  ]),
-                ])),
-                Icon(li['task_type']=='defect'?LucideIcons.alertTriangle:LucideIcons.checkSquare,size:14,color:AppColors.textTertiary),
-              ]))),
-            ],
-            const SizedBox(height:16),
-            Row(children:[
-              Expanded(child:OutlinedButton.icon(icon:const Icon(LucideIcons.edit2,size:15),label:const Text('Bearbeiten'),onPressed:(){Navigator.pop(ctx);_showCreateSheet(ctx,milestone:m);})),
-              const SizedBox(width:8),
-              Expanded(child:ElevatedButton.icon(icon:Icon(isCompleted?LucideIcons.rotateCcw:LucideIcons.check,size:15),label:Text(isCompleted?'Öffnen':'Abschließen'),onPressed:(){Navigator.pop(ctx);_toggleMilestone(m);})),
-            ]),
-            const SizedBox(height:8),
-            SizedBox(width:double.infinity,child:TextButton.icon(icon:const Icon(LucideIcons.trash2,size:15,color:AppColors.danger),label:const Text('Löschen',style:TextStyle(color:AppColors.danger)),onPressed:(){Navigator.pop(ctx);_deleteMilestone(m);})),
+            const SizedBox(height: 16),
+            // Title
+            Text(li['title'] ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.text)),
+            // Description
+            if ((li['description'] as String?)?.isNotEmpty ?? false) ...[const SizedBox(height: 10), Text(li['description'] as String, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5))],
+            const SizedBox(height: 20),
+            // Info cards
+            Container(
+              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+              child: Column(children: [
+                if (isDefect && li['priority'] != null) ...[_liDetailTile(LucideIcons.flag, 'Priorität', _priorityLabel(li['priority'] as String?), priorityColor), const Divider(height: 1)],
+                _liDetailTile(LucideIcons.activity, 'Status', _taskStatusLabel(li['status'] as String?), statusColor),
+                if (li['due_date'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.calendar, 'Fälligkeitsdatum', _fmt(li['due_date'] as String?), AppColors.textSecondary)],
+                if ((li['location'] as String?)?.isNotEmpty ?? false) ...[const Divider(height: 1), _liDetailTile(LucideIcons.mapPin, 'Ort / Bereich', li['location'] as String, AppColors.textSecondary)],
+                if (!isDefect && li['story_points'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.zap, 'Story Points', '${li['story_points']} SP', AppColors.primary)],
+                if (!isDefect && li['assigned_to'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.user, 'Zugewiesen an', li['assigned_to'] as String, AppColors.textSecondary)],
+              ]),
+            ),
+            const SizedBox(height: 20),
+            // Priority bar (visual) for defects
+            if (isDefect) Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: priorityColor.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: priorityColor.withValues(alpha: 0.2))),
+              child: Row(children: [
+                Icon(LucideIcons.flag, size: 16, color: priorityColor),
+                const SizedBox(width: 10),
+                Text('Priorität: ', style: TextStyle(fontSize: 13, color: priorityColor.withValues(alpha: 0.7))),
+                Text(_priorityLabel(li['priority'] as String?), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: priorityColor)),
+              ]),
+            ),
           ])),
         ]),
       ),
+    );
+  }
+
+  Widget _liDetailTile(IconData icon, String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        Container(width: 32, height: 32, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 15, color: color)),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textTertiary)),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
+        ])),
+      ]),
     );
   }
 
@@ -494,11 +746,10 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
                   if(endDate!=null)'end_date':endDate!.toIso8601String().split('T')[0],
                 };
                 if(isEdit){
-                  await SupabaseService.updateTimelineEvent(milestone!['id'] as String,data);
+                  await SupabaseService.updateTimelineEvent(milestone['id'] as String,data);
                   await SupabaseService.replaceAllMilestoneTasks(milestone['id'] as String,linkedTaskIds);
                 }else{
                   await SupabaseService.createTimelineEvent(widget.projectId,data);
-                  // get the newly created event id
                   final events=await SupabaseService.getTimelineEvents(widget.projectId);
                   if(events.isNotEmpty&&linkedTaskIds.isNotEmpty){
                     final newId=events.last['id'] as String;
@@ -549,7 +800,20 @@ class _MilestoneListCard extends StatelessWidget {
       decoration:BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.circular(14),border:Border.all(color:AppColors.border)),
       child:InkWell(borderRadius:BorderRadius.circular(14),onTap:onTap,child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
         Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          GestureDetector(onTap:onToggle,child:Container(width:22,height:22,margin:const EdgeInsets.only(top:1,right:10),decoration:BoxDecoration(color:isCompleted?AppColors.success:Colors.transparent,borderRadius:BorderRadius.circular(6),border:Border.all(color:isCompleted?AppColors.success:AppColors.border,width:2)),child:isCompleted?const Icon(LucideIcons.check,size:14,color:Colors.white):null)),
+          // Circle checkbox (web-style)
+          GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              width: 22, height: 22,
+              margin: const EdgeInsets.only(top: 1, right: 10),
+              decoration: BoxDecoration(
+                color: isCompleted ? AppColors.success : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(color: isCompleted ? AppColors.success : AppColors.border, width: 2),
+              ),
+              child: isCompleted ? const Icon(LucideIcons.check, size: 13, color: Colors.white) : null,
+            ),
+          ),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(m['title']??'',style:TextStyle(fontSize:15,fontWeight:FontWeight.w600,color:AppColors.text,decoration:isCompleted?TextDecoration.lineThrough:null,decorationColor:AppColors.textSecondary)),
             const SizedBox(height:4),
@@ -560,10 +824,7 @@ class _MilestoneListCard extends StatelessWidget {
               if(startDate!=null) Text(_fmt(startDate),style:const TextStyle(fontSize:11,color:AppColors.textTertiary)),
             ]),
           ])),
-          PopupMenuButton<String>(icon:const Icon(LucideIcons.moreVertical,size:18,color:AppColors.textTertiary),itemBuilder:(_)=>[
-            const PopupMenuItem(value:'edit',child:Text('Bearbeiten')),
-            const PopupMenuItem(value:'delete',child:Text('Löschen',style:TextStyle(color:AppColors.danger))),
-          ],onSelected:(v){if(v=='edit')onEdit();else onDelete();}),
+
         ]),
         if(daysText.isNotEmpty)...[const SizedBox(height:6),Text(daysText,style:TextStyle(fontSize:11,color:daysText.contains('überfällig')?AppColors.danger:AppColors.textSecondary))],
         if(linkedItems.isNotEmpty)...[
@@ -602,9 +863,7 @@ class _TimelineCard extends StatelessWidget {
       Expanded(child:GestureDetector(onTap:onTap,child:Container(
         margin:const EdgeInsets.only(bottom:12,right:16),
         padding:const EdgeInsets.all(14),
-        decoration:BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.circular(12),border:Border.all(color:AppColors.border),boxShadow:[BoxShadow(color:tc.withValues(alpha:0.08),blurRadius:8,offset:const Offset(0,2))],
-          // left colored border simulation via container
-        ),
+        decoration:BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.circular(12),border:Border.all(color:AppColors.border),boxShadow:[BoxShadow(color:tc.withValues(alpha:0.08),blurRadius:8,offset:const Offset(0,2))]),
         child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
           Row(children:[
             Container(width:5,height:40,decoration:BoxDecoration(color:tc,borderRadius:BorderRadius.circular(2)),margin:const EdgeInsets.only(right:10)),

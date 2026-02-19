@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/burger_menu_leading.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -1584,6 +1585,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         elevation: 0,
+        leading: burgerMenuLeading(context),
         title: const Text('Objektplan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0f172a))),
         actions: [
           IconButton(

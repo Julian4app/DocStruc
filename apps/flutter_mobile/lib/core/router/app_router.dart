@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/auth_provider.dart';
 import '../../features/auth/login_screen.dart';
+import '../../features/auth/splash_screen.dart';
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/project/project_detail_screen.dart';
 import '../../features/profile/profile_screen.dart';
@@ -33,20 +34,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final authNotifier = ref.watch(_authChangeNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/splash',
     debugLogDiagnostics: false,
     refreshListenable: authNotifier,
     redirect: (context, state) {
       final auth = ref.read(authProvider);
+      final loc = state.matchedLocation;
+      if (loc == '/splash') return null; // always allow splash
       if (auth.loading) return null;
       final isLoggedIn = auth.userId != null;
-      final isLoginRoute = state.matchedLocation == '/login';
+      final isLoginRoute = loc == '/login';
 
       if (!isLoggedIn && !isLoginRoute) return '/login';
       if (isLoggedIn && isLoginRoute) return '/';
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),

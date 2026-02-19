@@ -49,28 +49,32 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
       final now = DateTime.now();
       final weekFromNow = now.add(const Duration(days: 7));
 
-      final results = await Future.wait([
-        SupabaseService.getTasks(widget.projectId),
-        SupabaseService.client
-            .from('timeline_events')
-            .select('id, title, start_date, event_type')
-            .eq('project_id', widget.projectId)
-            .gte('start_date', now.toIso8601String())
-            .lte('start_date', weekFromNow.toIso8601String())
-            .order('start_date', ascending: true)
-            .limit(5),
-        SupabaseService.client
-            .from('timeline_events')
-            .select('id, title, event_date, end_date, description, color, event_type, completed')
-            .eq('project_id', widget.projectId)
-            .gte('event_date', now.toIso8601String().split('T')[0])
-            .order('event_date', ascending: true)
-            .limit(5),
-      ]);
+      // Run queries independently so a timeline error doesn't block task data
+      final allTasks = await SupabaseService.getTasks(widget.projectId)
+          .then((r) => (r as List).cast<Map<String, dynamic>>())
+          .catchError((_) => <Map<String, dynamic>>[]);
 
-      final allTasks = (results[0] as List).cast<Map<String, dynamic>>();
-      final events = (results[1] as List).cast<Map<String, dynamic>>();
-      final milestones = (results[2] as List).cast<Map<String, dynamic>>();
+      // Upcoming appointments/events (next 7 days) — uses start_date
+      final events = await SupabaseService.client
+          .from('timeline_events')
+          .select('id, title, start_date, end_date, event_type, color, status')
+          .eq('project_id', widget.projectId)
+          .gte('start_date', now.toIso8601String())
+          .lte('start_date', weekFromNow.toIso8601String())
+          .order('start_date', ascending: true)
+          .limit(5)
+          .then((r) => (r as List).cast<Map<String, dynamic>>())
+          .catchError((_) => <Map<String, dynamic>>[]);
+
+      // Milestones & deadlines — fetch ALL (no date filter) so completed past milestones are counted
+      final milestones = await SupabaseService.client
+          .from('timeline_events')
+          .select('id, title, start_date, end_date, description, color, event_type, status')
+          .eq('project_id', widget.projectId)
+          .inFilter('event_type', ['milestone', 'deadline'])
+          .order('start_date', ascending: true)
+          .then((r) => (r as List).cast<Map<String, dynamic>>())
+          .catchError((_) => <Map<String, dynamic>>[]);
 
       final taskItems = allTasks.where((t) => t['task_type'] == 'task' || t['task_type'] == null).toList();
       final defectItems = allTasks.where((t) => t['task_type'] == 'defect').toList();
@@ -142,7 +146,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
   // ── Progress Card ──────────────────────────────────────────────────────────
   Widget _buildProgressCard() {
     final taskPct = _totalTasks > 0 ? (_completedTasks / _totalTasks) : 0.0;
-    final milestoneDone = _milestones.where((m) => m['completed'] == true).length;
+    final milestoneDone = _milestones.where((m) => m['status'] == 'completed').length;
     final milestonePct = _milestones.isNotEmpty ? (milestoneDone / _milestones.length) : 0.0;
     final progress = (_totalTasks > 0 || _milestones.isNotEmpty)
         ? (taskPct * 0.7 + milestonePct * 0.3)
@@ -204,7 +208,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 1.6,
+      childAspectRatio: 1.55,
       children: [
         _StatCard(
           icon: LucideIcons.checkCircle,
@@ -319,7 +323,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
           ? _emptyRow('Keine Termine in den nächsten 7 Tagen')
           : Column(
               children: _upcomingEvents.map((e) {
-                final dateStr = e['start_date'] as String?;
+                final dateStr = (e['start_date'] ?? e['event_date']) as String?;
                 String dateLabel = '';
                 if (dateStr != null) {
                   try {
@@ -437,7 +441,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
           ? _emptyRow('Keine anstehenden Meilensteine')
           : Column(
               children: _milestones.map((m) {
-                final dateStr = m['event_date'] as String?;
+                final dateStr = (m['start_date'] ?? m['event_date']) as String?;
                 DateTime? dt;
                 if (dateStr != null) {
                   try { dt = DateTime.parse(dateStr); } catch (_) {}
@@ -448,6 +452,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
                 final isToday = daysUntil == 0;
                 final isOverdue = daysUntil != null && daysUntil < 0;
                 final isUpcoming = daysUntil != null && daysUntil > 0 && daysUntil <= 7;
+                final isDone = m['status'] == 'completed' || m['completed'] == true;
 
                 final barColor = m['color'] != null
                     ? _parseHex(m['color'] as String)
@@ -498,7 +503,7 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  if (m['completed'] == true)
+                                  if (isDone)
                                     const Icon(LucideIcons.checkCircle,
                                         size: 14,
                                         color: Color(0xFF22C55E)),
@@ -665,27 +670,31 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 18, color: iconColor),
+            child: Icon(icon, size: 16, color: iconColor),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(value,
                   style: const TextStyle(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: AppColors.text)),
               Text(label,
                   style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary)),
+                      fontSize: 11, color: AppColors.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
             ],
           ),
         ],

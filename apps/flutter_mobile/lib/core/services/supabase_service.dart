@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -166,18 +167,85 @@ class SupabaseService {
     await client.from('projects').delete().eq('id', id);
   }
 
+  static Future<String> uploadProjectImage(String projectId, Uint8List bytes, String ext) async {
+    final path = 'projects/$projectId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await client.storage.from('project-images').uploadBinary(path, bytes, fileOptions: FileOptions(contentType: 'image/$ext', upsert: false));
+    final url = client.storage.from('project-images').getPublicUrl(path);
+    await client.from('project_images').insert({'project_id': projectId, 'storage_path': path, 'url': url});
+    return url;
+  }
+
+  /// Adds a project member by email. Creates a user_accessor if needed, then inserts into project_members.
+  static Future<void> addProjectMemberByEmail({
+    required String projectId,
+    required String email,
+    required String memberType, // 'employee' | 'owner' | 'subcontractor'
+    required String addedBy,
+    String? firstName,
+    String? lastName,
+  }) async {
+    // Find or create a user_accessor for this email
+    final existing = await client
+        .from('user_accessors')
+        .select('id, registered_user_id')
+        .eq('accessor_email', email)
+        .maybeSingle();
+
+    String accessorId;
+    String? registeredUserId;
+    if (existing != null) {
+      accessorId = existing['id'] as String;
+      registeredUserId = existing['registered_user_id'] as String?;
+    } else {
+      // Try to find a registered user with that email
+      final profileMatch = await client
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .eq('email', email)
+          .maybeSingle();
+      registeredUserId = profileMatch?['id'] as String?;
+      final newAcc = await client.from('user_accessors').insert({
+        'owner_id': addedBy,
+        'accessor_email': email,
+        'accessor_first_name': firstName ?? profileMatch?['first_name'],
+        'accessor_last_name': lastName ?? profileMatch?['last_name'],
+        'accessor_type': memberType,
+        'registered_user_id': registeredUserId,
+        'is_active': true,
+      }).select('id').single();
+      accessorId = newAcc['id'] as String;
+    }
+
+    // Check if already a member
+    final alreadyMember = await client
+        .from('project_members')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('accessor_id', accessorId)
+        .maybeSingle();
+    if (alreadyMember != null) return;
+
+    await client.from('project_members').insert({
+      'project_id': projectId,
+      'user_id': registeredUserId,
+      'accessor_id': accessorId,
+      'member_type': memberType,
+      'added_by': addedBy,
+      'status': registeredUserId != null ? 'active' : 'open',
+    });
+  }
+
   // ── Tasks & Defects ───────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getTasks(String projectId,
       {String? taskType}) async {
     try {
       if (taskType == 'task') {
-        // Explicitly get only tasks (task_type = 'task' OR task_type IS NULL)
-        // Using OR filter to handle both cases correctly
+        // Get tasks: exclude defects. RLS handles visibility.
         final result = await client
             .from('tasks')
             .select()
             .eq('project_id', projectId)
-            .or('task_type.eq.task,task_type.is.null')
+            .neq('task_type', 'defect')
             .order('created_at', ascending: false);
         return (result as List).cast<Map<String, dynamic>>();
       } else if (taskType == 'defect') {
@@ -245,13 +313,23 @@ class SupabaseService {
     try {
       return (await client
               .from('task_documentation')
-              .select()
+              .select('*, profiles!task_documentation_user_id_fkey(id, first_name, last_name, display_name, email)')
               .eq('task_id', taskId)
               .order('created_at', ascending: false))
           .cast<Map<String, dynamic>>();
     } catch (e) {
       debugPrint('[getTaskDocs] error: $e');
-      return [];
+      // Fallback without profile join in case foreign key name differs
+      try {
+        return (await client
+                .from('task_documentation')
+                .select()
+                .eq('task_id', taskId)
+                .order('created_at', ascending: false))
+            .cast<Map<String, dynamic>>();
+      } catch (_) {
+        return [];
+      }
     }
   }
 
@@ -340,6 +418,22 @@ class SupabaseService {
     });
   }
 
+  /// Creates a task and returns the new row's id, or null on failure.
+  static Future<String?> createTaskWithReturn(
+      String projectId, Map<String, dynamic> data) async {
+    final userId = currentUserId;
+    final response = await client
+        .from('tasks')
+        .insert({
+          ...data,
+          'project_id': projectId,
+          if (userId != null) 'created_by': userId,
+        })
+        .select('id')
+        .single();
+    return response['id'] as String?;
+  }
+
   static Future<void> updateTask(
       String id, Map<String, dynamic> data) async {
     await client
@@ -383,12 +477,16 @@ class SupabaseService {
   // ── Project Members ───────────────────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getProjectMembers(
       String projectId) async {
-    return (await client
-            .from('project_members')
-            .select('*, profiles!project_members_user_id_fkey(id, email, first_name, last_name, avatar_url, company_name)')
-            .eq('project_id', projectId)
-            .order('created_at'))
-        .cast<Map<String, dynamic>>();
+    try {
+      return (await client
+              .from('project_members')
+              .select('*, profiles!project_members_user_id_fkey(id, email, first_name, last_name, display_name, avatar_url, company_name)')
+              .eq('project_id', projectId))
+          .cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getProjectMembers] error: $e');
+      return [];
+    }
   }
 
   static Future<void> addProjectMember(String projectId, String email, String role) async {
