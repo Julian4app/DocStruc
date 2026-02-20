@@ -95,8 +95,11 @@ class _ProjectDiaryPageState extends State<ProjectDiaryPage> {
 
   Future<void> _loadInitial() async {
     setState(() => _loading = true);
-    await Future.wait([_fetchEntries(), _fetchMembers()]);
-    if (mounted) setState(() => _loading = false);
+    try {
+      await Future.wait([_fetchEntries(), _fetchMembers()]);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _fetchEntries() async {
@@ -110,6 +113,13 @@ class _ProjectDiaryPageState extends State<ProjectDiaryPage> {
       }
     } catch (e) {
       debugPrint('[Diary] fetchEntries error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Fehler beim Laden der Einträge: $e'),
+          backgroundColor: AppColors.danger,
+          duration: const Duration(seconds: 5),
+        ));
+      }
     }
   }
 
@@ -810,27 +820,70 @@ class _CreateEntrySheetState extends State<_CreateEntrySheet> {
       return;
     }
     setState(() => _saving = true);
+    final entryDate = DateFormat('yyyy-MM-dd').format(_date);
+    final payload = <String, dynamic>{
+      'entry_date': entryDate,
+      if (_weather != null) 'weather': _weather,
+      if (_tempCtrl.text.isNotEmpty)
+        'temperature': int.tryParse(_tempCtrl.text.trim()) ?? double.tryParse(_tempCtrl.text.trim())?.round(),
+      'workers_present': _totalWorkers,
+      if (_workersListStr.isNotEmpty) 'workers_list': _workersListStr,
+      'work_performed': _workPerformedCtrl.text.trim(),
+      if (_progressNotesCtrl.text.trim().isNotEmpty)
+        'progress_notes': _progressNotesCtrl.text.trim(),
+      if (_specialEventsCtrl.text.trim().isNotEmpty)
+        'special_events': _specialEventsCtrl.text.trim(),
+      if (_deliveriesCtrl.text.trim().isNotEmpty)
+        'deliveries': _deliveriesCtrl.text.trim(),
+    };
     try {
-      await SupabaseService.createDiaryEntry(widget.projectId, {
-        'entry_date': DateFormat('yyyy-MM-dd').format(_date),
-        if (_weather != null) 'weather': _weather,
-        if (_tempCtrl.text.isNotEmpty)
-          'temperature': double.tryParse(_tempCtrl.text.trim()),
-        'workers_present': _totalWorkers,
-        if (_workersListStr.isNotEmpty) 'workers_list': _workersListStr,
-        'work_performed': _workPerformedCtrl.text.trim(),
-        if (_progressNotesCtrl.text.trim().isNotEmpty)
-          'progress_notes': _progressNotesCtrl.text.trim(),
-        if (_specialEventsCtrl.text.trim().isNotEmpty)
-          'special_events': _specialEventsCtrl.text.trim(),
-        if (_deliveriesCtrl.text.trim().isNotEmpty)
-          'deliveries': _deliveriesCtrl.text.trim(),
-      });
+      await SupabaseService.createDiaryEntry(widget.projectId, payload);
       if (mounted) Navigator.pop(context);
       widget.onCreated();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Fehler: $e'), backgroundColor: AppColors.danger));
+      final isDuplicate = e.toString().contains('23505') ||
+          e.toString().contains('diary_entries_project_id_entry_date_key');
+      if (isDuplicate && mounted) {
+        setState(() => _saving = false);
+        // Ask user if they want to update the existing entry for this date
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Eintrag bereits vorhanden'),
+            content: Text(
+                'Für den ${DateFormat('dd.MM.yyyy').format(_date)} existiert bereits ein Eintrag. '
+                'Soll der bestehende Eintrag aktualisiert werden?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Abbrechen')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Aktualisieren')),
+            ],
+          ),
+        );
+        if (confirm == true && mounted) {
+          setState(() => _saving = true);
+          try {
+            // Find existing entry by date and update it
+            await SupabaseService.upsertDiaryEntry(
+                widget.projectId, entryDate, payload);
+            if (mounted) Navigator.pop(context);
+            widget.onCreated();
+          } catch (e2) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Fehler: $e2'),
+                backgroundColor: AppColors.danger));
+          } finally {
+            if (mounted) setState(() => _saving = false);
+          }
+        }
+      } else {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Fehler: $e'), backgroundColor: AppColors.danger));
+        if (mounted) setState(() => _saving = false);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1205,7 +1258,7 @@ class _EditEntrySheetState extends State<_EditEntrySheet> {
         'entry_date': DateFormat('yyyy-MM-dd').format(_date),
         'weather': _weather,
         if (_tempCtrl.text.isNotEmpty)
-          'temperature': double.tryParse(_tempCtrl.text.trim()),
+          'temperature': int.tryParse(_tempCtrl.text.trim()) ?? double.tryParse(_tempCtrl.text.trim())?.round(),
         if (_workersCtrl.text.isNotEmpty)
           'workers_present': int.tryParse(_workersCtrl.text.trim()),
         if (_workersListCtrl.text.isNotEmpty)

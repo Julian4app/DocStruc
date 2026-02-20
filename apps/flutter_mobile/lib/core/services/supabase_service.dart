@@ -489,6 +489,36 @@ class SupabaseService {
     }
   }
 
+  // ── CRM Contacts (Zugreifer) ──────────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getCrmContacts() async {
+    try {
+      return (await client
+              .from('crm_contacts')
+              .select()
+              .order('first_name'))
+          .cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getCrmContacts] error: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getUserAccessors() async {
+    try {
+      final userId = currentUserId;
+      if (userId == null) return [];
+      return (await client
+              .from('user_accessors')
+              .select()
+              .eq('owner_id', userId)
+              .order('accessor_first_name'))
+          .cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getUserAccessors] error: $e');
+      return [];
+    }
+  }
+
   static Future<void> addProjectMember(String projectId, String email, String role) async {
     // Look up user by email in profiles
     final profiles = await client
@@ -538,14 +568,19 @@ class SupabaseService {
           .order('entry_date', ascending: false);
       return (rows as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      debugPrint('[getDiaryEntries] error: $e');
+      debugPrint('[getDiaryEntries] join error: $e');
       // Fallback without profile join
-      return (await client
-              .from('diary_entries')
-              .select()
-              .eq('project_id', projectId)
-              .order('entry_date', ascending: false))
-          .cast<Map<String, dynamic>>();
+      try {
+        return (await client
+                .from('diary_entries')
+                .select()
+                .eq('project_id', projectId)
+                .order('entry_date', ascending: false))
+            .cast<Map<String, dynamic>>();
+      } catch (e2) {
+        debugPrint('[getDiaryEntries] fallback error: $e2');
+        rethrow;
+      }
     }
   }
 
@@ -559,6 +594,25 @@ class SupabaseService {
     });
   }
 
+  /// Finds the existing entry for (projectId, entryDate) and updates it.
+  static Future<void> upsertDiaryEntry(
+      String projectId, String entryDate, Map<String, dynamic> data) async {
+    final existing = await client
+        .from('diary_entries')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('entry_date', entryDate)
+        .maybeSingle();
+    if (existing != null) {
+      await client
+          .from('diary_entries')
+          .update(data)
+          .eq('id', existing['id'] as String);
+    } else {
+      await createDiaryEntry(projectId, data);
+    }
+  }
+
   static Future<void> updateDiaryEntry(
       String id, Map<String, dynamic> data) async {
     await client.from('diary_entries').update(data).eq('id', id);
@@ -566,6 +620,60 @@ class SupabaseService {
 
   static Future<void> deleteDiaryEntry(String id) async {
     await client.from('diary_entries').delete().eq('id', id);
+  }
+
+  // ── Content Visibility ────────────────────────────────────────────────────
+  /// Returns the effective visibility level for a specific content item.
+  /// Falls back to 'all_participants' if no override exists.
+  static Future<String> getContentVisibility(
+      String contentId, String moduleKey) async {
+    try {
+      final row = await client
+          .from('content_visibility_overrides')
+          .select('visibility')
+          .eq('module_key', moduleKey)
+          .eq('content_id', contentId)
+          .maybeSingle();
+      return (row?['visibility'] as String?) ?? 'all_participants';
+    } catch (e) {
+      debugPrint('[getContentVisibility] error: $e');
+      return 'all_participants';
+    }
+  }
+
+  /// Upserts a visibility override for a content item.
+  static Future<void> setContentVisibility(
+      String contentId,
+      String moduleKey,
+      String projectId,
+      String visibilityLevel) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+    await client.from('content_visibility_overrides').upsert({
+      'module_key': moduleKey,
+      'content_id': contentId,
+      'project_id': projectId,
+      'visibility': visibilityLevel,
+      'created_by': userId,
+    }, onConflict: 'module_key,content_id');
+  }
+
+  /// Returns the module-level default visibility for a project.
+  /// Falls back to 'all_participants' if no default is configured.
+  static Future<String> getModuleDefaultVisibility(
+      String projectId, String moduleKey) async {
+    try {
+      final row = await client
+          .from('project_content_defaults')
+          .select('default_visibility')
+          .eq('project_id', projectId)
+          .eq('module_key', moduleKey)
+          .maybeSingle();
+      return (row?['default_visibility'] as String?) ?? 'all_participants';
+    } catch (e) {
+      debugPrint('[getModuleDefaultVisibility] error: $e');
+      return 'all_participants';
+    }
   }
 
   // ── Project Messages (Communication) ──────────────────────────────────────

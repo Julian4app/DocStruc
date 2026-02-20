@@ -1177,7 +1177,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
   }
 
   Future<void> _deleteStaircase(String id, String name) async {
-    final ok = await _confirm('Treppenhaus "$name" wirklich löschen?');
+    final ok = await _confirm('Objekt "$name" wirklich löschen?');
     if (!ok) return;
     await _client.from('building_staircases').delete().eq('id', id);
     _load();
@@ -1283,8 +1283,8 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(editing == null ? 'Neues Treppenhaus' : 'Treppenhaus bearbeiten'),
-        content: TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(labelText: 'Name *', hintText: 'z.B. Treppenhaus A')),
+        title: Text(editing == null ? 'Neues Objekt' : 'Objekt bearbeiten'),
+        content: TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(labelText: 'Name *', hintText: 'z.B. Objekt A')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
           FilledButton(
@@ -1367,7 +1367,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
           children: [
             if (editing == null) const Padding(
               padding: EdgeInsets.only(bottom: 12),
-              child: Text('Erstellen Sie eine Wohnung ohne Treppenhaus-Struktur.', style: TextStyle(fontSize: 13, color: Color(0xFF64748b))),
+              child: Text('Erstellen Sie eine Wohnung ohne Objekt-Struktur.', style: TextStyle(fontSize: 13, color: Color(0xFF64748b))),
             ),
             TextField(controller: ctrl, autofocus: true, decoration: const InputDecoration(labelText: 'Name *', hintText: 'z.B. Whg. Musterstraße 12')),
           ],
@@ -1587,21 +1587,29 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
         elevation: 0,
         leading: burgerMenuLeading(context),
         title: const Text('Objektplan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0f172a))),
-        actions: [
-          IconButton(
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab_wohnung',
             onPressed: () => _showStandaloneAptDialog(),
-            icon: const Icon(LucideIcons.home, size: 20),
-            tooltip: 'Wohnung hinzufügen',
-            style: IconButton.styleFrom(foregroundColor: AppColors.primary),
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primary,
+            elevation: 2,
+            icon: const Icon(LucideIcons.home, size: 18),
+            label: const Text('Wohnung', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.icon(
-              onPressed: () => _showStaircaseDialog(),
-              icon: const Icon(LucideIcons.plus, size: 14),
-              label: const Text('Treppenhaus', style: TextStyle(fontSize: 12)),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
-            ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'fab_objekt',
+            onPressed: () => _showStaircaseDialog(),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            elevation: 3,
+            icon: const Icon(LucideIcons.plus, size: 18),
+            label: const Text('Objekt', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -1612,7 +1620,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                     children: [
                       // Standalone apartments
                       if (_standaloneApts.isNotEmpty) _buildStandaloneSection(),
@@ -1636,7 +1644,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
             const Text('Noch kein Gebäudeplan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
             const SizedBox(height: 8),
             const Text(
-              'Erstellen Sie ein Treppenhaus mit Stockwerken und Wohnungen, oder fügen Sie direkt eine einzelne Wohnung hinzu.',
+              'Erstellen Sie ein Objekt mit Stockwerken und Wohnungen, oder fügen Sie direkt eine einzelne Wohnung hinzu.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Color(0xFF94a3b8)),
             ),
@@ -1651,7 +1659,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
               FilledButton.icon(
                 onPressed: _showStaircaseDialog,
                 icon: const Icon(LucideIcons.plus, size: 14),
-                label: const Text('Treppenhaus'),
+                label: const Text('Objekt'),
                 style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
               ),
             ]),

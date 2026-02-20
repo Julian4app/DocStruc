@@ -528,7 +528,7 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
     String priority = 'medium';
     String? assignedTo;
     DateTime? dueDate;
-    String visibility = 'team';
+    String visibility = 'all_participants';
     List<({String name, Uint8List bytes})> pendingImages = [];
 
     showModalBottomSheet(
@@ -654,12 +654,15 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
                       'priority': priority,
                       'status': 'open',
                       'task_type': 'task',
-                      'visibility': visibility,
                       if (assignedTo != null) 'assigned_to': assignedTo,
                       if (dueDate != null) 'due_date': dueDate!.toIso8601String().split('T')[0],
                       if (int.tryParse(spCtrl.text.trim()) != null) 'story_points': int.parse(spCtrl.text.trim()),
                     };
                     final taskId = await SupabaseService.createTaskWithReturn(widget.projectId, data);
+                    if (taskId != null) {
+                      await SupabaseService.setContentVisibility(
+                          taskId, 'tasks', widget.projectId, visibility);
+                    }
                     if (taskId != null && pendingImages.isNotEmpty) {
                       for (int i = 0; i < pendingImages.length; i++) {
                         final img = pendingImages[i];
@@ -848,6 +851,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
     _tabs = TabController(length: 3, vsync: this);
     _initForm();
     _loadMedia();
+    _loadVisibility();
   }
 
   void _initForm() {
@@ -857,9 +861,16 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
     _status    = _task['status']     ?? 'open';
     _priority  = _task['priority']   ?? 'medium';
     _assignedTo = _task['assigned_to'] as String?;
-    _visibility = _task['visibility'] ?? 'team';
+    _visibility = 'all_participants'; // will be updated by _loadVisibility
     final ds = _task['due_date'] as String?;
     _dueDate   = ds != null ? DateTime.tryParse(ds) : null;
+  }
+
+  Future<void> _loadVisibility() async {
+    final taskId = _task['id'] as String?;
+    if (taskId == null) return;
+    final v = await SupabaseService.getContentVisibility(taskId, 'tasks');
+    if (mounted) setState(() => _visibility = v);
   }
 
   @override
@@ -897,13 +908,14 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
         'description': _descCtrl.text.trim(),
         'status':      _status,
         'priority':    _priority,
-        'visibility':  _visibility,
         'assigned_to': _assignedTo,
         'due_date':    _dueDate?.toIso8601String().split('T')[0],
       };
       final sp = int.tryParse(_spCtrl.text.trim());
       if (sp != null) data['story_points'] = sp;
       await SupabaseService.updateTask(_task['id'] as String, data);
+      await SupabaseService.setContentVisibility(
+          _task['id'] as String, 'tasks', widget.projectId, _visibility);
       if (!mounted) return;
       setState(() {
         _task = {..._task, ...data};
@@ -1140,7 +1152,6 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
   Widget _infoTab() {
     final dueDate     = _task['due_date']    as String?;
     final storyPoints = _task['story_points'];
-    final visibility  = _task['visibility']  as String?;
     final createdAt   = _task['created_at']  as String?;
 
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -1218,15 +1229,13 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
           _detailTile(LucideIcons.calendar, 'F\u00e4lligkeitsdatum', dueDate != null ? _fmtDate(dueDate) : 'Nicht festgelegt', dueDate != null ? AppColors.primary : AppColors.textTertiary),
           const Divider(height: 1),
           _detailTile(LucideIcons.zap, 'Story Points', storyPoints != null ? '$storyPoints SP' : '–', storyPoints != null ? AppColors.primary : AppColors.textTertiary),
-          if (visibility != null) ...[
-            const Divider(height: 1),
-            _detailTile(
-              visibility == 'private' ? LucideIcons.lock : visibility == 'public' ? LucideIcons.globe : LucideIcons.users,
-              'Sichtbarkeit',
-              visibility == 'private' ? 'Privat' : visibility == 'public' ? '\u00d6ffentlich' : 'Team',
-              AppColors.textSecondary,
-            ),
-          ],
+          const Divider(height: 1),
+          _detailTile(
+            _visibility == 'owner_only' ? LucideIcons.lock : _visibility == 'team_only' ? LucideIcons.userCheck : LucideIcons.users,
+            'Sichtbarkeit',
+            _visibility == 'owner_only' ? 'Nur ich' : _visibility == 'team_only' ? 'Nur mein Team' : 'Alle Teilnehmer',
+            AppColors.textSecondary,
+          ),
           if (createdAt != null) ...[const Divider(height: 1), _detailTile(LucideIcons.clock, 'Erstellt', _fmtDateTime(createdAt), AppColors.textTertiary)],
         ]),
       ),
@@ -1757,8 +1766,8 @@ class _VisibilityPickerTile extends StatelessWidget {
   const _VisibilityPickerTile({required this.value, required this.onTap});
   @override
   Widget build(BuildContext context) {
-    final label = value == 'private' ? 'Privat' : value == 'public' ? '\u00d6ffentlich' : 'Team';
-    final icon  = value == 'private' ? LucideIcons.lock : value == 'public' ? LucideIcons.globe : LucideIcons.users;
+    final label = value == 'owner_only' ? 'Nur ich' : value == 'team_only' ? 'Nur mein Team' : 'Alle Teilnehmer';
+    final icon  = value == 'owner_only' ? LucideIcons.lock : value == 'team_only' ? LucideIcons.userCheck : LucideIcons.users;
     return GestureDetector(
       onTap: onTap,
       child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1820,9 +1829,9 @@ Future<String?> _showDetailMemberPicker(BuildContext ctx, String? currentId, Lis
 
 Future<String?> _showVisibilityPickerSheetStatic(BuildContext ctx, String current) async {
   const options = [
-    {'value': 'team',    'label': 'Team',       'sub': 'Nur f\u00fcr Projektmitglieder', 'icon': LucideIcons.users},
-    {'value': 'private', 'label': 'Privat',     'sub': 'Nur f\u00fcr mich sichtbar',     'icon': LucideIcons.lock},
-    {'value': 'public',  'label': '\u00d6ffentlich', 'sub': 'F\u00fcr alle sichtbar',    'icon': LucideIcons.globe},
+    {'value': 'all_participants', 'label': 'Alle Teilnehmer', 'sub': 'Alle Projektmitglieder k\u00f6nnen sehen', 'icon': LucideIcons.users},
+    {'value': 'team_only',       'label': 'Nur mein Team',   'sub': 'Nur Teammitglieder k\u00f6nnen sehen',   'icon': LucideIcons.userCheck},
+    {'value': 'owner_only',      'label': 'Nur ich',         'sub': 'Nur ich (Eigent\u00fcmer) kann sehen',   'icon': LucideIcons.lock},
   ];
   return showModalBottomSheet<String>(
     context: ctx, backgroundColor: Colors.transparent,

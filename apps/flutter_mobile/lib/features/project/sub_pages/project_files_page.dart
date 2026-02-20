@@ -827,6 +827,214 @@ class _FoldersTab extends StatelessWidget {
 // Folder Card (accordion)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Context menu helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+void _showFolderMenu(
+  BuildContext context, {
+  required String folderName,
+  VoidCallback? onUpload,
+  VoidCallback? onEdit,
+  VoidCallback? onDelete,
+}) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(LucideIcons.folder,
+                      size: 20, color: Color(0xFFF59E0B)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(folderName,
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A))),
+                ),
+              ]),
+            ),
+            const Divider(height: 1, indent: 20, endIndent: 20),
+            const SizedBox(height: 4),
+            if (onUpload != null)
+              _MenuTile(
+                icon: LucideIcons.upload,
+                iconColor: AppColors.primary,
+                label: 'Datei hochladen',
+                onTap: () { Navigator.pop(context); onUpload(); },
+              ),
+            if (onEdit != null)
+              _MenuTile(
+                icon: LucideIcons.pencil,
+                iconColor: const Color(0xFF3B82F6),
+                label: 'Ordner umbenennen',
+                onTap: () { Navigator.pop(context); onEdit(); },
+              ),
+            if (onDelete != null)
+              _MenuTile(
+                icon: LucideIcons.trash2,
+                iconColor: const Color(0xFFDC2626),
+                label: 'Ordner löschen',
+                labelColor: const Color(0xFFDC2626),
+                onTap: () { Navigator.pop(context); onDelete(); },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+void _showFileMenu(
+  BuildContext context, {
+  required Map<String, dynamic> file,
+  required void Function(Map<String, dynamic>) onRename,
+  required void Function(Map<String, dynamic>) onDelete,
+}) {
+  final name = file['name'] as String? ?? 'Datei';
+  final mime = file['mime_type'] as String?;
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: _fileColor(mime).withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(_fileIcon(mime), size: 20, color: _fileColor(mime)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A))),
+                ),
+              ]),
+            ),
+            const Divider(height: 1, indent: 20, endIndent: 20),
+            const SizedBox(height: 4),
+            _MenuTile(
+              icon: LucideIcons.pencil,
+              iconColor: const Color(0xFF3B82F6),
+              label: 'Umbenennen',
+              onTap: () { Navigator.pop(context); onRename(file); },
+            ),
+            _MenuTile(
+              icon: LucideIcons.trash2,
+              iconColor: const Color(0xFFDC2626),
+              label: 'Datei löschen',
+              labelColor: const Color(0xFFDC2626),
+              onTap: () { Navigator.pop(context); onDelete(file); },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _MenuTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color? labelColor;
+  final VoidCallback onTap;
+
+  const _MenuTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.onTap,
+    this.labelColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 14),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: labelColor ?? const Color(0xFF0F172A))),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Folder Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _FolderCard extends StatelessWidget {
   final String folderId;
   final String folderName;
@@ -917,45 +1125,24 @@ class _FolderCard extends StatelessWidget {
                   ),
                   if (onUpload != null || onEdit != null || onDelete != null) ...[
                     const SizedBox(width: 4),
-                    PopupMenuButton<String>(
-                      icon: const Icon(LucideIcons.moreVertical,
-                          size: 18, color: AppColors.textSecondary),
-                      onSelected: (v) {
-                        if (v == 'upload') onUpload?.call();
-                        if (v == 'edit') onEdit?.call();
-                        if (v == 'delete') onDelete?.call();
-                      },
-                      itemBuilder: (_) => [
-                        if (onUpload != null)
-                          const PopupMenuItem(
-                            value: 'upload',
-                            child: Row(children: [
-                              Icon(LucideIcons.upload, size: 16),
-                              SizedBox(width: 8),
-                              Text('Datei hochladen')
-                            ]),
-                          ),
-                        if (onEdit != null)
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(children: [
-                              Icon(LucideIcons.edit2, size: 16),
-                              SizedBox(width: 8),
-                              Text('Bearbeiten')
-                            ]),
-                          ),
-                        if (onDelete != null)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(children: [
-                              Icon(LucideIcons.trash2,
-                                  size: 16, color: Color(0xFFDC2626)),
-                              SizedBox(width: 8),
-                              Text('Löschen',
-                                  style: TextStyle(color: Color(0xFFDC2626)))
-                            ]),
-                          ),
-                      ],
+                    GestureDetector(
+                      onTap: () => _showFolderMenu(
+                        context,
+                        folderName: folderName,
+                        onUpload: onUpload,
+                        onEdit: onEdit,
+                        onDelete: onDelete,
+                      ),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(LucideIcons.moreVertical,
+                            size: 16, color: AppColors.textSecondary),
+                      ),
                     ),
                   ],
                 ],
@@ -1090,33 +1277,23 @@ class _FileRow extends StatelessWidget {
             onTap: () => onShare(file),
           ),
           const SizedBox(width: 2),
-          PopupMenuButton<String>(
-            icon: const Icon(LucideIcons.moreVertical,
-                size: 16, color: AppColors.textSecondary),
-            onSelected: (v) {
-              if (v == 'rename') onRename(file);
-              if (v == 'delete') onDelete(file);
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'rename',
-                child: Row(children: [
-                  Icon(LucideIcons.edit2, size: 16),
-                  SizedBox(width: 8),
-                  Text('Umbenennen')
-                ]),
+          GestureDetector(
+            onTap: () => _showFileMenu(
+              context,
+              file: file,
+              onRename: onRename,
+              onDelete: onDelete,
+            ),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(8),
               ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(children: [
-                  Icon(LucideIcons.trash2,
-                      size: 16, color: Color(0xFFDC2626)),
-                  SizedBox(width: 8),
-                  Text('Löschen',
-                      style: TextStyle(color: Color(0xFFDC2626)))
-                ]),
-              ),
-            ],
+              child: const Icon(LucideIcons.moreVertical,
+                  size: 16, color: AppColors.textSecondary),
+            ),
           ),
         ],
       ),

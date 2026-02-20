@@ -52,17 +52,17 @@ String _defStatusLabel(String? s) {
 
 String _defVisibilityLabel(String? v) {
   switch (v) {
-    case 'private': return 'Privat';
-    case 'public':  return 'Öffentlich';
-    default:        return 'Team';
+    case 'owner_only': return 'Nur ich';
+    case 'team_only':  return 'Nur mein Team';
+    default:           return 'Alle Teilnehmer';
   }
 }
 
 IconData _defVisibilityIcon(String? v) {
   switch (v) {
-    case 'private': return LucideIcons.lock;
-    case 'public':  return LucideIcons.globe;
-    default:        return LucideIcons.users;
+    case 'owner_only': return LucideIcons.lock;
+    case 'team_only':  return LucideIcons.userCheck;
+    default:           return LucideIcons.users;
   }
 }
 
@@ -229,9 +229,9 @@ class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
 
   Future<String?> _showVisibilityPickerSheet(BuildContext ctx, String current) {
     const options = [
-      {'value': 'team',    'label': 'Team',         'sub': 'Nur für Projektmitglieder', 'icon': LucideIcons.users},
-      {'value': 'private', 'label': 'Privat',       'sub': 'Nur für mich sichtbar',    'icon': LucideIcons.lock},
-      {'value': 'public',  'label': 'Öffentlich',   'sub': 'Für alle sichtbar',        'icon': LucideIcons.globe},
+      {'value': 'all_participants', 'label': 'Alle Teilnehmer', 'sub': 'Alle Projektmitglieder können sehen', 'icon': LucideIcons.users},
+      {'value': 'team_only',       'label': 'Nur mein Team',   'sub': 'Nur Teammitglieder können sehen',   'icon': LucideIcons.userCheck},
+      {'value': 'owner_only',      'label': 'Nur ich',         'sub': 'Nur ich (Eigentümer) kann sehen',   'icon': LucideIcons.lock},
     ];
     return showModalBottomSheet<String>(
       context: ctx,
@@ -499,7 +499,7 @@ class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
     final descCtrl     = TextEditingController();
     final locationCtrl = TextEditingController();
     String priority   = 'medium';
-    String visibility = 'team';
+    String visibility = 'all_participants';
     String? assignedTo;
     DateTime? dueDate;
     List<({String name, Uint8List bytes})> pendingImages = [];
@@ -680,14 +680,16 @@ class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
                           final taskId = await SupabaseService.createTaskWithReturn(widget.projectId, {
                             'title':       titleCtrl.text.trim(),
                             'description': descCtrl.text.trim(),
-                            'location':    locationCtrl.text.trim(),
                             'priority':    priority,
                             'status':      'open',
                             'task_type':   'defect',
-                            'visibility':  visibility,
                             if (assignedTo != null) 'assigned_to': assignedTo,
                             if (dueDate != null) 'due_date': dueDate!.toIso8601String().split('T')[0],
                           });
+                          if (taskId != null) {
+                            await SupabaseService.setContentVisibility(
+                                taskId, 'defects', widget.projectId, visibility);
+                          }
                           // Upload pending images
                           if (taskId != null && pendingImages.isNotEmpty) {
                             for (int i = 0; i < pendingImages.length; i++) {
@@ -856,6 +858,14 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
     _tabs = TabController(length: 3, vsync: this);
     _initForm();
     _loadDet();
+    _loadVisibility();
+  }
+
+  Future<void> _loadVisibility() async {
+    final defectId = _defect['id'] as String?;
+    if (defectId == null) return;
+    final v = await SupabaseService.getContentVisibility(defectId, 'defects');
+    if (mounted) setState(() => _eVisibility = v);
   }
 
   void _initForm() {
@@ -864,7 +874,7 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
     _locCtrl     = TextEditingController(text: _defect['location'] ?? '');
     _eStatus     = _defect['status']     ?? 'open';
     _ePriority   = _defect['priority']   ?? 'medium';
-    _eVisibility = _defect['visibility'] ?? 'team';
+    _eVisibility = 'all_participants'; // will be updated by _loadVisibility
     _eAssignedTo = _defect['assigned_to'] as String?;
     final ds = _defect['due_date'] as String?;
     _eDueDate = ds != null ? DateTime.tryParse(ds) : null;
@@ -890,14 +900,14 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
       final data = <String, dynamic>{
         'title':       _titleCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
-        'location':    _locCtrl.text.trim(),
         'status':      _eStatus,
         'priority':    _ePriority,
-        'visibility':  _eVisibility,
         'assigned_to': _eAssignedTo,
         'due_date':    _eDueDate?.toIso8601String().split('T')[0],
       };
       await SupabaseService.updateTask(_defect['id'] as String, data);
+      await SupabaseService.setContentVisibility(
+          _defect['id'] as String, 'defects', widget.projectId, _eVisibility);
       if (!mounted) return;
       setState(() {
         _defect = {..._defect, ...data};
@@ -914,10 +924,21 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
   }
 
   Future<void> _quickStatus(String s) async {
-    await SupabaseService.updateTask(_defect['id'], {'status': s});
+    final old = _defect['status'] as String? ?? 'open';
     setState(() { _defect = {..._defect, 'status': s}; _eStatus = s; });
-    widget.onRefresh();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Status: ${_defStatusLabel(s)}')));
+    try {
+      await SupabaseService.updateTask(_defect['id'], {'status': s});
+      widget.onRefresh();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Status: ${_defStatusLabel(s)}'), duration: const Duration(seconds: 2)),
+      );
+    } catch (e) {
+      // Revert UI on failure
+      if (mounted) setState(() { _defect = {..._defect, 'status': old}; _eStatus = old; });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Future<void> _uploadImg() async {
@@ -1032,9 +1053,9 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
 
   Future<String?> _showVisibilityPicker(BuildContext ctx) {
     const options = [
-      {'value': 'team',    'label': 'Team',        'sub': 'Nur für Projektmitglieder', 'icon': LucideIcons.users},
-      {'value': 'private', 'label': 'Privat',      'sub': 'Nur für mich sichtbar',     'icon': LucideIcons.lock},
-      {'value': 'public',  'label': 'Öffentlich', 'sub': 'Für alle sichtbar',         'icon': LucideIcons.globe},
+      {'value': 'all_participants', 'label': 'Alle Teilnehmer', 'sub': 'Alle Projektmitglieder können sehen', 'icon': LucideIcons.users},
+      {'value': 'team_only',       'label': 'Nur mein Team',   'sub': 'Nur Teammitglieder können sehen',   'icon': LucideIcons.userCheck},
+      {'value': 'owner_only',      'label': 'Nur ich',         'sub': 'Nur ich (Eigentümer) kann sehen',   'icon': LucideIcons.lock},
     ];
     return showModalBottomSheet<String>(
       context: ctx,
@@ -1097,7 +1118,7 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
     final desc      = _defect['description'] as String?;
     final dueDate   = _defect['due_date']    as String?;
     final createdAt = _defect['created_at']  as String?;
-    final visibility = _defect['visibility'] as String?;
+    // visibility is loaded from content_visibility_overrides via _eVisibility
     final isOverdue = dueDate != null && DateTime.tryParse(dueDate)?.isBefore(DateTime.now()) == true && status != 'resolved';
 
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -1162,7 +1183,7 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
       const SizedBox(height: 12),
       _iCard(LucideIcons.user, 'Zugewiesen an', Text(_mName(_defect['assigned_to'] as String?), style: const TextStyle(fontSize: 14, color: AppColors.text))),
       const SizedBox(height: 12),
-      _iCard(_defVisibilityIcon(visibility), 'Sichtbarkeit', Text(_defVisibilityLabel(visibility), style: const TextStyle(fontSize: 14, color: AppColors.text))),
+      _iCard(_defVisibilityIcon(_eVisibility), 'Sichtbarkeit', Text(_defVisibilityLabel(_eVisibility), style: const TextStyle(fontSize: 14, color: AppColors.text))),
       const SizedBox(height: 12),
       if (createdAt != null) ...[
         _iCard(LucideIcons.clock, 'Erfasst am', Text(_fmtDateTime(createdAt), style: const TextStyle(fontSize: 14, color: AppColors.text))),

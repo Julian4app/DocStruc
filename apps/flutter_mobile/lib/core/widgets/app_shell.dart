@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
+import '../../features/quick_add/quick_add_sheet.dart';
+
+// ─── Shell ───────────────────────────────────────────────────────────────────
 
 class AppShell extends ConsumerStatefulWidget {
   final Widget child;
@@ -15,157 +18,281 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  static const _tabs = [
-    _Tab(
-      icon: LucideIcons.layoutGrid,
-      activeIcon: LucideIcons.layoutGrid,
-      label: 'Projekte',
-      path: '/',
-    ),
-    _Tab(
-      icon: LucideIcons.helpCircle,
-      activeIcon: LucideIcons.helpCircle,
-      label: 'Hilfe',
-      path: '/help',
-    ),
-    _Tab(
-      icon: LucideIcons.user,
-      activeIcon: LucideIcons.user,
-      label: 'Profil',
-      path: '/profile',
-    ),
-    _Tab(
-      icon: LucideIcons.moreHorizontal,
-      activeIcon: LucideIcons.moreHorizontal,
-      label: 'Mehr',
-      path: '/settings',
-    ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      extendBody: true,
+      body: widget.child,
+      bottomNavigationBar: const _BottomNav(),
+    );
+  }
+}
+
+// ─── Tab model ───────────────────────────────────────────────────────────────
+
+class _Tab {
+  final IconData icon;
+  final String label;
+  final String path;
+  const _Tab({required this.icon, required this.label, required this.path});
+}
+
+// ─── Bottom nav bar ──────────────────────────────────────────────────────────
+
+class _BottomNav extends StatelessWidget {
+  const _BottomNav();
+
+  static const _leftTabs = [
+    _Tab(icon: LucideIcons.layoutGrid, label: 'Projekte', path: '/'),
+    _Tab(icon: LucideIcons.helpCircle, label: 'Hilfe', path: '/help'),
+  ];
+  static const _rightTabs = [
+    _Tab(icon: LucideIcons.user, label: 'Profil', path: '/profile'),
+    _Tab(icon: LucideIcons.moreHorizontal, label: 'Mehr', path: '/settings'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: widget.child,
-      bottomNavigationBar: _BottomNav(tabs: _tabs),
-    );
-  }
-}
-
-class _BottomNav extends StatelessWidget {
-  final List<_Tab> tabs;
-  const _BottomNav({required this.tabs});
-
-  @override
-  Widget build(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottom = MediaQuery.of(context).padding.bottom;
+
+    final bg = isDark ? const Color(0xFF1C1C1E) : Colors.white;
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+            color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: tabs.map((tab) {
-              final active = tab.path == '/'
-                  ? location == '/'
-                  : location.startsWith(tab.path);
-              return Expanded(
-                child: _NavItem(
-                  tab: tab,
-                  active: active,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    context.go(tab.path);
-                  },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ..._leftTabs.map((tab) {
+                final active = tab.path == '/'
+                    ? location == '/'
+                    : location.startsWith(tab.path);
+                return Expanded(
+                  child: _NavItem(
+                    icon: tab.icon,
+                    label: tab.label,
+                    active: active,
+                    isDark: isDark,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      context.go(tab.path);
+                    },
+                  ),
+                );
+              }),
+
+              // ── Center FAB gap ──
+              SizedBox(
+                width: 76,
+                child: Center(
+                  child: _FabButton(
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      showQuickAddSheet(context);
+                    },
+                  ),
                 ),
-              );
-            }).toList(),
+              ),
+
+              ..._rightTabs.map((tab) {
+                final active = tab.path == '/'
+                    ? location == '/'
+                    : location.startsWith(tab.path);
+                return Expanded(
+                  child: _NavItem(
+                    icon: tab.icon,
+                    label: tab.label,
+                    active: active,
+                    isDark: isDark,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      context.go(tab.path);
+                    },
+                  ),
+                );
+              }),
+            ],
           ),
-        ),
+          const SizedBox(height: 8),
+          SizedBox(height: bottom),
+        ],
       ),
     );
   }
 }
 
+// ─── Nav item — pill when active, icon-only when inactive ─────────────────────
+
 class _NavItem extends StatelessWidget {
-  final _Tab tab;
+  final IconData icon;
+  final String label;
   final bool active;
+  final bool isDark;
   final VoidCallback onTap;
 
   const _NavItem({
-    required this.tab,
+    required this.icon,
+    required this.label,
     required this.active,
+    required this.isDark,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = isDark ? const Color(0xFF7C6AF7) : AppColors.primary;
+    final inactiveColor =
+        isDark ? const Color(0xFF636366) : const Color(0xFF9CA3AF);
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Icon with animated pill background
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-              decoration: BoxDecoration(
-                color: active
-                    ? AppColors.primary.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                active ? tab.activeIcon : tab.icon,
-                size: 22,
-                color: active ? AppColors.primary : AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 3),
-            // Label
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 220),
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-                color: active ? AppColors.primary : AppColors.textSecondary,
-                letterSpacing: active ? 0.2 : 0,
-              ),
-              child: Text(tab.label),
-            ),
-          ],
+      child: SizedBox(
+        height: 56,
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (child, anim) =>
+                ScaleTransition(scale: anim, child: child),
+            child: active
+                // ── Active: pill with icon + label ──
+                ? Container(
+                    key: ValueKey('active_$label'),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF7C6AF7).withValues(alpha: 0.18)
+                          : AppColors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 16, color: activeColor),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: activeColor,
+                              letterSpacing: -0.1,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                // ── Inactive: icon only ──
+                : Icon(
+                    key: ValueKey('inactive_$label'),
+                    icon,
+                    size: 22,
+                    color: inactiveColor,
+                  ),
+
+          ),
         ),
       ),
     );
   }
 }
 
-class _Tab {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final String path;
+// ─── Center FAB ───────────────────────────────────────────────────────────────
 
-  const _Tab({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.path,
-  });
+class _FabButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _FabButton({required this.onTap});
+
+  @override
+  State<_FabButton> createState() => _FabButtonState();
+}
+
+class _FabButtonState extends State<_FabButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.88)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) async {
+        await _ctrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _ctrl.reverse(),
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: isDark
+                ? const LinearGradient(
+                    colors: [Color(0xFF7C6AF7), Color(0xFF5B50C8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xFF0E2A47), Color(0xFF1E3A5F)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+            boxShadow: [
+              BoxShadow(
+                color: (isDark
+                        ? const Color(0xFF7C6AF7)
+                        : AppColors.primary)
+                    .withValues(alpha: 0.40),
+                blurRadius: 16,
+                spreadRadius: 0,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: const Icon(LucideIcons.plus, size: 26, color: Colors.white),
+        ),
+      ),
+    );
+  }
 }
