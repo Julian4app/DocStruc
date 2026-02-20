@@ -16,7 +16,8 @@ import {
   Settings,
   UserCircle,
   BookOpen,
-  MessageCircle
+  MessageCircle,
+  MessageSquare
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -79,6 +80,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
       items: [
         { label: 'Help Inhalte', path: '/help-content', icon: BookOpen },
         { label: 'Nachrichten', path: '/help-messages', icon: MessageCircle },
+        { label: 'Feedback', path: '/feedback', icon: MessageSquare },
       ]
     }
   ];

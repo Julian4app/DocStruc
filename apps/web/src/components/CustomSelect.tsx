@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { ChevronDown, X } from 'lucide-react';
 import { colors } from '@docstruc/theme';
@@ -26,11 +27,14 @@ export function CustomSelect({
   disabled = false 
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const dropdownRef = useRef<any>(null);
+  const triggerRef = useRef<any>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+          triggerRef.current && !triggerRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
@@ -43,6 +47,21 @@ export function CustomSelect({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+
+  const openDropdown = () => {
+    if (disabled) return;
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 99999,
+      });
+    }
+    setIsOpen(!isOpen);
+  };
 
   const getSelectedLabel = () => {
     if (multiple && Array.isArray(value)) {
@@ -78,10 +97,10 @@ export function CustomSelect({
   const selectedOptions = multiple ? options.filter(opt => selectedValues.includes(opt.value)) : [];
 
   return (
-    <View ref={dropdownRef} style={styles.container}>
+    <View ref={triggerRef} style={styles.container}>
       <TouchableOpacity
         style={[styles.trigger, disabled && styles.triggerDisabled]}
-        onPress={() => !disabled && setIsOpen(!isOpen)}
+        onPress={openDropdown}
         activeOpacity={0.7}
       >
         {multiple && selectedOptions.length > 0 ? (
@@ -115,34 +134,37 @@ export function CustomSelect({
         />
       </TouchableOpacity>
 
-      {isOpen && (
-        <View style={styles.dropdown}>
-          <ScrollView style={styles.optionsList} bounces={false}>
-            {options.map((option) => {
-              const isSelected = multiple 
-                ? selectedValues.includes(option.value)
-                : value === option.value;
-              
-              return (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[styles.option, isSelected && styles.optionSelected]}
-                  onPress={() => handleSelect(option.value)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                    {option.label}
-                  </Text>
-                  {multiple && isSelected && (
-                    <View style={styles.checkmark}>
-                      <Text style={styles.checkmarkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div ref={dropdownRef} style={{ ...dropdownStyle, position: 'fixed' }}>
+          <View style={styles.dropdown}>
+            <ScrollView style={styles.optionsList} bounces={false}>
+              {options.map((option) => {
+                const isSelected = multiple 
+                  ? selectedValues.includes(option.value)
+                  : value === option.value;
+                
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.option, isSelected && styles.optionSelected]}
+                    onPress={() => handleSelect(option.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                      {option.label}
+                    </Text>
+                    {multiple && isSelected && (
+                      <View style={styles.checkmark}>
+                        <Text style={styles.checkmarkText}>✓</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </div>,
+        document.body
       )}
     </View>
   );
@@ -152,6 +174,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative' as any,
     width: '100%',
+    zIndex: 100,
   },
   trigger: {
     flexDirection: 'row',
@@ -209,20 +232,14 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   dropdown: {
-    position: 'absolute' as any,
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
-    zIndex: 10000,
     maxHeight: 280,
     overflow: 'hidden' as any,
     elevation: 10000,

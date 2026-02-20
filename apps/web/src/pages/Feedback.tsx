@@ -54,9 +54,9 @@ export function Feedback() {
 
       const { error } = await supabase.from('feedback').insert({
         user_id: user.id,
-        rating,
+        ...(rating > 0 ? { rating } : {}),
         category,
-        email,
+        email: email.trim() || null,
         message,
         created_at: new Date().toISOString(),
       });

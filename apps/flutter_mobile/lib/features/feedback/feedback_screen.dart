@@ -16,7 +16,70 @@ class FeedbackScreen extends ConsumerStatefulWidget {
 class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
   int _rating = 0;
   final _messageCtrl = TextEditingController();
-  String _category = 'allgemein';
+  String _category = 'general';
+
+  static const _categoryOptions = [
+    ('general', 'Allgemeines Feedback'),
+    ('bug', 'Fehlerbericht'),
+    ('feature', 'Funktionswunsch'),
+    ('ui', 'Benutzeroberfläche'),
+    ('performance', 'Performance'),
+    ('other', 'Sonstiges'),
+  ];
+
+  void _showCategoryPicker(BuildContext ctx) {
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(children: [
+              const Expanded(child: Text('Kategorie wählen', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text))),
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: const Icon(LucideIcons.x, size: 20, color: AppColors.textSecondary),
+              ),
+            ]),
+          ),
+          ..._categoryOptions.map((opt) {
+            final isSelected = _category == opt.$1;
+            return GestureDetector(
+              onTap: () {
+                setState(() => _category = opt.$1);
+                Navigator.pop(ctx);
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? AppColors.primary.withValues(alpha: 0.4) : Colors.transparent,
+                  ),
+                ),
+                child: Row(children: [
+                  Expanded(child: Text(opt.$2, style: TextStyle(fontSize: 15, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400, color: isSelected ? AppColors.primary : AppColors.text))),
+                  if (isSelected) const Icon(LucideIcons.check, size: 18, color: AppColors.primary),
+                ]),
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+        ]),
+      ),
+    );
+  }
   bool _sending = false;
   bool _sent = false;
 
@@ -27,11 +90,10 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
   }
 
   Future<void> _submit() async {
-    if (_rating == 0 || _messageCtrl.text.trim().isEmpty) {
+    if (_messageCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content:
-                Text('Bitte geben Sie eine Bewertung und Nachricht ein')),
+            content: Text('Bitte geben Sie eine Nachricht ein')),
       );
       return;
     }
@@ -39,7 +101,7 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
     setState(() => _sending = true);
     try {
       await SupabaseService.sendFeedback({
-        'rating': _rating,
+        if (_rating > 0) 'rating': _rating,
         'message': _messageCtrl.text.trim(),
         'category': _category,
         'user_id': ref.read(authProvider).userId,
@@ -206,25 +268,27 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DropdownButtonFormField<String>(
-                  value: _category,
-                  decoration:
-                      const InputDecoration(labelText: 'Kategorie'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'allgemein', child: Text('Allgemein')),
-                    DropdownMenuItem(
-                        value: 'bug', child: Text('Fehlerbericht')),
-                    DropdownMenuItem(
-                        value: 'feature',
-                        child: Text('Funktionswunsch')),
-                    DropdownMenuItem(
-                        value: 'design', child: Text('Design')),
-                    DropdownMenuItem(
-                        value: 'performance',
-                        child: Text('Performance')),
-                  ],
-                  onChanged: (v) => setState(() => _category = v!),
+                GestureDetector(
+                  onTap: () => _showCategoryPicker(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(children: [
+                      const Icon(LucideIcons.tag, size: 16, color: AppColors.textSecondary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _categoryOptions.firstWhere((o) => o.$1 == _category, orElse: () => ('general', 'Allgemeines Feedback')).$2,
+                          style: const TextStyle(fontSize: 15, color: AppColors.text),
+                        ),
+                      ),
+                      const Icon(LucideIcons.chevronDown, size: 18, color: AppColors.textSecondary),
+                    ]),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 TextField(

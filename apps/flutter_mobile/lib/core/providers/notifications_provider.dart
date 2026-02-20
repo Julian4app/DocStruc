@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/supabase_service.dart';
+import '../services/notification_service.dart';
 
 class NotificationsState {
   final List<Map<String, dynamic>> notifications;
@@ -28,15 +29,60 @@ class NotificationsState {
 class NotificationsNotifier extends StateNotifier<NotificationsState> {
   Timer? _pollTimer;
 
+  /// IDs already seen so we don't fire duplicate push notifications.
+  final Set<String> _seenIds = {};
+
+  /// Cached user notification settings (loaded from user_settings).
+  Map<String, dynamic> _notifSettings = {};
+
   NotificationsNotifier() : super(const NotificationsState()) {
-    load();
+    _initAndLoad();
+  }
+
+  Future<void> _initAndLoad() async {
+    // Load notification settings first
+    await _reloadSettings();
+
+    // Request permission if push is enabled
+    if (_notifSettings['pushNotifications'] != false) {
+      final hasPerm = await NotificationService.hasPermission();
+      if (!hasPerm) {
+        await NotificationService.requestPermission();
+      }
+    }
+
+    await load();
+
     // Poll every 30 seconds for new notifications
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => load());
+    _pollTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _poll());
+  }
+
+  Future<void> _reloadSettings() async {
+    try {
+      final data = await SupabaseService.getUserSettings();
+      if (data != null && data['settings'] is Map) {
+        _notifSettings = Map<String, dynamic>.from(
+            data['settings'] as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
+
+  /// Update in-memory settings (called from SettingsScreen after save).
+  void updateSettings(Map<String, dynamic> settings) {
+    _notifSettings = Map<String, dynamic>.from(settings);
   }
 
   Future<void> load() async {
     try {
       final data = await SupabaseService.getNotifications();
+      // Mark all existing IDs as seen on first load (no spurious pushes)
+      if (_seenIds.isEmpty) {
+        for (final n in data) {
+          final id = n['id'] as String?;
+          if (id != null) _seenIds.add(id);
+        }
+      }
       final unread = data.where((n) => n['is_read'] != true).length;
       state = state.copyWith(
         notifications: data,
@@ -46,6 +92,31 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     } catch (_) {
       // Silently handle
     }
+  }
+
+  /// Called on poll timer – fires push for genuinely new notifications.
+  Future<void> _poll() async {
+    try {
+      // Refresh settings in case user changed them
+      await _reloadSettings();
+
+      final data = await SupabaseService.getNotifications();
+      final unread = data.where((n) => n['is_read'] != true).length;
+      state = state.copyWith(notifications: data, unreadCount: unread);
+
+      // Fire local push for any new notification not yet seen
+      for (final n in data) {
+        final id = n['id'] as String?;
+        if (id == null) continue;
+        if (_seenIds.contains(id)) continue;
+        _seenIds.add(id);
+
+        // Only push for unread ones
+        if (n['is_read'] == true) continue;
+
+        await NotificationService.showForDbNotification(n, _notifSettings);
+      }
+    } catch (_) {}
   }
 
   Future<void> markRead(String id) async {

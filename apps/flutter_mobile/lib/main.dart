@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
+import 'core/services/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,9 @@ Future<void> main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZud292aHJ3YXhiZXdlbGdmd3N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzk2NjIsImV4cCI6MjA4NTgxNTY2Mn0.bKpd1MPraBBhNEtuC6KhMWLrnaXEuuqcH-Co-Ygk3Gg',
   );
+
+  // Initialize local notifications
+  await NotificationService.initialize();
 
   // Preload Google Fonts
   GoogleFonts.config.allowRuntimeFetching = true;
