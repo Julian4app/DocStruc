@@ -58,9 +58,19 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
       return;
     }
 
-    // Create a fresh ready promise each time projectId/moduleKey changes
+    // Create a fresh ready promise each time projectId/moduleKey changes.
+    // Reset currentUserId in the ref so filterVisibleItems() doesn't use stale data
+    // from a previous project while the new loadData() is in flight.
     readyPromiseRef.current = new Promise<void>((resolve) => { readyResolverRef.current = resolve; });
-    
+    dataRef.current = {
+      defaultVisibility: 'all_participants',
+      currentUserId: null,
+      userTeamId: null,
+      isSuperuser: false,
+      isProjectOwner: false,
+      memberTeamMap: new Map(),
+    };
+
     const loadData = async () => {
       if (!userId) {
         setLoading(false);
