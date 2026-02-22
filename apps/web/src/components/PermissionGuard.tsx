@@ -1,6 +1,6 @@
 import React from 'react';
 import { useOutletContext, useParams, useLocation } from 'react-router-dom';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { Lock } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 import { ROUTE_MODULE_MAP } from '../pages/ProjectDetail';
@@ -38,9 +38,13 @@ export function PermissionGuard({ moduleKey, children }: PermissionGuardProps) {
     return ROUTE_MODULE_MAP[lastSegment] || null;
   })();
 
-  // If no context (still loading), show nothing
+  // If no context or still loading permissions, show a spinner instead of blank
   if (!context || context.permissionsLoading) {
-    return null;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   // Project owner or superuser always has access
@@ -84,6 +88,12 @@ export function useProjectPermissionContext() {
 }
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%' as any,
+  },
   container: {
     flex: 1,
     justifyContent: 'center',

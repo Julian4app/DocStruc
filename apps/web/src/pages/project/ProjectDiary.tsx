@@ -106,7 +106,7 @@ export function ProjectDiary() {
         .from('project_members')
         .select(`
           user_id,
-          profiles!inner(id, first_name, last_name, email)
+          profiles:user_id(id, first_name, last_name, email)
         `)
         .eq('project_id', id);
 
