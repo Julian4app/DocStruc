@@ -205,6 +205,8 @@ export function ProjectTasks() {
       if (tasksResult.error) throw tasksResult.error;
       const page = tasksResult.data || [];
       setTasks(page);
+      // Pre-populate filteredTasks immediately so the Kanban renders data before filterTasks() runs
+      setFilteredTasks(page);
       setHasMoreTasks(page.length === TASKS_PAGE_SIZE);
       if (tasksResult.count !== null) setTotalTasks(tasksResult.count);
       setProjectMembers((membersResult.data || []) as any);
@@ -266,6 +268,8 @@ export function ProjectTasks() {
       if (error) throw error;
       const all = data || [];
       setTasks(all);
+      // Pre-populate filteredTasks immediately so Kanban stays populated while filterTasks() runs
+      setFilteredTasks(all);
       setHasMoreTasks(count !== null ? all.length < count : all.length === limit);
       if (count !== null) setTotalTasks(count);
     } catch (error: any) {

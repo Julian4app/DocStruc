@@ -212,12 +212,16 @@ export function ProjectFiles() {
         : 'Unbekannt'
     }));
 
-    // Apply visibility filtering
-    const visibleFiles = await filterVisibleItems(filesWithNames);
-    setFiles(visibleFiles);
-    
-    const totalSize = visibleFiles.reduce((sum: number, f: ProjectFile) => sum + f.file_size, 0);
-    setStats(prev => ({ ...prev, totalFiles: visibleFiles.length, totalSize }));
+    // Show data immediately — release spinner as soon as DB responds
+    setFiles(filesWithNames);
+    const totalSize = filesWithNames.reduce((sum: number, f: ProjectFile) => sum + f.file_size, 0);
+    setStats(prev => ({ ...prev, totalFiles: filesWithNames.length, totalSize }));
+    // Apply visibility filtering in the background (non-blocking)
+    filterVisibleItems(filesWithNames).then(visibleFiles => {
+      setFiles(visibleFiles);
+      const filteredSize = visibleFiles.reduce((sum: number, f: ProjectFile) => sum + f.file_size, 0);
+      setStats(prev => ({ ...prev, totalFiles: visibleFiles.length, totalSize: filteredSize }));
+    }).catch(err => console.error('Error filtering visible files:', err));
   };
 
   const loadProjectMembers = async () => {

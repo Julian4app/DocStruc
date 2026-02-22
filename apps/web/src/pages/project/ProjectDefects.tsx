@@ -139,18 +139,17 @@ export function ProjectDefects() {
 
       if (error) throw error;
       
-      // Apply content visibility (Freigaben) filtering
-      let visibleDefects = data || [];
-      try {
-        visibleDefects = await filterVisibleItems(visibleDefects);
-      } catch (err) {
-        console.error('Error filtering visible defects:', err);
-      }
-      setDefects(visibleDefects);
+      const rawDefects = data || [];
+      // Show data immediately — release spinner as soon as DB responds
+      setDefects(rawDefects);
+      setLoading(false);
+      // Apply visibility filtering in the background (non-blocking)
+      filterVisibleItems(rawDefects)
+        .then(visible => setDefects(visible))
+        .catch(err => console.error('Error filtering visible defects:', err));
     } catch (error: any) {
       console.error('Error loading defects:', error);
       showToast('Fehler beim Laden der Mängel', 'error');
-    } finally {
       setLoading(false);
     }
   };

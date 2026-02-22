@@ -221,10 +221,13 @@ export function useContentVisibility(projectId: string | undefined, moduleKey: s
   ): Promise<T[]> => {
     if (!projectId || items.length === 0) return items;
 
-    // Wait until the hook has finished loading all visibility data
-    // Short timeout to prevent blocking — most projects use 'all_participants' anyway
-    const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
-    await Promise.race([readyPromiseRef.current, timeoutPromise]);
+    // If data is already loaded (ref has currentUserId), skip the promise wait entirely — instant path.
+    // Otherwise wait for the hook's loadData to finish, with a short 50ms safety timeout.
+    // This prevents the page spinner from being held for 1500ms on every navigation.
+    if (!dataRef.current.currentUserId) {
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 50));
+      await Promise.race([readyPromiseRef.current, timeoutPromise]);
+    }
 
     // Read from the ref for guaranteed-fresh values (React state may not have re-rendered yet)
     const d = dataRef.current;

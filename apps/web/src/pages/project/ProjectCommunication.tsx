@@ -157,11 +157,9 @@ export function ProjectCommunication() {
         user_avatar: note.profiles?.avatar_url
       }));
 
-      // Apply visibility filtering
-      const visibleMessages = await filterVisibleItems(transformedMessages);
-      const visibleNotes = await filterVisibleItems(transformedNotes);
-      setMessages(visibleMessages);
-      setNotes(visibleNotes);
+      // Show data immediately — release spinner as soon as DB responds
+      setMessages(transformedMessages);
+      setNotes(transformedNotes);
 
       // Pagination tracking
       setHasMoreMessages((messagesResult.data || []).length === MESSAGES_PAGE_SIZE);
@@ -169,23 +167,27 @@ export function ProjectCommunication() {
       if (messagesResult.count !== null) setTotalMessages(messagesResult.count);
       if (notesResult.count !== null) setTotalNotes(notesResult.count);
 
-      // Calculate stats
-      const msgCount = messagesResult.count ?? visibleMessages.length;
-      const noteCount = notesResult.count ?? visibleNotes.length;
+      // Calculate stats using unfiltered data (counts stay accurate)
+      const msgCount = messagesResult.count ?? transformedMessages.length;
+      const noteCount = notesResult.count ?? transformedNotes.length;
       const uniqueUsers = new Set([
-        ...visibleMessages.map(m => m.user_id),
-        ...visibleNotes.map(n => n.user_id)
+        ...transformedMessages.map(m => m.user_id),
+        ...transformedNotes.map(n => n.user_id)
       ]);
+      setStats({ totalMessages: msgCount, totalNotes: noteCount, activeUsers: uniqueUsers.size });
+      setLoading(false);
 
-      setStats({
-        totalMessages: msgCount,
-        totalNotes: noteCount,
-        activeUsers: uniqueUsers.size
-      });
+      // Apply visibility filtering in the background (non-blocking) — runs both in parallel
+      Promise.all([
+        filterVisibleItems(transformedMessages),
+        filterVisibleItems(transformedNotes),
+      ]).then(([visibleMessages, visibleNotes]) => {
+        setMessages(visibleMessages);
+        setNotes(visibleNotes);
+      }).catch(err => console.error('Error filtering visible communication:', err));
     } catch (error: any) {
       console.error('Error loading communication:', error);
       showToast('Fehler beim Laden der Kommunikation', 'error');
-    } finally {
       setLoading(false);
     }
   };

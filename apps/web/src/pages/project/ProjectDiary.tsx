@@ -209,21 +209,18 @@ export function ProjectDiary() {
           : 'Unbekannt'
       }));
 
-      // Apply content visibility (Freigaben) filtering
-      let visibleEntries = transformed;
-      try {
-        visibleEntries = await filterVisibleItems(visibleEntries);
-      } catch (err) {
-        console.error('Error filtering visible diary entries:', err);
-      }
-
-      setEntries(visibleEntries);
+      // Show data immediately — release spinner as soon as DB responds
+      setEntries(transformed);
       setHasMoreEntries((data || []).length === DIARY_PAGE_SIZE);
       if (count !== null) setTotalEntries(count);
+      setLoading(false);
+      // Apply visibility filtering in the background (non-blocking)
+      filterVisibleItems(transformed)
+        .then(visible => setEntries(visible))
+        .catch(err => console.error('Error filtering visible diary entries:', err));
     } catch (error: any) {
       console.error('Error loading diary entries:', error);
       showToast('Fehler beim Laden der Einträge', 'error');
-    } finally {
       setLoading(false);
     }
   };

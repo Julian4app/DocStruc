@@ -137,15 +137,18 @@ export function ProjectDocumentation() {
         task_priority: entry.tasks?.priority
       }));
 
-      // Apply visibility filtering
-      const visibleEntries = await filterVisibleItems(transformed);
-      setEntries(visibleEntries);
+      // Show data immediately — release spinner as soon as DB responds
+      setEntries(transformed);
       setHasMoreDocs((data || []).length === DOCS_PAGE_SIZE);
       if (count !== null) setTotalDocs(count);
+      setLoading(false);
+      // Apply visibility filtering in the background (non-blocking)
+      filterVisibleItems(transformed)
+        .then(visible => setEntries(visible))
+        .catch(err => console.error('Error filtering visible documentation:', err));
     } catch (error: any) {
       console.error('Error loading documentation:', error);
       showToast('Fehler beim Laden der Dokumentation', 'error');
-    } finally {
       setLoading(false);
     }
   };
