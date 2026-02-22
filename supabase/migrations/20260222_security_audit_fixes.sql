@@ -283,6 +283,7 @@ GRANT SELECT, INSERT, UPDATE ON public.profiles TO authenticated;
 -- ============================================================================
 
 DROP POLICY IF EXISTS "Authenticated can view project member permissions" ON public.project_member_permissions;
+DROP POLICY IF EXISTS "project_member_permissions_select" ON public.project_member_permissions;
 
 CREATE POLICY "project_member_permissions_select" ON public.project_member_permissions
   FOR SELECT
