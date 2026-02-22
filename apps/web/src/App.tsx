@@ -71,6 +71,7 @@ import { ToastProvider } from './components/ToastProvider';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebLayout } from './layouts/WebLayout';
 import { PermissionGuard } from './components/PermissionGuard';
+import { SuperuserGuard } from './components/SuperuserGuard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -196,8 +197,8 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/accessors" element={<Accessors />} />
               <Route path="/my-team" element={<MyTeam />} />
-              <Route path="/manage-projects" element={<ManageProjects />} />
-              <Route path="/manage-projects/:id" element={<ProjectManagementDetail />} />
+              <Route path="/manage-projects" element={<SuperuserGuard><ManageProjects /></SuperuserGuard>} />
+              <Route path="/manage-projects/:id" element={<SuperuserGuard><ProjectManagementDetail /></SuperuserGuard>} />
               <Route path="/project/:id" element={<ProjectDetail />}>
                 <Route index element={<ProjectDashboard />} />
                 <Route path="general-info" element={<PermissionGuard><ProjectGeneralInfo /></PermissionGuard>} />
