@@ -30,8 +30,9 @@ const _routeToModule = {
   'communication':  'communication',
   'documentation':  'documentation',
   'objektplan':     'documentation',
-  // no module guard needed for these:
-  // 'dashboard', 'participants', 'activity'
+  'participants':   'participants',
+  'activity':       'activity',
+  // 'dashboard' — always visible, no module guard
 };
 
 /// Project host screen.
@@ -314,13 +315,17 @@ class _ProjectDrawer extends StatelessWidget {
                     _DItem(LucideIcons.bookOpen,        'Bautagebuch',     'diary',          activeRoute, accent, txt, muted, onSelectRoute),
                   if (perms.canView('communication'))
                     _DItem(LucideIcons.messageCircle,   'Kommunikation',   'communication',  activeRoute, accent, txt, muted, onSelectRoute),
-                  // Participants and Activity are always visible
-                  const SizedBox(height: 8),
-                  _DSec('TEAM', muted),
-                  _DItem(LucideIcons.users,           'Beteiligte',      'participants',   activeRoute, accent, txt, muted, onSelectRoute),
-                  const SizedBox(height: 8),
-                  _DSec('WEITERE', muted),
-                  _DItem(LucideIcons.activity,        'Aktivitäten',     'activity',       activeRoute, accent, txt, muted, onSelectRoute),
+                  // Participants and Activity are also module-gated
+                  if (perms.canView('participants')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('TEAM', muted),
+                    _DItem(LucideIcons.users,           'Beteiligte',      'participants',   activeRoute, accent, txt, muted, onSelectRoute),
+                  ],
+                  if (perms.canView('activity')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('WEITERE', muted),
+                    _DItem(LucideIcons.activity,        'Aktivitäten',     'activity',       activeRoute, accent, txt, muted, onSelectRoute),
+                  ],
                 ],
               ),
             ),
