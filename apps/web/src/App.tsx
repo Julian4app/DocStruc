@@ -3,8 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginForm, RegisterData } from '@docstruc/ui';
 import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import { colors } from '@docstruc/theme';
-import { View, ActivityIndicator, Text } from 'react-native';
 
 // ─── Lazy-loaded page components (code splitting) ──────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -165,11 +163,25 @@ function App() {
     setLoading(false);
   };
 
+  const handleOAuthLogin = async (provider: 'google' | 'apple') => {
+    setAuthError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) {
+      setAuthError(error.message);
+    }
+  };
+
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
+        <div style={{ width: 40, height: 40, border: '4px solid #E2E8F0', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     );
   }
 
@@ -179,14 +191,15 @@ function App() {
       <ToastProvider>
         <BrowserRouter>
           <Suspense fallback={
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%', backgroundColor: colors.background }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-            </View>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
+              <div style={{ width: 40, height: 40, border: '4px solid #E2E8F0', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
           }>
           <Routes>
             <Route path="/login" element={
               !session ? (
-                <LoginForm onLogin={handleLogin} onRegister={handleRegister} isLoading={loading} error={authError} successMessage={authSuccess} />
+                <LoginForm onLogin={handleLogin} onRegister={handleRegister} onOAuthLogin={handleOAuthLogin} isLoading={loading} error={authError} successMessage={authSuccess} />
               ) : <Navigate to="/" />
             } />
             

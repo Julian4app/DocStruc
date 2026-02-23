@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../project_detail_screen.dart';
 
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 
-class ProjectDashboardPage extends StatefulWidget {
+class ProjectDashboardPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectDashboardPage({super.key, required this.projectId});
 
   @override
-  State<ProjectDashboardPage> createState() => _ProjectDashboardPageState();
+  ConsumerState<ProjectDashboardPage> createState() => _ProjectDashboardPageState();
 }
 
-class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
+class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
   bool _loading = true;
 
   // Stats
@@ -101,6 +103,12 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final perms = ref.watch(permissionsProvider(widget.projectId)).valueOrNull
+        ?? ProjectPermissions.none;
+    final canViewTasks    = perms.canView('tasks');
+    final canViewDefects  = perms.canView('defects');
+    final canViewSchedule = perms.canView('schedule');
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(leading: burgerMenuLeading(context), title: const Text('Übersicht')),
@@ -113,37 +121,45 @@ class _ProjectDashboardPageState extends State<ProjectDashboardPage> {
                 padding: const EdgeInsets.fromLTRB(
                     AppSpacing.screenH, 16, AppSpacing.screenH, 32),
                 children: [
-                  // ── Progress Card ──────────────────────────────────────
-                  _buildProgressCard(),
-                  const SizedBox(height: 16),
+                  // ── Progress Card (tasks + milestones) ────────────────
+                  if (canViewTasks || canViewSchedule) ...[                    
+                    _buildProgressCard(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Stats Grid ─────────────────────────────────────────
-                  _buildStatsGrid(),
-                  const SizedBox(height: 16),
+                  if (canViewTasks) ...[                    
+                    _buildStatsGrid(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Recent Activity ────────────────────────────────────
-                  _buildRecentActivity(),
-                  const SizedBox(height: 16),
+                  if (canViewTasks || canViewDefects) ...[                    
+                    _buildRecentActivity(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Upcoming Events ────────────────────────────────────
-                  _buildUpcomingEvents(),
-                  const SizedBox(height: 16),
+                  if (canViewSchedule) ...[                    
+                    _buildUpcomingEvents(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Defects Summary ────────────────────────────────────
-                  if (_openDefects > 0) ...[
+                  if (canViewDefects && _openDefects > 0) ...[                    
                     _buildDefectsSummary(),
                     const SizedBox(height: 16),
                   ],
 
                   // ── Milestones ─────────────────────────────────────────
-                  _buildMilestones(),
+                  if (canViewSchedule) ...[                    
+                    _buildMilestones(),
+                  ],
                 ],
               ),
             ),
     );
-  }
-
-  // ── Progress Card ──────────────────────────────────────────────────────────
+  }  // ── Progress Card ──────────────────────────────────────────────────────────
   Widget _buildProgressCard() {
     final taskPct = _totalTasks > 0 ? (_completedTasks / _totalTasks) : 0.0;
     final milestoneDone = _milestones.where((m) => m['status'] == 'completed').length;

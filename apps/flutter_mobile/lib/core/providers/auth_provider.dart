@@ -154,6 +154,30 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(loading: false);
   }
 
+  /// Opens the system browser for Google Sign-In via Supabase OAuth.
+  /// Returns an error message string on failure, null on success.
+  Future<String?> signInWithGoogle() async {
+    try {
+      await SupabaseService.signInWithGoogle();
+      // Auth state change listener in _init() will load the profile
+      // once the OAuth redirect completes.
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  /// Opens the system browser for Apple Sign-In via Supabase OAuth.
+  /// Returns an error message string on failure, null on success.
+  Future<String?> signInWithApple() async {
+    try {
+      await SupabaseService.signInWithApple();
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   @override
   void dispose() {
     _authSub?.cancel();

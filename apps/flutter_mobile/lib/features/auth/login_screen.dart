@@ -544,17 +544,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Widget _socialButtons() {
     return Row(children: [
-      Expanded(child: _socialBtn(label: 'Google', icon: const _GoogleIcon(), onPressed: () {})),
+      Expanded(child: _socialBtn(
+        label: 'Google',
+        icon: const _GoogleIcon(),
+        onPressed: _loading ? null : () async {
+          setState(() { _loading = true; _error = null; });
+          final err = await ref.read(authProvider.notifier).signInWithGoogle();
+          if (!mounted) return;
+          if (err != null) setState(() { _error = err; _loading = false; });
+          // On success, the auth state change listener handles navigation.
+        },
+      )),
       const SizedBox(width: 12),
       Expanded(child: _socialBtn(
         label: 'Apple',
         icon: Icon(LucideIcons.apple, size: 18, color: Colors.grey.shade800),
-        onPressed: () {},
+        onPressed: _loading ? null : () async {
+          setState(() { _loading = true; _error = null; });
+          final err = await ref.read(authProvider.notifier).signInWithApple();
+          if (!mounted) return;
+          if (err != null) setState(() { _error = err; _loading = false; });
+        },
       )),
     ]);
   }
 
-  Widget _socialBtn({required String label, required Widget icon, required VoidCallback onPressed}) {
+  Widget _socialBtn({required String label, required Widget icon, required VoidCallback? onPressed}) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(

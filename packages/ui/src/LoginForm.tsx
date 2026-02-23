@@ -13,6 +13,7 @@ export interface RegisterData {
 export interface AuthProps {
   onLogin: (email: string, pass: string) => Promise<void>;
   onRegister: (data: RegisterData) => Promise<void>;
+  onOAuthLogin?: (provider: 'google' | 'apple') => Promise<void>;
   isLoading?: boolean;
   error?: string | null;
   successMessage?: string | null;
@@ -248,7 +249,7 @@ function BlueprintBackground() {
 }
 
 // ── Main LoginForm component ─────────────────────────────────
-export function LoginForm({ onLogin, onRegister, isLoading, error, successMessage }: AuthProps) {
+export function LoginForm({ onLogin, onRegister, onOAuthLogin, isLoading, error, successMessage }: AuthProps) {
   React.useEffect(() => { injectCSS(); }, []);
 
   const [isLogin, setIsLogin] = React.useState(true);
@@ -595,12 +596,63 @@ export function LoginForm({ onLogin, onRegister, isLoading, error, successMessag
           {/* Divider */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 16,
-            margin: '28px 0',
+            margin: '28px 0 20px',
           }}>
             <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
             <span style={{ color: '#94a3b8', fontSize: 13 }}>oder</span>
             <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
           </div>
+
+          {/* OAuth Buttons */}
+          {onOAuthLogin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              {/* Google */}
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => onOAuthLogin('google')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  width: '100%', padding: '11px 16px',
+                  background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
+                  fontSize: 14, fontWeight: 600, color: '#0f172a', cursor: 'pointer',
+                  transition: 'border-color 0.15s, box-shadow 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#94a3b8'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.07)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e2e8f0'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}
+              >
+                <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
+                  <path d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z" fill="#FFC107"/>
+                  <path d="M6.3 14.7l7 5.1C15 16.1 19.1 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.7 7.4 6.3 14.7z" fill="#FF3D00"/>
+                  <path d="M24 46c5.5 0 10.5-1.9 14.3-5.1l-6.6-5.6C29.5 36.9 26.9 38 24 38c-6.1 0-11.3-4.1-13.1-9.6l-7 5.4C7.5 41.8 15.2 46 24 46z" fill="#4CAF50"/>
+                  <path d="M44.5 20H24v8.5h11.8c-1 2.8-2.9 5.1-5.5 6.7l6.6 5.6C41.2 37.2 44.5 31 44.5 24c0-1.3-.2-2.7-.5-4z" fill="#1976D2"/>
+                </svg>
+                Mit Google anmelden
+              </button>
+
+              {/* Apple */}
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => onOAuthLogin('apple')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  width: '100%', padding: '11px 16px',
+                  background: '#000', border: '1.5px solid #000', borderRadius: 10,
+                  fontSize: 14, fontWeight: 600, color: '#fff', cursor: 'pointer',
+                  transition: 'background 0.15s, box-shadow 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.18)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#000'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}
+              >
+                <svg width="16" height="18" viewBox="0 0 814 1000" fill="white">
+                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-157.2-92.2c-57.6-60.3-103-153.2-103-241.4 0-203.8 131.4-314.5 260.3-314.5 69.4 0 127.1 45.9 171.2 45.9 42.8 0 109.7-48.9 189.9-48.9 30.7 0 109.7 2.6 163.5 85.5z"/>
+                  <path d="M549.1 175.2c22.4-26.9 38.4-64.1 38.4-101.4 0-5.1-.4-10.3-1.3-14.4-36.5 1.4-79.8 24.4-106.2 54.5-20.5 23.7-39.4 60.3-39.4 98.1 0 5.7.6 11.4 1.3 13.1 2.5.6 6.4 1.3 10.2 1.3 32.7 0 73.3-21.7 97-51.2z"/>
+                </svg>
+                Mit Apple anmelden
+              </button>
+            </div>
+          )}
 
           {/* Toggle */}
           <div style={{ textAlign: 'center' }}>

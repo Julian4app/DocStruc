@@ -40,6 +40,22 @@ class SupabaseService {
 
   static Future<void> signOut() => auth.signOut();
 
+  /// Sign in with Google via Supabase OAuth.
+  /// On mobile this opens a web browser / Chrome Custom Tab and redirects
+  /// back to the app via the deep-link scheme configured in Supabase.
+  static Future<void> signInWithGoogle() => auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.docstruc://login-callback',
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+
+  /// Sign in with Apple via Supabase OAuth.
+  static Future<void> signInWithApple() => auth.signInWithOAuth(
+        OAuthProvider.apple,
+        redirectTo: 'io.supabase.docstruc://login-callback',
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+
   static Future<void> resetPassword(String email) =>
       auth.resetPasswordForEmail(email);
 
