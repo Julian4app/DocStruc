@@ -162,7 +162,9 @@ $$;
 -- Also fix check_user_permission to use the same logic
 -- ============================================================================
 
-DROP FUNCTION IF EXISTS public.check_user_permission(UUID, UUID, TEXT, TEXT);
+-- Must use CASCADE because storage.objects RLS policies depend on this function.
+-- All dependent policies are recreated immediately below.
+DROP FUNCTION IF EXISTS public.check_user_permission(UUID, UUID, TEXT, TEXT) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.check_user_permission(
     p_user_id       UUID,
@@ -254,6 +256,129 @@ $$;
 
 
 -- ============================================================================
+-- Recreate storage RLS policies dropped by CASCADE above.
+-- These were lost when check_user_permission was dropped with CASCADE.
+-- ============================================================================
+
+-- project-info-images: INSERT
+DROP POLICY IF EXISTS "Users can upload project info images" ON storage.objects;
+CREATE POLICY "Users can upload project info images"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'project-info-images'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'general_info', 'edit')
+    )
+  )
+);
+
+-- project-info-images: UPDATE
+DROP POLICY IF EXISTS "Users can update project info images" ON storage.objects;
+CREATE POLICY "Users can update project info images"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'project-info-images'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'general_info', 'edit')
+    )
+  )
+);
+
+-- project-info-images: DELETE
+DROP POLICY IF EXISTS "Users can delete project info images" ON storage.objects;
+CREATE POLICY "Users can delete project info images"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'project-info-images'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'general_info', 'edit')
+    )
+  )
+);
+
+-- project-voice-messages: INSERT
+DROP POLICY IF EXISTS "Users can upload voice messages" ON storage.objects;
+CREATE POLICY "Users can upload voice messages"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'project-voice-messages'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'communication', 'create')
+    )
+  )
+);
+
+-- project-voice-messages: UPDATE
+DROP POLICY IF EXISTS "Users can update voice messages" ON storage.objects;
+CREATE POLICY "Users can update voice messages"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (
+  bucket_id = 'project-voice-messages'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'communication', 'create')
+    )
+  )
+);
+
+-- project-voice-messages: DELETE
+DROP POLICY IF EXISTS "Users can delete voice messages" ON storage.objects;
+CREATE POLICY "Users can delete voice messages"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (
+  bucket_id = 'project-voice-messages'
+  AND (storage.foldername(name))[1] IN (
+    SELECT p.id::text FROM projects p
+    WHERE p.owner_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id
+        AND pm.user_id = auth.uid()
+        AND check_user_permission(auth.uid(), p.id, 'communication', 'create')
+    )
+  )
+);
+
+-- Restore EXECUTE grant for authenticated users
+GRANT EXECUTE ON FUNCTION public.check_user_permission(UUID, UUID, TEXT, TEXT) TO authenticated;
+
+
+-- ============================================================================
 -- Diagnostic queries (run manually after applying to verify):
 -- ============================================================================
 --
@@ -263,10 +388,10 @@ $$;
 -- 2. Check role_permissions for the "Niet" role:
 --    SELECT rp.module_key, rp.can_view, rp.can_create, rp.can_edit, rp.can_delete
 --    FROM role_permissions rp
---    JOIN roles r ON r.id = rp.role_id
---    WHERE r.id = '50209a8e-d280-451a-9ae8-2666d0c9261f';
+--    WHERE rp.role_id = '50209a8e-d280-451a-9ae8-2666d0c9261f';
 --
 -- 3. Verify a user assigned the "Niet" role only sees general_info:
 --    SELECT * FROM get_user_project_permissions('<niet_user_id>', '<project_id>');
 --    -- Expected: only general_info has can_view=true
 -- ============================================================================
+
