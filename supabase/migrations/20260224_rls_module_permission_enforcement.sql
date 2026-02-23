@@ -604,7 +604,7 @@ CREATE POLICY building_apartments_delete ON public.building_apartments
     )
   );
 
--- building_attachments
+-- building_attachments (no project_id column — join through apartment→floor→staircase)
 DO $$
 DECLARE pol RECORD;
 BEGIN
@@ -620,19 +620,37 @@ END $$;
 CREATE POLICY building_attachments_select ON public.building_attachments
   FOR SELECT TO authenticated
   USING (
-    public.check_user_permission(auth.uid(), project_id, 'documentation', 'view')
+    EXISTS (
+      SELECT 1 FROM public.building_apartments ba
+        JOIN public.building_floors bf ON bf.id = ba.floor_id
+        JOIN public.building_staircases bs ON bs.id = bf.staircase_id
+      WHERE ba.id = building_attachments.apartment_id
+        AND public.check_user_permission(auth.uid(), bs.project_id, 'documentation', 'view')
+    )
   );
 
 CREATE POLICY building_attachments_insert ON public.building_attachments
   FOR INSERT TO authenticated
   WITH CHECK (
-    public.check_user_permission(auth.uid(), project_id, 'documentation', 'create')
+    EXISTS (
+      SELECT 1 FROM public.building_apartments ba
+        JOIN public.building_floors bf ON bf.id = ba.floor_id
+        JOIN public.building_staircases bs ON bs.id = bf.staircase_id
+      WHERE ba.id = building_attachments.apartment_id
+        AND public.check_user_permission(auth.uid(), bs.project_id, 'documentation', 'create')
+    )
   );
 
 CREATE POLICY building_attachments_delete ON public.building_attachments
   FOR DELETE TO authenticated
   USING (
-    public.check_user_permission(auth.uid(), project_id, 'documentation', 'delete')
+    EXISTS (
+      SELECT 1 FROM public.building_apartments ba
+        JOIN public.building_floors bf ON bf.id = ba.floor_id
+        JOIN public.building_staircases bs ON bs.id = bf.staircase_id
+      WHERE ba.id = building_attachments.apartment_id
+        AND public.check_user_permission(auth.uid(), bs.project_id, 'documentation', 'delete')
+    )
   );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -680,107 +698,107 @@ END $$;
 -- FILE_VERSIONS + FILE_SHARES (files module)
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- file_versions
+-- project_file_versions
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables
-             WHERE table_schema = 'public' AND table_name = 'file_versions') THEN
+             WHERE table_schema = 'public' AND table_name = 'project_file_versions') THEN
 
     DECLARE pol RECORD;
     BEGIN
       FOR pol IN
         SELECT policyname FROM pg_policies
-        WHERE schemaname = 'public' AND tablename = 'file_versions'
+        WHERE schemaname = 'public' AND tablename = 'project_file_versions'
       LOOP
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.file_versions', pol.policyname);
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.project_file_versions', pol.policyname);
       END LOOP;
     END;
 
-    EXECUTE 'CREATE POLICY file_versions_select ON public.file_versions
+    EXECUTE 'CREATE POLICY project_file_versions_select ON public.project_file_versions
       FOR SELECT TO authenticated
       USING (
         EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_versions.file_id
+          WHERE pf.id = project_file_versions.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''view'')
         )
       )';
 
-    EXECUTE 'CREATE POLICY file_versions_insert ON public.file_versions
+    EXECUTE 'CREATE POLICY project_file_versions_insert ON public.project_file_versions
       FOR INSERT TO authenticated
       WITH CHECK (
         EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_versions.file_id
+          WHERE pf.id = project_file_versions.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''create'')
         )
       )';
 
-    EXECUTE 'CREATE POLICY file_versions_delete ON public.file_versions
+    EXECUTE 'CREATE POLICY project_file_versions_delete ON public.project_file_versions
       FOR DELETE TO authenticated
       USING (
         EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_versions.file_id
+          WHERE pf.id = project_file_versions.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''delete'')
         )
       )';
 
-    RAISE NOTICE 'file_versions policies updated';
+    RAISE NOTICE 'project_file_versions policies updated';
   ELSE
-    RAISE NOTICE 'file_versions table not found — skipped';
+    RAISE NOTICE 'project_file_versions table not found — skipped';
   END IF;
 END $$;
 
--- file_shares
+-- project_file_shares
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables
-             WHERE table_schema = 'public' AND table_name = 'file_shares') THEN
+             WHERE table_schema = 'public' AND table_name = 'project_file_shares') THEN
 
     DECLARE pol RECORD;
     BEGIN
       FOR pol IN
         SELECT policyname FROM pg_policies
-        WHERE schemaname = 'public' AND tablename = 'file_shares'
+        WHERE schemaname = 'public' AND tablename = 'project_file_shares'
       LOOP
-        EXECUTE format('DROP POLICY IF EXISTS %I ON public.file_shares', pol.policyname);
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.project_file_shares', pol.policyname);
       END LOOP;
     END;
 
-    EXECUTE 'CREATE POLICY file_shares_select ON public.file_shares
+    EXECUTE 'CREATE POLICY project_file_shares_select ON public.project_file_shares
       FOR SELECT TO authenticated
       USING (
         EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_shares.file_id
+          WHERE pf.id = project_file_shares.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''view'')
         )
       )';
 
-    EXECUTE 'CREATE POLICY file_shares_insert ON public.file_shares
+    EXECUTE 'CREATE POLICY project_file_shares_insert ON public.project_file_shares
       FOR INSERT TO authenticated
       WITH CHECK (
         EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_shares.file_id
+          WHERE pf.id = project_file_shares.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''create'')
         )
       )';
 
-    EXECUTE 'CREATE POLICY file_shares_delete ON public.file_shares
+    EXECUTE 'CREATE POLICY project_file_shares_delete ON public.project_file_shares
       FOR DELETE TO authenticated
       USING (
         shared_by = auth.uid()
         OR EXISTS (
           SELECT 1 FROM public.project_files pf
-          WHERE pf.id = file_shares.file_id
+          WHERE pf.id = project_file_shares.file_id
             AND public.check_user_permission(auth.uid(), pf.project_id, ''files'', ''delete'')
         )
       )';
 
-    RAISE NOTICE 'file_shares policies updated';
+    RAISE NOTICE 'project_file_shares policies updated';
   ELSE
-    RAISE NOTICE 'file_shares table not found — skipped';
+    RAISE NOTICE 'project_file_shares table not found — skipped';
   END IF;
 END $$;
