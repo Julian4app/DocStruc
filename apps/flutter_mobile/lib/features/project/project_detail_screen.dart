@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../core/providers/permissions_provider.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'sub_pages/project_dashboard_page.dart';
@@ -17,18 +19,35 @@ import 'sub_pages/project_documentation_page.dart';
 import 'sub_pages/project_activity_page.dart';
 import 'sub_pages/project_objektplan_page.dart';
 
+// Maps drawer route keys → permission module keys
+const _routeToModule = {
+  'general-info':   'general_info',
+  'tasks':          'tasks',
+  'defects':        'defects',
+  'schedule':       'schedule',
+  'files':          'files',
+  'diary':          'diary',
+  'communication':  'communication',
+  'documentation':  'documentation',
+  'objektplan':     'documentation',
+  // no module guard needed for these:
+  // 'dashboard', 'participants', 'activity'
+};
+
 /// Project host screen.
 /// Embeds the active sub-page directly and provides a dark left-side drawer
 /// (opened via a hamburger button) for switching between sections.
-class ProjectDetailScreen extends StatefulWidget {
+/// Uses [permissionsProvider] to hide restricted menu items and show
+/// a "Kein Zugriff" screen when a user navigates to a locked section.
+class ProjectDetailScreen extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectDetailScreen({super.key, required this.projectId});
 
   @override
-  State<ProjectDetailScreen> createState() => _ProjectDetailScreenState();
+  ConsumerState<ProjectDetailScreen> createState() => _ProjectDetailScreenState();
 }
 
-class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
+class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   Map<String, dynamic>? _project;
   bool _loading = true;
@@ -45,7 +64,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (mounted) setState(() { _project = p; _loading = false; });
   }
 
-  Widget _buildSubPage() {
+  Widget _buildSubPage(ProjectPermissions perms) {
+    // Check if route requires a module permission
+    final moduleKey = _routeToModule[_activeRoute];
+    if (moduleKey != null && !perms.canView(moduleKey)) {
+      return _NoAccessPage(route: _activeRoute);
+    }
+
     switch (_activeRoute) {
       case 'dashboard':        return ProjectDashboardPage(projectId: widget.projectId);
       case 'general-info':     return ProjectGeneralInfoPage(projectId: widget.projectId);
@@ -69,9 +94,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final name  = _project?['name'] ?? 'Projekt';
+    final name   = _project?['name'] ?? 'Projekt';
     final status = _project?['status'] ?? 'active';
-    final color = _parseColor(_project?['color']);
+    final color  = _parseColor(_project?['color']);
+
+    // Watch permissions — show loading spinner while resolving
+    final permsAsync = ref.watch(permissionsProvider(widget.projectId));
+    final perms = permsAsync.valueOrNull ?? ProjectPermissions.none;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -80,6 +109,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         status: status,
         color: color,
         activeRoute: _activeRoute,
+        perms: perms,
         onSelectRoute: (route) {
           setState(() => _activeRoute = route);
           Navigator.of(context).pop();
@@ -92,7 +122,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       body: BurgerMenuScope(
         openDrawer: () => _scaffoldKey.currentState?.openDrawer(),
         navigateTo: (route) => setState(() => _activeRoute = route),
-        child: _buildSubPage(),
+        child: permsAsync.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildSubPage(perms),
       ),
     );
   }
@@ -101,6 +133,40 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (hex == null || hex.isEmpty) return AppColors.primary;
     try { return Color(int.parse(hex.replaceFirst('#', '0xFF'))); }
     catch (_) { return AppColors.primary; }
+  }
+}
+
+/// Shown when a user navigates to a section they have no view permission for.
+class _NoAccessPage extends StatelessWidget {
+  final String route;
+  const _NoAccessPage({required this.route});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.lock, size: 56, color: Colors.grey.shade400),
+              const SizedBox(height: 20),
+              const Text(
+                'Kein Zugriff',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Sie haben keine Berechtigung, diesen Bereich zu sehen.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -125,6 +191,7 @@ class _ProjectDrawer extends StatelessWidget {
   final String status;
   final Color color;
   final String activeRoute;
+  final ProjectPermissions perms;
   final ValueChanged<String> onSelectRoute;
   final VoidCallback onCloseProject;
 
@@ -133,6 +200,7 @@ class _ProjectDrawer extends StatelessWidget {
     required this.status,
     required this.color,
     required this.activeRoute,
+    required this.perms,
     required this.onSelectRoute,
     required this.onCloseProject,
   });
@@ -211,24 +279,42 @@ class _ProjectDrawer extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: [
+                  // Always visible
                   _DItem(LucideIcons.layoutDashboard, 'Übersicht',       'dashboard',      activeRoute, accent, txt, muted, onSelectRoute),
-                  _DItem(LucideIcons.info,            'Allgemeine Info', 'general-info',   activeRoute, accent, txt, muted, onSelectRoute),
-                  const SizedBox(height: 8),
-                  _DSec('AUFGABEN & MÄNGEL', muted),
-                  _DItem(LucideIcons.checkSquare,     'Aufgaben',        'tasks',          activeRoute, accent, txt, muted, onSelectRoute),
-                  _DItem(LucideIcons.alertTriangle,   'Mängel',          'defects',        activeRoute, accent, txt, muted, onSelectRoute),
-                  const SizedBox(height: 8),
-                  _DSec('PLANUNG', muted),
-                  _DItem(LucideIcons.calendar,        'Zeitplan',        'schedule',       activeRoute, accent, txt, muted, onSelectRoute),
-                  const SizedBox(height: 8),
-                  _DSec('DOKUMENTE', muted),
-                  _DItem(LucideIcons.folderOpen,      'Dateien',         'files',          activeRoute, accent, txt, muted, onSelectRoute),
-                  _DItem(LucideIcons.fileText,        'Dokumentation',   'documentation',  activeRoute, accent, txt, muted, onSelectRoute),
-                  _DItem(LucideIcons.building2,       'Objektplan',      'objektplan',     activeRoute, accent, txt, muted, onSelectRoute),
-                  const SizedBox(height: 8),
-                  _DSec('KOMMUNIKATION', muted),
-                  _DItem(LucideIcons.bookOpen,        'Bautagebuch',     'diary',          activeRoute, accent, txt, muted, onSelectRoute),
-                  _DItem(LucideIcons.messageCircle,   'Kommunikation',   'communication',  activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('general_info'))
+                    _DItem(LucideIcons.info,            'Allgemeine Info', 'general-info',   activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('tasks') || perms.canView('defects')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('AUFGABEN & MÄNGEL', muted),
+                  ],
+                  if (perms.canView('tasks'))
+                    _DItem(LucideIcons.checkSquare,     'Aufgaben',        'tasks',          activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('defects'))
+                    _DItem(LucideIcons.alertTriangle,   'Mängel',          'defects',        activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('schedule')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('PLANUNG', muted),
+                    _DItem(LucideIcons.calendar,        'Zeitplan',        'schedule',       activeRoute, accent, txt, muted, onSelectRoute),
+                  ],
+                  if (perms.canView('files') || perms.canView('documentation')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('DOKUMENTE', muted),
+                  ],
+                  if (perms.canView('files'))
+                    _DItem(LucideIcons.folderOpen,      'Dateien',         'files',          activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('documentation')) ...[
+                    _DItem(LucideIcons.fileText,        'Dokumentation',   'documentation',  activeRoute, accent, txt, muted, onSelectRoute),
+                    _DItem(LucideIcons.building2,       'Objektplan',      'objektplan',     activeRoute, accent, txt, muted, onSelectRoute),
+                  ],
+                  if (perms.canView('diary') || perms.canView('communication')) ...[
+                    const SizedBox(height: 8),
+                    _DSec('KOMMUNIKATION', muted),
+                  ],
+                  if (perms.canView('diary'))
+                    _DItem(LucideIcons.bookOpen,        'Bautagebuch',     'diary',          activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('communication'))
+                    _DItem(LucideIcons.messageCircle,   'Kommunikation',   'communication',  activeRoute, accent, txt, muted, onSelectRoute),
+                  // Participants and Activity are always visible
                   const SizedBox(height: 8),
                   _DSec('TEAM', muted),
                   _DItem(LucideIcons.users,           'Beteiligte',      'participants',   activeRoute, accent, txt, muted, onSelectRoute),
