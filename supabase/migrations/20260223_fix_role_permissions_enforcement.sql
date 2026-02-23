@@ -162,6 +162,8 @@ $$;
 -- Also fix check_user_permission to use the same logic
 -- ============================================================================
 
+DROP FUNCTION IF EXISTS public.check_user_permission(UUID, UUID, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.check_user_permission(
     p_user_id       UUID,
     p_project_id    UUID,
