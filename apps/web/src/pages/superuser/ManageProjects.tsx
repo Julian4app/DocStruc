@@ -6,6 +6,7 @@ import { Button, Input } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { Project } from '@docstruc/logic';
 import { ProjectCreateModal } from '../../components/ProjectCreateModal';
 import { ProjectEditModal } from '../../components/ProjectEditModal';
@@ -17,6 +18,7 @@ export function ManageProjects() {
     const navigate = useNavigate();
     const { setTitle, setSubtitle, setActions } = useLayout();
     const { showToast } = useToast();
+    const { userId } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     
     useEffect(() => {
@@ -27,7 +29,6 @@ export function ManageProjects() {
 
     const [loading, setLoading] = useState(false);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [userId, setUserId] = useState<string | null>(null);
 
     // Edit Mode
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -40,13 +41,10 @@ export function ManageProjects() {
     }, [setActions]);
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data }) => {
-            if (data.user) {
-                setUserId(data.user.id);
-                fetchProjects();
-            }
-        });
-    }, []);
+        if (userId) {
+            fetchProjects();
+        }
+    }, [userId]);
 
     const fetchProjects = async () => {
         setLoading(true);

@@ -8,6 +8,7 @@ import { CountrySelect } from '../../components/CountrySelect';
 import { PhoneInput } from '../../components/PhoneInput';
 import { useToast } from '../../components/ToastProvider';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing } from '@docstruc/theme';
 import { Plus, Trash2, Edit2, User, Building, Hammer, Mail, Check } from 'lucide-react';
 
@@ -31,7 +32,7 @@ export function Accessors() {
   // Selected Item for Detail View / Editing
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const { userId } = useAuth();
   const [assignedProjects, setAssignedProjects] = useState<any[]>([]);
 
   // Generic Item State (for Create/Edit)
@@ -67,14 +68,8 @@ export function Accessors() {
   });
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id || null);
-    });
-  }, []);
-
-  useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, userId]);
 
   const fetchData = async () => {
     // Optimistic cache load

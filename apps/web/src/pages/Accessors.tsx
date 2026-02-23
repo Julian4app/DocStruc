@@ -5,6 +5,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { ModernModal } from '../components/ModernModal';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../contexts/AuthContext';
 import { UserCog, Plus, Trash2, Edit2, Shield, Eye, EyeOff, Check, X, Building2, Crown, Users as UsersIcon, UserPlus } from 'lucide-react';
 
 interface PermissionModule {
@@ -73,6 +74,7 @@ interface TeamMemberProfile {
 
 export function Accessors() {
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'roles' | 'users' | 'teams'>('roles');
   
@@ -147,8 +149,7 @@ export function Accessors() {
 
   const loadRoles = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
@@ -162,7 +163,7 @@ export function Accessors() {
             can_delete
           )
         `)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -181,13 +182,12 @@ export function Accessors() {
 
   const loadAccessors = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       const { data: accessorsData, error: accessorsError } = await supabase
         .from('user_accessors')
         .select('*')
-        .eq('owner_id', user.id)
+        .eq('owner_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -200,8 +200,7 @@ export function Accessors() {
 
   const loadTeams = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       // Load all teams
       const { data: teamsData, error: teamsError } = await supabase
@@ -274,8 +273,7 @@ export function Accessors() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht angemeldet');
+      if (!userId) throw new Error('Nicht angemeldet');
 
       if (editingTeam) {
         const { error } = await supabase
@@ -302,7 +300,7 @@ export function Accessors() {
             contact_email: teamContactEmail || null,
             contact_phone: teamContactPhone || null,
             address: teamAddress || null,
-            created_by: user.id,
+            created_by: userId,
             is_active: true,
           });
 
@@ -417,18 +415,17 @@ export function Accessors() {
       console.log('✅ Profile updated successfully:', updateResult[0]);
 
       // Also ensure this person is visible as accessor for the superuser
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      if (userId) {
         const { data: existingAccessor } = await supabase
           .from('user_accessors')
           .select('id')
-          .eq('owner_id', user.id)
+          .eq('owner_id', userId)
           .eq('accessor_email', adminEmail.trim().toLowerCase())
           .maybeSingle();
 
         if (!existingAccessor) {
           await supabase.from('user_accessors').insert({
-            owner_id: user.id,
+            owner_id: userId,
             accessor_email: adminEmail.trim().toLowerCase(),
             accessor_first_name: profile.first_name,
             accessor_last_name: profile.last_name,
@@ -506,8 +503,7 @@ export function Accessors() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht angemeldet');
+      if (!userId) throw new Error('Nicht angemeldet');
 
       let roleId = editingRole?.id;
 
@@ -528,7 +524,7 @@ export function Accessors() {
         const { data: newRole, error: insertError } = await supabase
           .from('roles')
           .insert({
-            user_id: user.id,
+            user_id: userId,
             role_name: roleName,
             role_description: roleDescription,
             is_system_role: false,
@@ -647,8 +643,7 @@ export function Accessors() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht angemeldet');
+      if (!userId) throw new Error('Nicht angemeldet');
 
       if (editingUser) {
         // Update existing user
@@ -672,7 +667,7 @@ export function Accessors() {
         const { error } = await supabase
           .from('user_accessors')
           .insert({
-            owner_id: user.id,
+            owner_id: userId,
             accessor_email: userEmail,
             accessor_first_name: userFirstName,
             accessor_last_name: userLastName,

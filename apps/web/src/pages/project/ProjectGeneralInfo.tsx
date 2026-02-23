@@ -288,18 +288,56 @@ export function ProjectGeneralInfo() {
     }
   };
 
+  /**
+   * Resize an image to at most MAX_DIMENSION on the longest side, and compress
+   * it to JPEG at 85 % quality. Falls back to the original file on any error.
+   */
+  const resizeImage = (file: File): Promise<File> =>
+    new Promise((resolve) => {
+      const MAX_DIMENSION = 2048;
+      const img = new window.Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const { width, height } = img;
+        const scale = Math.min(1, MAX_DIMENSION / Math.max(width, height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const baseName = file.name.replace(/\.[^.]+$/, '');
+              resolve(new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' }));
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          0.85
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      };
+      img.src = objectUrl;
+    });
+
   const uploadImage = async (file: File) => {
     if (!projectInfo) return;
 
     setUploadingImage(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
+      // Resize/compress before uploading so large camera photos don't fail
+      const resized = await resizeImage(file);
+      const fileName = `${Date.now()}.jpg`;
       const filePath = `${id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('project-info-images')
-        .upload(filePath, file);
+        .upload(filePath, resized);
 
       if (uploadError) throw uploadError;
 
@@ -308,9 +346,9 @@ export function ProjectGeneralInfo() {
         .insert({
           project_info_id: projectInfo.id,
           storage_path: filePath,
-          file_name: file.name,
-          file_size: file.size,
-          mime_type: file.type,
+          file_name: resized.name,
+          file_size: resized.size,
+          mime_type: resized.type,
           display_order: images.length,
         });
 

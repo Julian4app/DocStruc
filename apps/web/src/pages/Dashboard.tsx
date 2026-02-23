@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { ProjectCard, Button } from '@docstruc/ui';
 import { supabase } from '../lib/supabase';
-import { Session } from '@supabase/supabase-js';
 import { Project } from '@docstruc/logic';
+import { useAuth } from '../contexts/AuthContext';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
@@ -26,9 +26,8 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { setTitle, setSubtitle, setActions } = useLayout();
   const { showToast } = useToast();
-  const [session, setSession] = useState<Session | null>(null);
+  const { userId, isSuperuser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [isSuperuser, setIsSuperuser] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [upcomingMilestones, setUpcomingMilestones] = useState<TimelineEvent[]>([]);
@@ -36,29 +35,23 @@ export function Dashboard() {
   useEffect(() => {
     setTitle('Meine Projekte');
     setSubtitle('Übersicht aller Projekte und Aktivitäten');
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-          checkSuperuser(session.user.id);
-      }
-    });
   }, [setTitle]);
 
-  // Fetch projects whenever session changes
+  // Fetch projects whenever userId changes
   useEffect(() => {
-    if (session) {
+    if (userId) {
       fetchProjects();
       fetchMilestones();
     }
-  }, [session]);
+  }, [userId]);
 
   const handleCreateClick = useCallback(() => {
-      if (!session?.user) {
+      if (!userId) {
           showToast('Keine Benutzersitzung gefunden.', 'error');
           return;
       }
       setIsCreateModalOpen(true);
-  }, [session, showToast]);
+  }, [userId, showToast]);
 
   useEffect(() => {
     if (isSuperuser) {
@@ -73,25 +66,18 @@ export function Dashboard() {
     return () => setActions(null);
   }, [isSuperuser, setActions, handleCreateClick]);
 
-  const checkSuperuser = async (userId: string) => {
-      const { data } = await supabase.from('profiles').select('is_superuser').eq('id', userId).single();
-      setIsSuperuser(!!data?.is_superuser);
-  };
-
   const fetchProjects = async () => {
-    if (!session?.user) {
-      console.log('❌ Dashboard: No session, skipping project fetch');
+    if (!userId) {
+      console.log('❌ Dashboard: No userId, skipping project fetch');
       return;
     }
     
-    console.log('🔍 Dashboard: Fetching projects for user:', session.user.id);
+    console.log('🔍 Dashboard: Fetching projects for user:', userId);
     
     // Get projects user has access to via:
     // 1. Owner
     // 2. Project member
     // 3. Team access (team_project_access)
-    
-    const userId = session.user.id;
     
     // Get user's team info
     const { data: userProfile } = await supabase
@@ -252,8 +238,6 @@ export function Dashboard() {
     }
   };
 
-  if (!session) return null;
-
   const statCards = [
     { label: 'Gesamt Projekte', value: stats.total, icon: Folder, color: colors.primary, bgColor: '#EFF6FF', filter: 'total' },
     { label: 'Aktive Projekte', value: stats.active, icon: TrendingUp, color: '#10b981', bgColor: '#ECFDF5', filter: 'active' },
@@ -267,7 +251,7 @@ export function Dashboard() {
             isOpen={isCreateModalOpen} 
             onClose={() => setIsCreateModalOpen(false)} 
             onProjectCreated={fetchProjects}
-            userId={session.user.id}
+            userId={userId || ''}
         />
 
         {/* Stat Cards Row */}

@@ -5,6 +5,7 @@ import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
+import { useAuth } from '../../contexts/AuthContext';
 import { DatePicker } from '../../components/DatePicker';
 import { ImageUploader } from '../../components/ImageUploader';
 import { CountrySelect } from '../../components/CountrySelect';
@@ -37,6 +38,7 @@ export function ProjectManagementDetail() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { setTitle, setSubtitle } = useLayout();
+  const { userId } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -128,15 +130,14 @@ export function ProjectManagementDetail() {
 
   const loadResources = async () => {
     try {
-      // Get current user (superuser) ID
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Get current user (superuser) ID from AuthContext
+      if (!userId) return;
 
       // Load all user_accessors (the actual users that can be added to projects)
       const { data: accessorsData, error: accessorsError } = await supabase
         .from('user_accessors')
         .select('*')
-        .eq('owner_id', user.id)
+        .eq('owner_id', userId)
         .eq('is_active', true);
 
       if (accessorsError) throw accessorsError;
@@ -146,7 +147,7 @@ export function ProjectManagementDetail() {
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
         .select('id, role_name, role_description')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true);
       
       if (rolesError) throw rolesError;
@@ -157,9 +158,6 @@ export function ProjectManagementDetail() {
         .from('teams')
         .select('id, name, description')
         .eq('is_active', true);
-      
-      if (teamsError) throw teamsError;
-      setAllTeams(teamsData || []);
     } catch (error: any) {
       console.error('Error loading resources:', error);
     }
@@ -280,8 +278,8 @@ export function ProjectManagementDetail() {
         await supabase.from('project_available_roles').insert(projectRolesToInsert);
       }
 
-      // 1.5. Sync team_project_access with selected teams
-      const { data: { user } } = await supabase.auth.getUser();
+      // Sync team_project_access with selected teams
+      // userId already available from useAuth()
       const { data: existingTeamAccess } = await supabase
         .from('team_project_access')
         .select('id, team_id')
@@ -300,11 +298,11 @@ export function ProjectManagementDetail() {
       }
 
       // Add newly selected teams
-      if (teamsToAdd.length > 0 && user) {
+      if (teamsToAdd.length > 0 && userId) {
         const teamAccessToInsert = teamsToAdd.map(teamId => ({
           project_id: id,
           team_id: teamId,
-          added_by: user.id
+          added_by: userId
         }));
         await supabase.from('team_project_access').insert(teamAccessToInsert);
       }

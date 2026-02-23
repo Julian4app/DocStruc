@@ -4,14 +4,15 @@ import { supabase } from '../lib/supabase';
 import { Button, Input } from '@docstruc/ui';
 import { LayoutContext } from '../layouts/LayoutContext';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../contexts/AuthContext';
 import { colors } from '@docstruc/theme';
 import { User, Mail, Phone, Building, Calendar, Shield, Save, Camera } from 'lucide-react';
 
 export function Profile() {
     const { setTitle, setSubtitle } = useContext(LayoutContext);
     const { showToast } = useToast();
+    const { userId, profile: authProfile } = useAuth();
     const [loading, setLoading] = useState(false);
-    const [user, setUser] = useState<any>(null);
     const [profile, setProfile] = useState({ 
         first_name: '', 
         last_name: '', 
@@ -26,31 +27,27 @@ export function Profile() {
         setSubtitle('Verwalten Sie Ihre persönlichen Informationen und Einstellungen');
         
         const getProfile = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            setUser(user);
-            if (user) {
-                // Try to fetch profile from database
-                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                if (data) {
-                    setProfile({
-                        first_name: data.first_name || '',
-                        last_name: data.last_name || '',
-                        avatar_url: data.avatar_url || '',
-                        phone: data.phone || '',
-                        company: data.company || '',
-                        position: data.position || ''
-                    });
-                } else {
-                    // Fallback to metadata
-                    setProfile({
-                        first_name: user.user_metadata?.first_name || '',
-                        last_name: user.user_metadata?.last_name || '',
-                        avatar_url: user.user_metadata?.avatar_url || '',
-                        phone: '',
-                        company: '',
-                        position: ''
-                    });
-                }
+            if (!userId) return;
+            // Try to fetch profile from database
+            const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+            if (data) {
+                setProfile({
+                    first_name: data.first_name || '',
+                    last_name: data.last_name || '',
+                    avatar_url: data.avatar_url || '',
+                    phone: data.phone || '',
+                    company: data.company || '',
+                    position: data.position || ''
+                });
+            } else if (authProfile) {
+                setProfile({
+                    first_name: authProfile.first_name || '',
+                    last_name: authProfile.last_name || '',
+                    avatar_url: authProfile.avatar_url || '',
+                    phone: '',
+                    company: '',
+                    position: ''
+                });
             }
         };
         getProfile();
@@ -64,10 +61,11 @@ export function Profile() {
     const handleSave = async () => {
         try {
             setLoading(true);
+            if (!userId) return;
             
             const updates = {
-                id: user.id,
-                email: user.email,
+                id: userId,
+                email: authProfile?.email,
                 first_name: profile.first_name,
                 last_name: profile.last_name,
                 avatar_url: profile.avatar_url,
@@ -115,7 +113,7 @@ export function Profile() {
                 
                 // Upload to Supabase Storage
                 const fileExt = file.name.split('.').pop();
-                const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+                const fileName = `${userId}-${Math.random()}.${fileExt}`;
                 const filePath = `avatars/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
@@ -151,7 +149,7 @@ export function Profile() {
         .toUpperCase()
         .slice(0, 2);
 
-    const joinedDate = user?.created_at ? new Date(user.created_at).toLocaleDateString('de-DE', {
+    const joinedDate = authProfile?.created_at ? new Date(authProfile.created_at).toLocaleDateString('de-DE', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -192,7 +190,7 @@ export function Profile() {
                     <Text style={styles.headerName}>{displayName}</Text>
                     <View style={styles.headerMeta}>
                         <Mail size={14} color="#64748b" />
-                        <Text style={styles.headerEmail}>{user?.email}</Text>
+                        <Text style={styles.headerEmail}>{authProfile?.email}</Text>
                     </View>
                     {joinedDate && (
                         <View style={styles.headerMeta}>
@@ -234,7 +232,7 @@ export function Profile() {
                         <Text style={styles.label}>E-Mail-Adresse</Text>
                         <View style={styles.readonlyInput}>
                             <Mail size={16} color="#94a3b8" />
-                            <Text style={styles.readonlyText}>{user?.email}</Text>
+                            <Text style={styles.readonlyText}>{authProfile?.email}</Text>
                         </View>
                         <Text style={styles.helperText}>E-Mail kann nicht geändert werden. Kontaktieren Sie den Support.</Text>
                     </View>
@@ -292,7 +290,7 @@ export function Profile() {
                         </View>
                         <Button 
                             onClick={() => {
-                                supabase.auth.resetPasswordForEmail(user?.email);
+                                supabase.auth.resetPasswordForEmail(authProfile?.email ?? '');
                                 showToast('Password-Reset-Link wurde an Ihre E-Mail gesendet!', 'success');
                             }} 
                             variant="secondary"

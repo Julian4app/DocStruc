@@ -5,6 +5,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { ModernModal } from '../components/ModernModal';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, Trash2, Edit2, Shield, Eye, Mail, Phone, Building2, UserPlus, Crown, UserMinus } from 'lucide-react';
 
 interface PermissionModule {
@@ -55,6 +56,7 @@ interface TeamInfo {
 
 export function MyTeam() {
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'members'>('members');
   const [team, setTeam] = useState<TeamInfo | null>(null);
@@ -96,9 +98,8 @@ export function MyTeam() {
     setLoading(true);
     try {
       console.log('🔍 MyTeam: Loading team data...');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('❌ MyTeam: No user found');
+      if (!userId) {
+        console.log('❌ MyTeam: No userId found');
         return;
       }
 
@@ -106,7 +107,7 @@ export function MyTeam() {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('team_id, team_role')
-        .eq('id', user.id)
+        .eq('id', userId)
         .single();
 
       console.log('📊 MyTeam: Profile:', { profile, profileError });
@@ -229,8 +230,7 @@ export function MyTeam() {
       console.log('✅ MyTeam: Profile updated successfully:', updateResult[0]);
 
       // Also create a user_accessor entry for the superuser to see this member
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      if (userId) {
         console.log('📝 MyTeam: Creating user_accessor entry...');
         
         // Find the superuser (team creator)
@@ -312,8 +312,7 @@ export function MyTeam() {
 
   const loadRoles = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
@@ -327,7 +326,7 @@ export function MyTeam() {
             can_delete
           )
         `)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -375,8 +374,7 @@ export function MyTeam() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht angemeldet');
+      if (!userId) throw new Error('Nicht angemeldet');
 
       let roleId = editingRole?.id;
 
@@ -389,7 +387,7 @@ export function MyTeam() {
       } else {
         const { data: newRole, error: insertError } = await supabase
           .from('roles')
-          .insert({ user_id: user.id, role_name: roleName, role_description: roleDescription, is_system_role: false, is_active: true })
+          .insert({ user_id: userId, role_name: roleName, role_description: roleDescription, is_system_role: false, is_active: true })
           .select()
           .single();
         if (insertError) throw insertError;

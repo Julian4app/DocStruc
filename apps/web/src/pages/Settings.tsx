@@ -5,12 +5,14 @@ import { Button, Input } from '@docstruc/ui';
 import { CustomSelect } from '../components/CustomSelect';
 import { useToast } from '../components/ToastProvider';
 import { LayoutContext } from '../layouts/LayoutContext';
+import { useAuth } from '../contexts/AuthContext';
 import { colors } from '@docstruc/theme';
 import { Settings as SettingsIcon, Bell, Globe, Moon, Shield, Mail } from 'lucide-react';
 
 export function Settings() {
   const { setTitle, setSubtitle } = useContext(LayoutContext);
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
     emailNotifications: true,
@@ -28,14 +30,12 @@ export function Settings() {
     
     // Load settings from database
     const loadSettings = async () => {
+      if (!userId) return;
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
         const { data } = await supabase
           .from('user_settings')
           .select('settings')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .single();
 
         if (data?.settings) {
@@ -57,14 +57,13 @@ export function Settings() {
   const handleSave = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!userId) return;
 
       // Save to user_settings table
       const { error } = await supabase
         .from('user_settings')
         .upsert({
-          user_id: user.id,
+          user_id: userId,
           settings: settings,
           updated_at: new Date().toISOString(),
         }, {

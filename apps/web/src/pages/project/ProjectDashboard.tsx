@@ -251,6 +251,24 @@ export function ProjectDashboard() {
   const canViewDefects  = permissions.canView('defects');
   const canViewSchedule = permissions.canView('schedule');
 
+  // Wait for permission resolution before rendering gated content
+  const permissionsLoading = (permissions as any).permissionsLoading as boolean | undefined;
+  if (permissionsLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 64 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%',
+            border: '4px solid #E2E8F0', borderTopColor: '#0E2A47',
+            animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ color: '#64748b', fontSize: 14 }}>Lade Dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
   const cardStyle: React.CSSProperties = {
     background: '#fff',
     borderRadius: 16,

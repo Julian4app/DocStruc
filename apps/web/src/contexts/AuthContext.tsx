@@ -12,6 +12,7 @@ export interface UserProfile {
   team_id: string | null;
   team_role: string | null;
   phone: string | null;
+  created_at?: string;
 }
 
 interface AuthState {

@@ -1,8 +1,13 @@
 import * as React from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
 import { Card } from "./Card";
-import { colors, spacing } from "@docstruc/theme";
+import { colors } from "@docstruc/theme";
 import { Project } from "@docstruc/logic";
+
+interface MapCoords {
+  lat: number;
+  lon: number;
+}
 
 export interface ProjectCardProps {
   project: Project;
@@ -26,61 +31,76 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
   };
 
   const statusInfo = getStatusColor(project.status || 'Angefragt');
-  
-  // Get first image from project
-  const projectImage = project.images && project.images.length > 0 ? project.images[0] : project.picture_url;
-  
-  // Generate OpenStreetMap static tile URL if address exists
-  // Using OpenStreetMap static tiles via StaticMap API
-  const getMapUrl = (address: string) => {
-    if (!address) return null;
-    
-    // For Vienna addresses, use approximate coordinates
-    // In production, you should geocode addresses or store lat/lon in database
-    const addressLower = address.toLowerCase();
-    
-    // Default Vienna coordinates
-    let lat = 48.2082;
-    let lon = 16.3738;
-    let zoom = 14;
-    
-    // Basic district detection for Vienna (very simplified)
-    if (addressLower.includes('1010') || addressLower.includes('innere stadt')) {
-      lat = 48.2082; lon = 16.3738;
-    } else if (addressLower.includes('1020') || addressLower.includes('leopoldstadt')) {
-      lat = 48.2189; lon = 16.3989;
-    } else if (addressLower.includes('1030') || addressLower.includes('landstraße')) {
-      lat = 48.1986; lon = 16.3947;
-    } else if (addressLower.includes('1130') || addressLower.includes('hietzing')) {
-      lat = 48.1851; lon = 16.2988;
+
+  // images[] or picture_url may exist at runtime even if not in the TS type
+  const projectImage: string | null =
+    (project as any).images?.length > 0
+      ? (project as any).images[0]
+      : ((project as any).picture_url ?? null);
+
+  // Geocode address via Nominatim to show a real OSM iframe map when there's no project image
+  const [mapCoords, setMapCoords] = React.useState<MapCoords | null>(null);
+
+  React.useEffect(() => {
+    if (projectImage || !project.address) {
+      setMapCoords(null);
+      return;
     }
-    
-    // Use OpenStreetMap tiles via tile.openstreetmap.org
-    // Note: For production use, consider using a proper tile service provider
-    // This generates a map using OSM Carto tiles
-    const width = 400;
-    const height = 200;
-    
-    // Use StaticMap.me service which provides OpenStreetMap static images
-    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=${zoom}&size=${width}x${height}&markers=${lat},${lon},red-pushpin`;
+    let cancelled = false;
+    fetch(
+      'https://nominatim.openstreetmap.org/search?format=json&q=' +
+        encodeURIComponent(project.address) +
+        '&limit=1',
+      { headers: { 'Accept-Language': 'de' } }
+    )
+      .then((r) => r.json())
+      .then((data: Array<{ lat: string; lon: string }>) => {
+        if (!cancelled && data.length > 0) {
+          setMapCoords({ lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [project.address, projectImage]);
+
+  // Build the same OSM embed URL that MapDisplay.tsx uses
+  const getOsmEmbedUrl = (lat: number, lon: number): string => {
+    const delta = 0.005;
+    const bbox = (lon - delta) + ',' + (lat - delta) + ',' + (lon + delta) + ',' + (lat + delta);
+    return 'https://www.openstreetmap.org/export/embed.html?bbox=' + bbox + '&layer=mapnik&marker=' + lat + ',' + lon;
   };
-  
-  const mapUrl = project.address ? getMapUrl(project.address) : null;
+
+  const showMap = !projectImage && mapCoords !== null;
 
   return (
     <Card onPress={onPress} style={styles.cardOverride}>
-      {/* Image/Map Header */}
-      {(projectImage || mapUrl) && (
+      {/* Image / Map Header */}
+      {(projectImage || showMap) && (
         <View style={styles.mediaContainer}>
           {projectImage ? (
             <View style={styles.imageWrapper}>
-              <View style={[styles.imageBox, { backgroundImage: `url(${projectImage})` } as any]} />
+              {/* @ts-ignore */}
+              <View style={[styles.imageBox, { backgroundImage: 'url(' + projectImage + ')' } as any]} />
             </View>
-          ) : mapUrl ? (
+          ) : showMap ? (
             <View style={styles.imageWrapper}>
-              <View style={[styles.imageBox, { backgroundImage: `url(${mapUrl})` } as any]} />
+              {/* @ts-ignore - iframe is valid in react-native-web */}
+              <iframe
+                src={getOsmEmbedUrl(mapCoords!.lat, mapCoords!.lon)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  display: 'block',
+                  pointerEvents: 'none',
+                } as React.CSSProperties}
+                title="Projektstandort"
+                loading="lazy"
+              />
               <View style={styles.mapOverlay}>
-                <Text style={styles.mapLabel}>🗺️ Map View</Text>
+                <Text style={styles.mapLabel}>🗺️ Standort</Text>
               </View>
             </View>
           ) : null}
@@ -92,7 +112,7 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
             <View style={styles.titleContainer}>
                 <Text style={styles.title} numberOfLines={1}>{project.name}</Text>
                 <Text style={styles.date}>
-                Last update: {new Date(project.updated_at).toLocaleDateString()}
+              Zuletzt aktualisiert: {new Date(project.updated_at).toLocaleDateString('de-DE')}
                 </Text>
             </View>
             <View style={[styles.badge, { backgroundColor: statusInfo.bgColor }]}>
@@ -109,7 +129,7 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
                     <Text style={styles.address} numberOfLines={1}>{project.address}</Text>
                 </View>
             ) : (
-                <Text style={[styles.address, { fontStyle: 'italic', opacity: 0.5 }]}>No address set</Text>
+                <Text style={[styles.address, { fontStyle: 'italic', opacity: 0.5 }]}>Keine Adresse hinterlegt</Text>
             )}
             
             {project.description && (
@@ -120,7 +140,7 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
       
       <View style={styles.footer}>
         <View style={styles.footerInfo}>
-             <Text style={styles.footerText}>Open Project</Text>
+          <Text style={styles.footerText}>Projekt öffnen</Text>
         </View>
         <View style={styles.arrowBtn}>
             <Text style={styles.arrow}>→</Text>

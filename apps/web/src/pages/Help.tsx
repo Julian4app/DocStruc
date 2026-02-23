@@ -5,6 +5,7 @@ import { LayoutContext } from '../layouts/LayoutContext';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import {
   HelpCircle,
   Search,
@@ -35,6 +36,7 @@ type SectionId = 'walkthroughs' | 'videos' | 'faqs' | 'documents' | null;
 
 // ─── Contact Modal ─────────────────────────────────────────────────────────────
 function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { userId, profile: authProfile } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -44,27 +46,12 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
     if (visible) {
       setSent(false);
       setError('');
-      // Reset form first, then pre-fill from profile
-      setForm({ name: '', email: '', subject: '', message: '' });
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (!user) return;
-        const email = user.email || '';
-        setForm(f => ({ ...f, email }));
-        supabase
-          .from('profiles')
-          .select('first_name, last_name, email')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => {
-            if (data) {
-              const name = `${data.first_name || ''} ${data.last_name || ''}`.trim();
-              const profileEmail = data.email || email;
-              setForm(f => ({ ...f, name, email: profileEmail }));
-            }
-          });
-      });
+      // Pre-fill from cached profile — no network call needed
+      const email = authProfile?.email || '';
+      const name = `${authProfile?.first_name || ''} ${authProfile?.last_name || ''}`.trim();
+      setForm({ name, email, subject: '', message: '' });
     }
-  }, [visible]);
+  }, [visible, authProfile]);
 
   const send = async () => {
     if (!form.name.trim() || !form.email.trim() || !form.subject.trim() || !form.message.trim()) {
@@ -74,9 +61,8 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
     setSending(true);
     setError('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       const { error: err } = await supabase.from('support_messages').insert({
-        user_id: user?.id || null,
+        user_id: userId || null,
         sender_name: form.name,
         sender_email: form.email,
         subject: form.subject,

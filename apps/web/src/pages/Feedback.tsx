@@ -5,12 +5,14 @@ import { Button, Input } from '@docstruc/ui';
 import { CustomSelect } from '../components/CustomSelect';
 import { useToast } from '../components/ToastProvider';
 import { LayoutContext } from '../layouts/LayoutContext';
+import { useAuth } from '../contexts/AuthContext';
 import { colors } from '@docstruc/theme';
 import { MessageSquare, Star, Send, ThumbsUp, AlertCircle, Mail } from 'lucide-react';
 
 export function Feedback() {
   const { setTitle, setSubtitle } = useContext(LayoutContext);
   const { showToast } = useToast();
+  const { userId, profile } = useAuth();
   const [rating, setRating] = useState(0);
   const [category, setCategory] = useState('general');
   const [email, setEmail] = useState('');
@@ -20,21 +22,13 @@ export function Feedback() {
   useEffect(() => {
     setTitle('Feedback');
     setSubtitle('Teilen Sie uns Ihre Meinung mit');
-    
-    // Load user email
-    const loadUserEmail = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
-        setEmail(user.email);
-      }
-    };
-    loadUserEmail();
-    
+    // Pre-fill email from profile (no async network call needed)
+    if (profile?.email) setEmail(profile.email);
     return () => {
       setTitle('DocStruc');
       setSubtitle('');
     };
-  }, [setTitle, setSubtitle]);
+  }, [setTitle, setSubtitle, profile]);
 
   const handleSubmit = async () => {
     if (!message.trim()) {
@@ -49,11 +43,10 @@ export function Feedback() {
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Nicht angemeldet');
+      if (!userId) throw new Error('Nicht angemeldet');
 
       const { error } = await supabase.from('feedback').insert({
-        user_id: user.id,
+        user_id: userId,
         ...(rating > 0 ? { rating } : {}),
         category,
         email: email.trim() || null,

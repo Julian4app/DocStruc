@@ -437,9 +437,8 @@ export function ProjectParticipants() {
         projectId
       });
 
-      // Check auth status
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Auth session exists:', !!session);
+      // Auth session check not needed here - user is already authenticated via useAuth()
+      console.log('Auth userId exists:', !!userId);
 
       // Call send_project_invitation RPC which handles:
       // 1. Updating member status to 'invited'
