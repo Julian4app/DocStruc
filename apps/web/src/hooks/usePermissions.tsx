@@ -31,7 +31,7 @@ export interface PermissionCheckResult {
  * Uses AuthContext for cached user/profile data — no redundant auth.getUser() or profile queries.
  */
 export function usePermissions(projectId: string | undefined): PermissionCheckResult {
-  const { userId, profile, isSuperuser: authIsSuperuser, isTeamAdmin: authIsTeamAdmin, loading: authLoading } = useAuth();
+  const { userId, isSuperuser: authIsSuperuser, isTeamAdmin: authIsTeamAdmin, loading: authLoading } = useAuth();
   const [permissions, setPermissions] = useState<UserPermissions>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
@@ -77,38 +77,12 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
         return;
       }
 
-      // Team admin: check if team has access to this project
-      if (authIsTeamAdmin && profile?.team_id) {
-        // Parallelize: team_access + modules in one go
-        const [teamAccessResult, modulesResult] = await Promise.all([
-          supabase
-            .from('team_project_access')
-            .select('id')
-            .eq('project_id', projectId)
-            .eq('team_id', profile.team_id)
-            .maybeSingle(),
-          supabase
-            .from('permission_modules')
-            .select('module_key')
-            .eq('is_active', true),
-        ]);
+      // All non-owner, non-superuser users (including team admins) get their
+      // permissions from the RPC, which respects their assigned role.
+      // Team admins are NOT automatically granted full access — they follow
+      // the same role-based permission system as regular members.
 
-        if (teamAccessResult.data) {
-          const fullPermissions: UserPermissions = {};
-          (modulesResult.data || []).forEach(module => {
-            fullPermissions[module.module_key] = {
-              can_view: true, can_create: true, can_edit: true, can_delete: true
-            };
-          });
-
-          setPermissions(fullPermissions);
-          permissionsLoadedRef.current = true;
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Regular user: get permissions via RPC
+      // Regular user / team admin: get permissions via RPC
       const { data, error } = await supabase
         .rpc('get_user_project_permissions', {
           p_user_id: userId,
@@ -138,7 +112,7 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
     } finally {
       setIsLoading(false);
     }
-  }, [projectId, userId, authIsSuperuser, authIsTeamAdmin, profile?.team_id, authLoading]);
+  }, [projectId, userId, authIsSuperuser, authLoading]);
 
   useEffect(() => {
     loadPermissions();
