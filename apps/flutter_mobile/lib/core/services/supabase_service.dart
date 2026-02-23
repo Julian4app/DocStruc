@@ -1459,4 +1459,54 @@ class SupabaseService {
   /// Public URL for a voice message stored in the `project-voice-messages` bucket.
   static String getVoiceMessageUrl(String storagePath) =>
       client.storage.from('project-voice-messages').getPublicUrl(storagePath);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PERMISSIONS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Calls the DB function `get_user_project_permissions(user_id, project_id)`
+  /// and returns a list of module permission rows, each containing:
+  ///   module_key, module_name, can_view, can_create, can_edit, can_delete
+  static Future<List<Map<String, dynamic>>> getUserProjectPermissions(
+    String userId,
+    String projectId,
+  ) async {
+    try {
+      final result = await client.rpc(
+        'get_user_project_permissions',
+        params: {'p_user_id': userId, 'p_project_id': projectId},
+      );
+      if (result == null) return [];
+      return (result as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getUserProjectPermissions] error: $e');
+      return [];
+    }
+  }
+
+  /// Checks a single permission via `check_user_permission(...)`.
+  /// [module] is the module_key (e.g. 'tasks'), [action] is 'view'/'create'/'edit'/'delete'.
+  static Future<bool> checkPermission(
+    String projectId,
+    String module,
+    String action,
+  ) async {
+    final userId = currentUserId;
+    if (userId == null) return false;
+    try {
+      final result = await client.rpc(
+        'check_user_permission',
+        params: {
+          'p_user_id': userId,
+          'p_project_id': projectId,
+          'p_module_key': module,
+          'p_permission_type': action,
+        },
+      );
+      return result == true;
+    } catch (e) {
+      debugPrint('[checkPermission] error: $e');
+      return false;
+    }
+  }
 }

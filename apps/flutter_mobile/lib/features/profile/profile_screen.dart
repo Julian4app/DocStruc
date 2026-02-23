@@ -139,7 +139,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).padding.bottom + 96),
         children: [
           // Avatar
           Center(
@@ -262,7 +262,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               side: const BorderSide(color: AppColors.danger),
             ),
           ),
-          const SizedBox(height: 40),
         ],
       ),
     );

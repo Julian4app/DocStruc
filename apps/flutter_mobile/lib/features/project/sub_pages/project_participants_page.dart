@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
@@ -84,15 +87,15 @@ String _initials(Map<String, dynamic>? accessor) {
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-class ProjectParticipantsPage extends StatefulWidget {
+class ProjectParticipantsPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectParticipantsPage({super.key, required this.projectId});
 
   @override
-  State<ProjectParticipantsPage> createState() => _ProjectParticipantsPageState();
+  ConsumerState<ProjectParticipantsPage> createState() => _ProjectParticipantsPageState();
 }
 
-class _ProjectParticipantsPageState extends State<ProjectParticipantsPage> {
+class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPage> {
   // ── State ──
   bool _loading = true;
   bool _isProjectOwner = false;
@@ -501,7 +504,7 @@ class _ProjectParticipantsPageState extends State<ProjectParticipantsPage> {
         title: const Text('Beteiligte', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           if (_activeTab == 'members') ...[
-            if (_isTeamAdmin && _hasTeamAccess)
+            if ((_isTeamAdmin && _hasTeamAccess) || ref.permissions(widget.projectId).canCreate('members'))
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: TextButton.icon(

@@ -4,6 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
@@ -90,14 +93,14 @@ const _dPriorities = [
 // PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 
-class ProjectDefectsPage extends StatefulWidget {
+class ProjectDefectsPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectDefectsPage({super.key, required this.projectId});
   @override
-  State<ProjectDefectsPage> createState() => _ProjectDefectsPageState();
+  ConsumerState<ProjectDefectsPage> createState() => _ProjectDefectsPageState();
 }
 
-class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
+class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
   bool _loading = true;
   List<Map<String, dynamic>> _defects = [];
   List<Map<String, dynamic>> _members = [];
@@ -292,11 +295,13 @@ class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
         leading: burgerMenuLeading(context),
         title: const Text('Mängel'),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateSheet(context),
-        backgroundColor: const Color(0xFFDC2626),
-        child: const Icon(LucideIcons.plus, color: Colors.white),
-      ),
+      floatingActionButton: ref.permissions(widget.projectId).canCreate('defects')
+          ? FloatingActionButton(
+              onPressed: () => _showCreateSheet(context),
+              backgroundColor: const Color(0xFFDC2626),
+              child: const Icon(LucideIcons.plus, color: Colors.white),
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -442,6 +447,8 @@ class _ProjectDefectsPageState extends State<ProjectDefectsPage> {
                               members: _members,
                               projectId: widget.projectId,
                               onRefresh: _load,
+                              canEdit: ref.permissions(widget.projectId).canEdit('defects'),
+                              canDelete: ref.permissions(widget.projectId).canDelete('defects'),
                             ),
                           ),
                   ),
@@ -729,7 +736,9 @@ class _DefectCard extends StatelessWidget {
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
-  const _DefectCard({required this.defect, required this.members, required this.projectId, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _DefectCard({required this.defect, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
 
   @override
   Widget build(BuildContext context) {
@@ -771,7 +780,7 @@ class _DefectCard extends StatelessWidget {
                 child: InkWell(
                   onTap: () => Navigator.push(context, MaterialPageRoute(
                     fullscreenDialog: true,
-                    builder: (_) => _DefectDetailPage(defect: defect, members: members, projectId: projectId, onRefresh: onRefresh),
+                    builder: (_) => _DefectDetailPage(defect: defect, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete),
                   )),
         child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -834,7 +843,9 @@ class _DefectDetailPage extends StatefulWidget {
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
-  const _DefectDetailPage({required this.defect, required this.members, required this.projectId, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _DefectDetailPage({required this.defect, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
   @override State<_DefectDetailPage> createState() => _DefectDetailPageState();
 }
 
@@ -1096,9 +1107,9 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
       appBar: AppBar(
         title: Text(_editMode ? 'Mangel bearbeiten' : (_defect['title'] ?? 'Mangeldetails'), overflow: TextOverflow.ellipsis),
         actions: [
-          if (!_editMode) IconButton(icon: const Icon(LucideIcons.edit2), onPressed: () => setState(() => _editMode = true)),
+          if (!_editMode && widget.canEdit) IconButton(icon: const Icon(LucideIcons.edit2), onPressed: () => setState(() => _editMode = true)),
           if (_editMode)  TextButton(onPressed: _save, child: const Text('Speichern', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600))),
-          IconButton(icon: const Icon(LucideIcons.trash2, color: AppColors.danger), onPressed: _delete),
+          if (widget.canDelete) IconButton(icon: const Icon(LucideIcons.trash2, color: AppColors.danger), onPressed: _delete),
         ],
         bottom: TabBar(controller: _tabs, tabs: [
           Tab(icon: const Icon(LucideIcons.info,     size: 16), child: const Text('Allgemein', style: TextStyle(fontSize: 12))),

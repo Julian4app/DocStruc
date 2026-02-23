@@ -447,11 +447,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       onRefresh: _loadProjects,
       color: AppColors.primary,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           AppSpacing.screenH,
           AppSpacing.m,
           AppSpacing.screenH,
-          100, // extra space for FAB
+          MediaQuery.of(context).padding.bottom + 100, // extra space for FAB + nav bar
         ),
         itemCount: projects.length,
         itemBuilder: (context, index) {

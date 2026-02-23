@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -10,16 +13,16 @@ import '../../../core/widgets/burger_menu_leading.dart';
 const _pageSize = 50;
 const _notePageSize = 30;
 
-class ProjectCommunicationPage extends StatefulWidget {
+class ProjectCommunicationPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectCommunicationPage({super.key, required this.projectId});
 
   @override
-  State<ProjectCommunicationPage> createState() =>
+  ConsumerState<ProjectCommunicationPage> createState() =>
       _ProjectCommunicationPageState();
 }
 
-class _ProjectCommunicationPageState extends State<ProjectCommunicationPage> {
+class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationPage> {
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _notes = [];
   bool _loading = true;
@@ -371,7 +374,7 @@ class _ProjectCommunicationPageState extends State<ProjectCommunicationPage> {
                                   sending: _sending,
                                   hasMore: _hasMoreMessages,
                                   loadingMore: _loadingMoreMessages,
-                                  onSend: _sendMessage,
+                                  onSend: ref.permissions(widget.projectId).canCreate('communication') ? _sendMessage : null,
                                   onLoadMore: _loadMoreMessages,
                                   onPin: _togglePin,
                                   onDelete: _deleteItem,
@@ -559,7 +562,7 @@ class _MessagesContent extends StatelessWidget {
   final bool sending;
   final bool hasMore;
   final bool loadingMore;
-  final VoidCallback onSend;
+  final VoidCallback? onSend;
   final VoidCallback onLoadMore;
   final void Function(Map<String, dynamic>) onPin;
   final void Function(Map<String, dynamic>) onDelete;
@@ -642,7 +645,7 @@ class _MessagesContent extends StatelessWidget {
                     controller: msgCtrl,
                     maxLines: null,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => onSend(),
+                    onSubmitted: (_) => onSend?.call(),
                     style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
                     decoration: const InputDecoration(
                       hintText: 'Nachricht eingeben...',
@@ -667,7 +670,7 @@ class _MessagesContent extends StatelessWidget {
 class _SendButton extends StatefulWidget {
   final TextEditingController msgCtrl;
   final bool sending;
-  final VoidCallback onSend;
+  final VoidCallback? onSend;
   const _SendButton(
       {required this.msgCtrl, required this.sending, required this.onSend});
 
@@ -697,7 +700,7 @@ class _SendButtonState extends State<_SendButton> {
 
   @override
   Widget build(BuildContext context) {
-    final active = _hasText && !widget.sending;
+    final active = _hasText && !widget.sending && widget.onSend != null;
     return GestureDetector(
       onTap: active ? widget.onSend : null,
       child: AnimatedContainer(

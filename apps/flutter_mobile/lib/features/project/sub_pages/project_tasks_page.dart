@@ -10,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_html/flutter_html.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
@@ -67,14 +70,14 @@ String _fmtDateTime(String? d) {
 // Page
 // ═════════════════════════════════════════════════════════════════════════════
 
-class ProjectTasksPage extends StatefulWidget {
+class ProjectTasksPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectTasksPage({super.key, required this.projectId});
   @override
-  State<ProjectTasksPage> createState() => _ProjectTasksPageState();
+  ConsumerState<ProjectTasksPage> createState() => _ProjectTasksPageState();
 }
 
-class _ProjectTasksPageState extends State<ProjectTasksPage>
+class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
   bool _loading = true;
@@ -141,11 +144,13 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
           tabs: const [Tab(text: 'Liste'), Tab(text: 'Kanban'), Tab(text: 'Kalender')],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateSheet(context),
-        backgroundColor: AppColors.primary,
-        child: const Icon(LucideIcons.plus, color: Colors.white),
-      ),
+      floatingActionButton: ref.permissions(widget.projectId).canCreate('tasks')
+          ? FloatingActionButton(
+              onPressed: () => _showCreateSheet(context),
+              backgroundColor: AppColors.primary,
+              child: const Icon(LucideIcons.plus, color: Colors.white),
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : TabBarView(
@@ -278,7 +283,9 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                 itemCount: tasks.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _TaskCard(tasks[i], members: _members, projectId: widget.projectId, onRefresh: _load),
+                itemBuilder: (_, i) => _TaskCard(tasks[i], members: _members, projectId: widget.projectId, onRefresh: _load,
+                  canEdit: ref.permissions(widget.projectId).canEdit('tasks'),
+                  canDelete: ref.permissions(widget.projectId).canDelete('tasks')),
               ),
       )),
     ]);
@@ -413,9 +420,11 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
             const SizedBox(width: 6),
             const Text('Ohne F\u00e4lligkeitsdatum', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
           ])),
-          ..._tasks.where((t) => t['due_date'] == null).map((t) =>
+          for (final t in _tasks.where((t) => t['due_date'] == null))
             Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: _TaskCard(t, members: _members, projectId: widget.projectId, onRefresh: _load))),
+              child: _TaskCard(t, members: _members, projectId: widget.projectId, onRefresh: _load,
+                canEdit: ref.permissions(widget.projectId).canEdit('tasks'),
+                canDelete: ref.permissions(widget.projectId).canDelete('tasks'))),
         ],
         const SizedBox(height: 100),
       ]),
@@ -438,7 +447,9 @@ class _ProjectTasksPageState extends State<ProjectTasksPage>
           Padding(padding: const EdgeInsets.all(16), child: Text('Aufgaben am $day. ${DateFormat('MMMM yyyy', 'de').format(_calMonth)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text))),
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children:
             tasks.map((t) => Padding(padding: const EdgeInsets.only(bottom: 8),
-              child: _TaskCard(t, members: _members, projectId: widget.projectId, onRefresh: () { Navigator.pop(ctx); _load(); }))).toList())),
+              child: _TaskCard(t, members: _members, projectId: widget.projectId, onRefresh: () { Navigator.pop(ctx); _load(); },
+                canEdit: ref.permissions(widget.projectId).canEdit('tasks'),
+                canDelete: ref.permissions(widget.projectId).canDelete('tasks')))).toList())),
         ]),
       ),
     );
@@ -712,7 +723,9 @@ class _TaskCard extends StatelessWidget {
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
-  const _TaskCard(this.task, {required this.members, required this.projectId, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _TaskCard(this.task, {required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
 
   String _mName() {
     final uid = task['assigned_to'] as String?;
@@ -741,7 +754,7 @@ class _TaskCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => Navigator.push(context, MaterialPageRoute(fullscreenDialog: true,
-          builder: (_) => _TaskDetailPage(task: task, members: members, projectId: projectId, onRefresh: onRefresh))),
+          builder: (_) => _TaskDetailPage(task: task, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete))),
         child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(width: 10, height: 10, decoration: BoxDecoration(color: _statusColor(status), shape: BoxShape.circle)),
@@ -814,7 +827,9 @@ class _TaskDetailPage extends StatefulWidget {
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
-  const _TaskDetailPage({required this.task, required this.members, required this.projectId, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _TaskDetailPage({required this.task, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
   @override State<_TaskDetailPage> createState() => _TaskDetailPageState();
 }
 
@@ -1110,8 +1125,8 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
         title: Text(_editMode ? 'Bearbeiten' : (_task['title'] ?? 'Aufgabe'), overflow: TextOverflow.ellipsis),
         actions: [
           if (!_editMode) ...[
-            IconButton(icon: const Icon(LucideIcons.edit2), onPressed: () => setState(() { _initForm(); _editMode = true; }), tooltip: 'Bearbeiten'),
-            IconButton(
+            if (widget.canEdit) IconButton(icon: const Icon(LucideIcons.edit2), onPressed: () => setState(() { _initForm(); _editMode = true; }), tooltip: 'Bearbeiten'),
+            if (widget.canDelete) IconButton(
               icon: const Icon(LucideIcons.trash2, color: AppColors.danger),
               onPressed: () async {
                 final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(

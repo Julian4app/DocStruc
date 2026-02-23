@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
@@ -99,15 +102,15 @@ String _guessMimeFromExt(String ext) {
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-class ProjectFilesPage extends StatefulWidget {
+class ProjectFilesPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectFilesPage({super.key, required this.projectId});
 
   @override
-  State<ProjectFilesPage> createState() => _ProjectFilesPageState();
+  ConsumerState<ProjectFilesPage> createState() => _ProjectFilesPageState();
 }
 
-class _ProjectFilesPageState extends State<ProjectFilesPage>
+class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
     with SingleTickerProviderStateMixin {
   bool _loading = true;
 
@@ -574,7 +577,7 @@ class _ProjectFilesPageState extends State<ProjectFilesPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: _loading
+      floatingActionButton: (_loading || !ref.permissions(widget.projectId).canCreate('files'))
           ? null
           : Column(
               mainAxisSize: MainAxisSize.min,

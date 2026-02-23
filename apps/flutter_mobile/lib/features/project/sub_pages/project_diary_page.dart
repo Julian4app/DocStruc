@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
@@ -55,15 +58,15 @@ Color _weatherColor(String? w) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-class ProjectDiaryPage extends StatefulWidget {
+class ProjectDiaryPage extends ConsumerStatefulWidget {
   final String projectId;
   const ProjectDiaryPage({super.key, required this.projectId});
 
   @override
-  State<ProjectDiaryPage> createState() => _ProjectDiaryPageState();
+  ConsumerState<ProjectDiaryPage> createState() => _ProjectDiaryPageState();
 }
 
-class _ProjectDiaryPageState extends State<ProjectDiaryPage> {
+class _ProjectDiaryPageState extends ConsumerState<ProjectDiaryPage> {
   bool _loading = true;
   List<Map<String, dynamic>> _entries = [];
   List<Map<String, dynamic>> _members = [];
@@ -173,13 +176,15 @@ class _ProjectDiaryPageState extends State<ProjectDiaryPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateSheet,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(LucideIcons.plus, color: Colors.white, size: 20),
-        label: const Text('Eintrag',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
+      floatingActionButton: ref.permissions(widget.projectId).canCreate('diary')
+          ? FloatingActionButton.extended(
+              onPressed: _showCreateSheet,
+              backgroundColor: AppColors.primary,
+              icon: const Icon(LucideIcons.plus, color: Colors.white, size: 20),
+              label: const Text('Eintrag',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -271,6 +276,8 @@ class _ProjectDiaryPageState extends State<ProjectDiaryPage> {
                                 child: _DiaryCard(
                                   entry: _entries[i],
                                   onRefresh: _refresh,
+                                  canEdit: ref.permissions(widget.projectId).canEdit('diary'),
+                                  canDelete: ref.permissions(widget.projectId).canDelete('diary'),
                                 ),
                               );
                             }
@@ -351,7 +358,9 @@ class _StatCard extends StatelessWidget {
 class _DiaryCard extends StatelessWidget {
   final Map<String, dynamic> entry;
   final VoidCallback onRefresh;
-  const _DiaryCard({required this.entry, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _DiaryCard({required this.entry, required this.onRefresh, this.canEdit = false, this.canDelete = false});
 
   String _creatorName() {
     final p = entry['profiles'];
@@ -400,7 +409,7 @@ class _DiaryCard extends StatelessWidget {
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
-          builder: (_) => _EntryDetailSheet(entry: entry, onRefresh: onRefresh),
+          builder: (_) => _EntryDetailSheet(entry: entry, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -534,7 +543,9 @@ class _SectionRow extends StatelessWidget {
 class _EntryDetailSheet extends StatelessWidget {
   final Map<String, dynamic> entry;
   final VoidCallback onRefresh;
-  const _EntryDetailSheet({required this.entry, required this.onRefresh});
+  final bool canEdit;
+  final bool canDelete;
+  const _EntryDetailSheet({required this.entry, required this.onRefresh, this.canEdit = false, this.canDelete = false});
 
   String _fmtDate(String? d) {
     if (d == null) return '';
@@ -673,8 +684,8 @@ class _EntryDetailSheet extends StatelessWidget {
                   ]),
                 ),
                 const SizedBox(height: 20),
-                Row(children: [
-                  Expanded(
+                if (canEdit || canDelete) Row(children: [
+                  if (canEdit) Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(LucideIcons.pencil, size: 15, color: AppColors.primary),
                       label: const Text('Bearbeiten',
@@ -686,7 +697,7 @@ class _EntryDetailSheet extends StatelessWidget {
                           isScrollControlled: true,
                           backgroundColor: Colors.transparent,
                           builder: (_) => _EditEntrySheet(
-                              entry: entry, onSaved: onRefresh),
+                              entry: entry, onSaved: onRefresh, canEdit: canEdit),
                         );
                       },
                       style: OutlinedButton.styleFrom(
@@ -697,7 +708,7 @@ class _EntryDetailSheet extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
+                  if (canDelete) Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(LucideIcons.trash2, size: 15,
                           color: AppColors.danger),
@@ -1199,7 +1210,8 @@ class _CreateEntrySheetState extends State<_CreateEntrySheet> {
 class _EditEntrySheet extends StatefulWidget {
   final Map<String, dynamic> entry;
   final VoidCallback onSaved;
-  const _EditEntrySheet({required this.entry, required this.onSaved});
+  final bool canEdit;
+  const _EditEntrySheet({required this.entry, required this.onSaved, this.canEdit = false});
 
   @override
   State<_EditEntrySheet> createState() => _EditEntrySheetState();

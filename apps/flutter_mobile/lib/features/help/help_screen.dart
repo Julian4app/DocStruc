@@ -184,7 +184,11 @@ class _HelpScreenState extends State<HelpScreen> {
                       ),
                     ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: MediaQuery.of(context).padding.bottom + 96,
+            ),
+          ),
         ],
       ),
     );
