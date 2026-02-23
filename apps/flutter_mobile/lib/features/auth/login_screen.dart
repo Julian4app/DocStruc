@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/providers/auth_provider.dart';
@@ -170,34 +171,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          // ── Full-screen gradient background ───────────────────────────────
-          Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
+          // ── Full-screen background image ────────────────────────────────
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/SplashScreen_ohneLogo.png',
+              fit: BoxFit.cover,
+            ),
           ),
 
-          // ── Header content ────────────────────────────────────────────────
+          // ── Header: logo image + title + subtitle ─────────────────────────
           Positioned(
-            top: topPad + 36,
+            top: topPad + 32,
             left: 0, right: 0,
             child: Column(children: [
-              Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
-                ),
-                child: const Center(
-                  child: Text('DS', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                ),
+              // DocStruc logo image
+              Image.asset(
+                'assets/images/DocStruc_Logo_plain.png',
+                width: size.width * 0.52,
+                fit: BoxFit.contain,
               ),
               const SizedBox(height: 14),
-              const Text('DocStruc', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-              const SizedBox(height: 4),
-              Text('Baudokumentation einfach gemacht',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.72), fontSize: 14)),
+              // App title — modern, bold
+              const Text(
+                'DocStruc',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.8,
+                  shadows: [
+                    Shadow(
+                      color: Color(0x55000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 5),
+              // Subtitle
+              Text(
+                'Baudokumentation einfach gemacht',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.80),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                  letterSpacing: 0.1,
+                ),
+              ),
             ]),
           ),
 
@@ -546,7 +567,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return Row(children: [
       Expanded(child: _socialBtn(
         label: 'Google',
-        icon: const _GoogleIcon(),
+        icon: SvgPicture.asset(
+          'assets/images/icons/login/google.svg',
+          width: 20, height: 20,
+        ),
         onPressed: _loading ? null : () async {
           setState(() { _loading = true; _error = null; });
           final err = await ref.read(authProvider.notifier).signInWithGoogle();
@@ -558,7 +582,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       const SizedBox(width: 12),
       Expanded(child: _socialBtn(
         label: 'Apple',
-        icon: Icon(LucideIcons.apple, size: 18, color: Colors.grey.shade800),
+        icon: SvgPicture.asset(
+          'assets/images/icons/login/apple.svg',
+          width: 20, height: 20,
+          colorFilter: ColorFilter.mode(Colors.grey.shade800, BlendMode.srcIn),
+        ),
         onPressed: _loading ? null : () async {
           setState(() { _loading = true; _error = null; });
           final err = await ref.read(authProvider.notifier).signInWithApple();
@@ -588,51 +616,3 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 }
 
-// ── Simple Google logo ────────────────────────────────────────────────────────
-class _GoogleIcon extends StatelessWidget {
-  const _GoogleIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 18, height: 18,
-      child: CustomPaint(painter: _GooglePainter()),
-    );
-  }
-}
-
-class _GooglePainter extends CustomPainter {
-  const _GooglePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = size.width / 2;
-    final center = Offset(r, r);
-    final stroke = size.width * 0.22;
-
-    Paint p(Color c) => Paint()
-      ..color = c
-      ..strokeWidth = stroke
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.butt;
-
-    final rect = Rect.fromCircle(center: center, radius: r - stroke / 2);
-
-    canvas.drawArc(rect, -1.72, 1.7,  false, p(const Color(0xFF4285F4)));
-    canvas.drawArc(rect,  3.14, 1.0,  false, p(const Color(0xFFEA4335)));
-    canvas.drawArc(rect,  4.14, 0.96, false, p(const Color(0xFFFBBC05)));
-    canvas.drawArc(rect, -0.15, 1.2,  false, p(const Color(0xFF34A853)));
-
-    canvas.drawLine(
-      Offset(r, r),
-      Offset(size.width - stroke / 2, r),
-      Paint()
-        ..color = const Color(0xFF4285F4)
-        ..strokeWidth = stroke
-        ..strokeCap = StrokeCap.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
-}

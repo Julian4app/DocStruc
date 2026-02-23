@@ -90,8 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mountedRef.current) return;
         if (session?.user) {
           setUserId(session.user.id);
-          if (event === 'SIGNED_IN') await loadProfile(session.user.id);
-        } else {
+          // Always reload profile on SIGNED_IN.
+          // Also reload on TOKEN_REFRESHED if we somehow lost the profile
+          // (e.g. tab was in background and React GC'd the state).
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            await loadProfile(session.user.id);
+          }
+        } else if (event === 'SIGNED_OUT') {
           setUserId(null);
           setProfile(null);
         }

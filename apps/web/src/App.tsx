@@ -86,23 +86,44 @@ const persister = createSyncStoragePersister({
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  // initializing is ONLY true during the first mount, until the INITIAL_SESSION
+  // event fires from the local cache. After that it is never set true again —
+  // so token refreshes, idle periods and any other auth events never unmount the
+  // app tree or show a blank spinner.
+  const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [loginLockUntil, setLoginLockUntil] = useState<number | null>(null);
 
   useEffect(() => {
-    // Use onAuthStateChange as the SINGLE source of truth.
-    // It fires an INITIAL_SESSION event synchronously from the local storage cache
-    // before any network request, so the app unblocks immediately.
-    // This avoids the duplicate getSession() call that AuthContext also performs.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoading(false);
+    // onAuthStateChange is the single source of truth for session state.
+    // It fires INITIAL_SESSION synchronously from localStorage on first mount,
+    // so the app is unblocked immediately without a network round-trip.
+    //
+    // CRITICAL: we only set `initializing = false` once (on INITIAL_SESSION).
+    // We never set any loading/blocking state on TOKEN_REFRESHED or other events.
+    // This ensures idle token refreshes never unmount the app tree.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Always keep session in sync
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+      } else if (newSession) {
+        setSession(newSession);
+      }
+      // Only unblock initial render once
+      if (initializing) setInitializing(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Safety: if onAuthStateChange somehow never fires (e.g., SSR, blocked JS),
+    // unblock after 3 seconds so the user isn't stuck on a blank screen.
+    const safetyTimer = setTimeout(() => setInitializing(false), 3000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogin = async (email: string, pass: string) => {
@@ -117,7 +138,6 @@ function App() {
       setLoginLockUntil(null);
     }
 
-    setLoading(true);
     setAuthError(null);
     setAuthSuccess(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
@@ -134,24 +154,22 @@ function App() {
       setLoginAttempts(0);
       setLoginLockUntil(null);
     }
-    setLoading(false);
   };
 
   const handleRegister = async (data: RegisterData) => {
-    setLoading(true);
     setAuthError(null);
     setAuthSuccess(null);
-    const { error } = await supabase.auth.signUp({ 
-        email: data.email, 
+    const { error } = await supabase.auth.signUp({
+        email: data.email,
         password: data.password,
-        options: { 
-          data: { 
-            first_name: data.firstName, 
+        options: {
+          data: {
+            first_name: data.firstName,
             last_name: data.lastName,
             phone: data.phone || null,
             company_name: data.companyName || null,
             position: data.position || null,
-          } 
+          }
         }
     });
     if (error) {
@@ -160,7 +178,6 @@ function App() {
       setAuthSuccess('Ihre Registrierung war erfolgreich! Bitte überprüfen Sie Ihre E-Mails und bestätigen Sie Ihr Konto.');
       setAuthError(null);
     }
-    setLoading(false);
   };
 
   const handleOAuthLogin = async (provider: 'google' | 'apple') => {
@@ -176,7 +193,7 @@ function App() {
     }
   };
 
-  if (loading) {
+  if (initializing) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
         <div style={{ width: 40, height: 40, border: '4px solid #E2E8F0', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -199,7 +216,7 @@ function App() {
           <Routes>
             <Route path="/login" element={
               !session ? (
-                <LoginForm onLogin={handleLogin} onRegister={handleRegister} onOAuthLogin={handleOAuthLogin} isLoading={loading} error={authError} successMessage={authSuccess} />
+                <LoginForm onLogin={handleLogin} onRegister={handleRegister} onOAuthLogin={handleOAuthLogin} error={authError} successMessage={authSuccess} />
               ) : <Navigate to="/" />
             } />
             
