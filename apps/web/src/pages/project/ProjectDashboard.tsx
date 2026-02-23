@@ -260,7 +260,7 @@ export function ProjectDashboard() {
   };
 
   return (
-    <div style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+    <div style={{ paddingBottom: 24 }}>
 
       {/* Status Badge */}
       {projectStatus && (
@@ -280,13 +280,6 @@ export function ProjectDashboard() {
           </span>
         </div>
       )}
-
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', margin: '0 0 8px', letterSpacing: -0.5 }}>
-        Projekt Dashboard
-      </h1>
-      <p style={{ fontSize: 15, color: '#64748b', margin: '0 0 24px' }}>
-        Zentrale Projektsteuerung und Statusübersicht
-      </p>
 
       {/* Progress Overview — shown if user can see tasks or milestones */}
       {(canViewTasks || canViewSchedule) && (

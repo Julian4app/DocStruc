@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_colors.dart';
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -11,177 +9,180 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
+    with TickerProviderStateMixin {
+  // Fade-in for logo
+  late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
-  late Animation<double> _scaleAnim;
+
+  // Hook bouncing up/down
+  late AnimationController _hookCtrl;
+  late Animation<double> _hookAnim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
+
+    // Logo fade + slight scale
+    _fadeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
+    _fadeCtrl.forward();
 
-    _fadeAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    _scaleAnim = Tween<double>(begin: 0.82, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
+    // Hook oscillation: moves 0 → 24px → 0 repeatedly
+    _hookCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+
+    _hookAnim = Tween<double>(begin: 0.0, end: 24.0).animate(
+      CurvedAnimation(parent: _hookCtrl, curve: Curves.easeInOut),
     );
 
-    _ctrl.forward();
-
-    Future.delayed(const Duration(milliseconds: 2400), () {
+    // Navigate after 2.8 seconds
+    Future.delayed(const Duration(milliseconds: 2800), () {
       if (mounted) context.go('/login');
     });
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _fadeCtrl.dispose();
+    _hookCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: AppColors.primaryGradient,
-        ),
-        child: SafeArea(
-          child: FadeTransition(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── Full-screen background image ────────────────────────────────
+          Image.asset(
+            'assets/images/SplashScreen_ohneLogo.png',
+            fit: BoxFit.cover,
+            width: size.width,
+            height: size.height,
+          ),
+
+          // ── Centered logo + animated hook ───────────────────────────────
+          FadeTransition(
             opacity: _fadeAnim,
-            child: ScaleTransition(
-              scale: _scaleAnim,
+            child: Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo container
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.15),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'DS',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 36,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
+                  // Logo image
+                  Image.asset(
+                    'assets/images/DocStruc_Logo_plain.png',
+                    width: size.width * 0.55,
+                    fit: BoxFit.contain,
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 56),
 
-                  // App name
-                  const Text(
-                    'DocStruc',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    'Baudokumentation einfach gemacht',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.72),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-
-                  const SizedBox(height: 64),
-
-                  // Loading dots
-                  SizedBox(
-                    width: 40,
-                    height: 6,
-                    child: _LoadingDots(),
+                  // ── Crane hook loading animation ─────────────────────
+                  AnimatedBuilder(
+                    animation: _hookAnim,
+                    builder: (context, _) {
+                      return _CraneHookWidget(hookOffset: _hookAnim.value);
+                    },
                   ),
                 ],
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-// ── Animated loading dots ─────────────────────────────────────────────────────
-class _LoadingDots extends StatefulWidget {
-  @override
-  State<_LoadingDots> createState() => _LoadingDotsState();
-}
+/// Draws a simplified crane hook that moves up/down.
+/// [hookOffset] is the vertical distance the hook has descended (0–24).
+class _CraneHookWidget extends StatelessWidget {
+  final double hookOffset;
 
-class _LoadingDotsState extends State<_LoadingDots>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  const _CraneHookWidget({required this.hookOffset});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, __) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(3, (i) {
-            final offset = i / 3.0;
-            final t = (_ctrl.value - offset).abs();
-            final opacity = (1.0 - (t * 2).clamp(0.0, 1.0)).clamp(0.3, 1.0);
-            return Opacity(
-              opacity: opacity,
-              child: Container(
-                width: 6, height: 6,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            );
-          }),
-        );
-      },
+    return SizedBox(
+      width: 44,
+      height: 72 + hookOffset,
+      child: CustomPaint(
+        painter: _HookPainter(hookOffset: hookOffset),
+      ),
     );
   }
+}
+
+class _HookPainter extends CustomPainter {
+  final double hookOffset;
+
+  _HookPainter({required this.hookOffset});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeW = 3.5;
+    const color = Colors.white;
+
+    final linePaint = Paint()
+      ..color = color
+      ..strokeWidth = strokeW
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final cx = size.width / 2;
+
+    // Vertical cable from top to hook knot
+    final cableBottom = 30.0 + hookOffset;
+    canvas.drawLine(
+      Offset(cx, 0),
+      Offset(cx, cableBottom),
+      linePaint,
+    );
+
+    // Hook shape: a small circle at the top + curved hook body
+    final hookPath = Path();
+    final hookTopY = cableBottom;
+    final hookR = 9.0;
+
+    // Shank (short vertical line below the knot)
+    hookPath.moveTo(cx, hookTopY);
+    hookPath.lineTo(cx, hookTopY + hookR * 1.4);
+
+    // Curved hook: arc going left-then-down-then-right
+    hookPath.arcTo(
+      Rect.fromCircle(
+        center: Offset(cx - hookR * 0.7, hookTopY + hookR * 1.4),
+        radius: hookR,
+      ),
+      0, // start angle (right)
+      3.14159 * 1.4, // sweep: left + down + curl
+      false,
+    );
+
+    canvas.drawPath(hookPath, linePaint);
+
+    // Small horizontal bar at the very top (trolley)
+    final barPaint = Paint()
+      ..color = color.withValues(alpha: 0.85)
+      ..strokeWidth = strokeW + 1
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawLine(
+      Offset(cx - 10, 0),
+      Offset(cx + 10, 0),
+      barPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HookPainter old) => old.hookOffset != hookOffset;
 }
