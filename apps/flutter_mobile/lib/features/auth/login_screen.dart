@@ -568,7 +568,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       Expanded(child: _socialBtn(
         label: 'Google',
         icon: SvgPicture.asset(
-          'assets/images/icons/login/google.svg',
+          'assets/images/icons/logIn/google.svg',
           width: 20, height: 20,
         ),
         onPressed: _loading ? null : () async {
@@ -583,7 +583,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       Expanded(child: _socialBtn(
         label: 'Apple',
         icon: SvgPicture.asset(
-          'assets/images/icons/login/apple.svg',
+          'assets/images/icons/logIn/apple.svg',
           width: 20, height: 20,
           colorFilter: ColorFilter.mode(Colors.grey.shade800, BlendMode.srcIn),
         ),
