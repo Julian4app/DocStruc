@@ -469,7 +469,7 @@ class SupabaseService {
       String projectId) async {
     return (await client
             .from('timeline_events')
-            .select('*, creator:user_id(id, email, first_name, last_name)')
+            .select('*')
             .eq('project_id', projectId)
             .order('start_date'))
         .cast<Map<String, dynamic>>();
@@ -638,6 +638,51 @@ class SupabaseService {
 
   static Future<void> deleteDiaryEntry(String id) async {
     await client.from('diary_entries').delete().eq('id', id);
+  }
+
+  static Future<List<Map<String, dynamic>>> getDiaryEntryHistory(
+      String entryId) async {
+    try {
+      final rows = (await client
+              .from('diary_entry_history')
+              .select('*')
+              .eq('diary_entry_id', entryId)
+              .order('changed_at', ascending: false))
+          .cast<Map<String, dynamic>>();
+      if (rows.isEmpty) return [];
+      final ids = rows
+          .map((r) => r['changed_by'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
+      final profiles = ids.isEmpty
+          ? <Map<String, dynamic>>[]
+          : (await client
+                  .from('profiles')
+                  .select('id, first_name, last_name, email')
+                  .inFilter('id', ids))
+              .cast<Map<String, dynamic>>();
+      final profileMap = <String, String>{
+        for (final p in profiles)
+          p['id'] as String: () {
+            final first = p['first_name'] as String? ?? '';
+            final last = p['last_name'] as String? ?? '';
+            final full = '$first $last'.trim();
+            return full.isNotEmpty ? full : (p['email'] as String? ?? 'Unbekannt');
+          }(),
+      };
+      return rows
+          .map((r) => {
+                ...r,
+                'changer_name': r['changed_by'] != null
+                    ? (profileMap[r['changed_by'] as String] ?? 'Unbekannt')
+                    : 'Unbekannt',
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('[getDiaryEntryHistory] error: $e');
+      return [];
+    }
   }
 
   // ── Content Visibility ────────────────────────────────────────────────────

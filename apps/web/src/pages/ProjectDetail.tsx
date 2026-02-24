@@ -73,12 +73,34 @@ export function ProjectDetail() {
     }
     setLoadError(null);
 
+    // Helper: run the query with a per-attempt timeout so a hung connection
+    // fails fast and can be retried instead of waiting 30+ seconds.
+    const fetchProject = async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      try {
+        const result = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', projectId)
+          .abortSignal(controller.signal)
+          .single();
+        return result;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
     try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .single();
+      let result = await fetchProject();
+
+      // On transient error (network/abort), retry once after a brief delay
+      if (result.error && (result.error.message?.includes('aborted') || result.error.message?.includes('fetch') || result.error.code === 'NETWORK_ERROR')) {
+        await new Promise(r => setTimeout(r, 1500));
+        result = await fetchProject();
+      }
+
+      const { data, error } = result;
 
       if (error) {
         if (error.code === '42P17' || error.message?.includes('infinite recursion')) {
@@ -98,17 +120,22 @@ export function ProjectDetail() {
       setProject(data);
       hasLoadedProjectRef.current = true;
     } catch (error: any) {
-      console.error('ProjectDetail: unexpected error:', error);
-      if (!hasLoadedProjectRef.current) {
-        setLoadError('Ein unerwarteter Fehler ist aufgetreten.');
+      // AbortError = our timeout fired — show a retryable error, not a hard crash
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        if (!hasLoadedProjectRef.current) {
+          setLoadError('Verbindung unterbrochen. Bitte erneut versuchen.');
+        }
+      } else {
+        console.error('ProjectDetail: unexpected error:', error);
+        if (!hasLoadedProjectRef.current) {
+          setLoadError('Ein unerwarteter Fehler ist aufgetreten.');
+        }
       }
     } finally {
       setLoading(false);
       loadInFlightRef.current = false;
     }
   // IMPORTANT: no state variables in dependency array — only stable values.
-  // This ensures the callback reference is stable and visibility handlers
-  // don't re-register on every data load.
   }, []);
 
   useEffect(() => {
@@ -130,15 +157,16 @@ export function ProjectDetail() {
     return () => window.removeEventListener('app:tabvisible', handleTabVisible);
   }, [id, loadProject]);
 
-  // ── Safety timeout: if loading is stuck for >12 seconds, force it off ──
+  // ── Safety timeout: if loading is stuck for >8 seconds, force it off ──
   useEffect(() => {
     if (!loading) return;
     const safetyTimer = setTimeout(() => {
       if (loading) {
         console.warn('ProjectDetail: safety timeout — forcing loading=false');
         setLoading(false);
+        loadInFlightRef.current = false; // ensure future calls aren't blocked
       }
-    }, 12_000);
+    }, 8_000);
     return () => clearTimeout(safetyTimer);
   }, [loading]);
 
@@ -177,9 +205,9 @@ export function ProjectDetail() {
     return () => {setActions(null);setSubtitle('');};
   }, [setActions, setSubtitle]);
 
-  // Only block if project itself hasn't loaded yet — let children mount and start their own data fetching
-  // while permissions are still loading (they check permissionsLoading themselves)
-  if (loading && !project) {
+  // Show spinner while loading or while project hasn't arrived yet (avoids
+  // briefly flashing an error screen between navigation and first data fetch)
+  if (loading || (!project && !loadError)) {
     return (
       <View style={styles.loadingContainer}>
         <LottieLoader size={120} />
@@ -187,11 +215,11 @@ export function ProjectDetail() {
     );
   }
 
-  if (loadError || !project) {
+  if (loadError) {
     return (
       <View style={styles.loadingContainer}>
         <AlertCircle size={48} color="#ef4444" />
-        <Text style={styles.errorText}>{loadError || 'Projekt nicht gefunden'}</Text>
+        <Text style={styles.errorText}>{loadError}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => id && loadProject(id)}>
           <Text style={styles.retryButtonText}>Erneut versuchen</Text>
         </TouchableOpacity>

@@ -153,17 +153,17 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
     loadPermissions();
   }, [loadPermissions]);
 
-  // ── Safety timeout: if permissions are still loading after 12 seconds,
+  // ── Safety timeout: if permissions are still loading after 8 seconds,
   // force isLoading to false so the user is never stuck on a spinner.
-  // The next visibility refetch or navigation will retry.
   useEffect(() => {
     if (!isLoading) return;
     const safetyTimer = setTimeout(() => {
       if (isLoading) {
         console.warn('usePermissions: safety timeout — forcing isLoading=false');
         setIsLoading(false);
+        loadInFlightRef.current = false; // unblock future calls
       }
-    }, 12_000);
+    }, 8_000);
     return () => clearTimeout(safetyTimer);
   }, [isLoading]);
 

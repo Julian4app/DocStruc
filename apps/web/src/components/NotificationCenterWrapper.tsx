@@ -59,16 +59,12 @@ export const NotificationCenterWrapper: React.FC<NotificationCenterWrapperProps>
 
   const loadNotifications = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('Loading notifications for user:', user?.id);
-
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
 
-      console.log('Notifications loaded:', data);
       if (error) {
         console.error('Error loading notifications:', error);
         throw error;

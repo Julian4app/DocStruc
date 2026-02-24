@@ -362,7 +362,6 @@ class _DiaryCard extends StatelessWidget {
   final bool canEdit;
   final bool canDelete;
   const _DiaryCard({required this.entry, required this.onRefresh, this.canEdit = false, this.canDelete = false});
-
   String _creatorName() {
     final p = entry['profiles'];
     if (p is Map) {
@@ -491,6 +490,27 @@ class _DiaryCard extends StatelessWidget {
                     'Erstellt von: ${_creatorName()} • ${_fmtCreatedAt(entry["created_at"] as String?)}',
                     style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
                     overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => _DiaryHistorySheet(entryId: entry['id'] as String),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(LucideIcons.history, size: 12, color: AppColors.textSecondary),
+                      SizedBox(width: 4),
+                      Text('Verlauf', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                    ]),
                   ),
                 ),
               ]),
@@ -685,6 +705,23 @@ class _EntryDetailSheet extends StatelessWidget {
                   ]),
                 ),
                 const SizedBox(height: 20),
+                // History button — always visible
+                OutlinedButton.icon(
+                  icon: const Icon(LucideIcons.history, size: 15, color: AppColors.primary),
+                  label: const Text('Änderungsverlauf', style: TextStyle(color: AppColors.primary)),
+                  onPressed: () => showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => _DiaryHistorySheet(entryId: entry['id'] as String),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 44),
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 if (canEdit || canDelete) Row(children: [
                   if (canEdit) Expanded(
                     child: OutlinedButton.icon(
@@ -1842,6 +1879,190 @@ class _FormLabel extends StatelessWidget {
       child: Text(text, style: const TextStyle(
           fontSize: 13, fontWeight: FontWeight.w600,
           color: AppColors.textSecondary)),
+    );
+  }
+}
+
+// ── Diary History Sheet ───────────────────────────────────────────────────────
+
+class _DiaryHistorySheet extends StatefulWidget {
+  final String entryId;
+  const _DiaryHistorySheet({required this.entryId});
+
+  @override
+  State<_DiaryHistorySheet> createState() => _DiaryHistorySheetState();
+}
+
+class _DiaryHistorySheetState extends State<_DiaryHistorySheet> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _history = [];
+
+  static const _fieldLabels = <String, String>{
+    'entry_date': 'Datum',
+    'weather': 'Wetter',
+    'temperature': 'Temperatur',
+    'workers_present': 'Mitarbeiter vor Ort',
+    'workers_list': 'Mitarbeiterliste',
+    'work_performed': 'Durchgeführte Arbeiten',
+    'progress_notes': 'Fortschrittsnotizen',
+    'special_events': 'Besondere Vorkommnisse',
+    'deliveries': 'Lieferungen',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final h = await SupabaseService.getDiaryEntryHistory(widget.entryId);
+      if (mounted) setState(() { _history = h; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmtDateTime(String? iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return DateFormat('dd.MM.yyyy HH:mm', 'de').format(dt);
+    } catch (_) { return iso; }
+  }
+
+  String _fieldLabel(String? field) =>
+      field != null ? (_fieldLabels[field] ?? field) : 'Unbekannt';
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.80),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40, height: 4,
+            decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.history, size: 18, color: AppColors.primary),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Änderungsverlauf',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text)),
+                ),
+                IconButton(
+                  icon: const Icon(LucideIcons.x, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.border),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                : _history.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(40),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(LucideIcons.history, size: 40, color: AppColors.textTertiary),
+                            SizedBox(height: 12),
+                            Text('Kein Änderungsverlauf vorhanden',
+                                style: TextStyle(fontSize: 15, color: AppColors.textSecondary)),
+                          ]),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _history.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final item = _history[i];
+                          final fieldName = _fieldLabel(item['field_name'] as String?);
+                          final oldVal = item['old_value']?.toString() ?? '—';
+                          final newVal = item['new_value']?.toString() ?? '—';
+                          final changer = item['changer_name'] as String? ?? 'Unbekannt';
+                          final changedAt = _fmtDateTime(item['changed_at'] as String?);
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(fieldName,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                                  ),
+                                  const Spacer(),
+                                  Text(changedAt,
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                                ]),
+                                const SizedBox(height: 10),
+                                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      const Text('Vorher', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+                                      const SizedBox(height: 4),
+                                      Text(oldVal, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), maxLines: 3, overflow: TextOverflow.ellipsis),
+                                    ]),
+                                  ),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    child: Icon(LucideIcons.arrowRight, size: 14, color: AppColors.textTertiary),
+                                  ),
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      const Text('Nachher', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+                                      const SizedBox(height: 4),
+                                      Text(newVal, style: const TextStyle(fontSize: 13, color: AppColors.text, fontWeight: FontWeight.w500), maxLines: 3, overflow: TextOverflow.ellipsis),
+                                    ]),
+                                  ),
+                                ]),
+                                const SizedBox(height: 8),
+                                Row(children: [
+                                  const Icon(LucideIcons.user, size: 12, color: AppColors.textTertiary),
+                                  const SizedBox(width: 4),
+                                  Text('Geändert von: $changer',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                                ]),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }

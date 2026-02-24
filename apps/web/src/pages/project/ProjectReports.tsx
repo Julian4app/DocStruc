@@ -8,15 +8,16 @@ import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
+import { DatePicker } from '../../components/DatePicker';
 import { useToast } from '../../components/ToastProvider';
-import { FileText, Download, BarChart3, TrendingUp, FileSpreadsheet, Mail, Calendar, X } from 'lucide-react';
+import { FileText, Download, BarChart3, FileSpreadsheet, Mail, Calendar } from 'lucide-react';
 
 interface ReportTemplate {
   id: string;
   title: string;
   description: string;
   icon: any;
-  formats: ('pdf' | 'csv' | 'excel')[];
+  formats: ('pdf' | 'csv')[];
 }
 
 interface ProjectStats {
@@ -24,11 +25,6 @@ interface ProjectStats {
   completedTasks: number;
   totalDefects: number;
   teamMembers: number;
-}
-
-interface ExportOptions {
-  format: 'pdf' | 'csv';
-  reportId: string;
 }
 
 export function ProjectReports() {
@@ -40,47 +36,39 @@ export function ProjectReports() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ReportTemplate | null>(null);
   const [exportFormat, setExportFormat] = useState<'pdf' | 'csv'>('pdf');
+  const [exportTimeframe, setExportTimeframe] = useState<'all' | 'custom'>('all');
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
   const [stats, setStats] = useState<ProjectStats>({ totalTasks: 0, completedTasks: 0, totalDefects: 0, teamMembers: 0 });
   const [projectData, setProjectData] = useState<any>(null);
 
   const reportTemplates: ReportTemplate[] = [
-    { id: 'status', title: 'Projektstatus-Report', description: 'Gesamtübersicht über den Projektstatus', icon: BarChart3, formats: ['pdf', 'csv'] },
-    { id: 'tasks', title: 'Aufgaben-Report', description: 'Detaillierte Liste aller Aufgaben', icon: FileText, formats: ['pdf', 'csv'] },
-    { id: 'defects', title: 'Mängel-Report', description: 'Übersicht aller Mängel', icon: FileText, formats: ['pdf', 'csv'] },
-    { id: 'diary', title: 'Bautagebuch-Export', description: 'Komplettes Bautagebuch', icon: Calendar, formats: ['pdf', 'csv'] },
-    { id: 'documentation', title: 'Projekt-Dokumentation', description: 'Alle Notizen und Dokumente', icon: FileText, formats: ['pdf', 'csv'] },
-    { id: 'participants', title: 'Teilnehmer-Liste', description: 'Alle Projektbeteiligten', icon: FileSpreadsheet, formats: ['pdf', 'csv'] },
-    { id: 'timeline', title: 'Zeitplan & Meilensteine', description: 'Terminübersicht', icon: Calendar, formats: ['pdf', 'csv'] },
-    { id: 'complete', title: 'Kompletter Projektbericht', description: 'Alle Daten zusammengefasst', icon: FileText, formats: ['pdf', 'csv'] }
+    { id: 'status',        title: 'Projektstatus-Report',    description: 'Gesamtübersicht über den Projektstatus', icon: BarChart3,      formats: ['pdf', 'csv'] },
+    { id: 'tasks',         title: 'Aufgaben-Report',         description: 'Detaillierte Liste aller Aufgaben',       icon: FileText,       formats: ['pdf', 'csv'] },
+    { id: 'defects',       title: 'Mängel-Report',           description: 'Übersicht aller Mängel',                  icon: FileText,       formats: ['pdf', 'csv'] },
+    { id: 'diary',         title: 'Bautagebuch-Export',      description: 'Komplettes Bautagebuch',                   icon: Calendar,       formats: ['pdf', 'csv'] },
+    { id: 'documentation', title: 'Projekt-Dokumentation',   description: 'Alle Notizen und Dokumente',               icon: FileText,       formats: ['pdf', 'csv'] },
+    { id: 'participants',  title: 'Teilnehmer-Liste',        description: 'Alle Projektbeteiligten',                  icon: FileSpreadsheet,formats: ['pdf', 'csv'] },
+    { id: 'timeline',      title: 'Zeitplan & Meilensteine', description: 'Terminübersicht',                          icon: Calendar,       formats: ['pdf', 'csv'] },
+    { id: 'complete',      title: 'Kompletter Projektbericht',description: 'Alle Daten zusammengefasst',              icon: FileText,       formats: ['pdf', 'csv'] },
   ];
 
+  // Reports that support timeframe filtering (date-based data)
+  const TIMEFRAME_REPORTS = new Set(['diary', 'documentation', 'complete']);
+
   useEffect(() => {
-    if (id) {
-      loadStats();
-      loadProjectData();
-    }
+    if (id) { loadStats(); loadProjectData(); }
   }, [id]);
 
   const loadProjectData = async () => {
     if (!id) return;
     try {
-      // Use project from outlet context if available — skip duplicate query
       const ctxProject = (permCtx as any)?.project;
-      if (ctxProject) {
-        setProjectData(ctxProject);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
+      if (ctxProject) { setProjectData(ctxProject); return; }
+      const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
       if (error) throw error;
       setProjectData(data);
-    } catch (error: any) {
-      console.error('Error loading project:', error);
-    }
+    } catch (e) { console.error('Error loading project:', e); }
   };
 
   const loadStats = async () => {
@@ -90,662 +78,531 @@ export function ProjectReports() {
       const { data: tasksData } = await supabase.from('tasks').select('id, status, task_type').eq('project_id', id);
       const { data: membersData } = await supabase.from('project_members').select('id').eq('project_id', id);
       setStats({
-        totalTasks: tasksData?.length || 0,
-        completedTasks: tasksData?.filter(t => t.status === 'done').length || 0,
-        totalDefects: tasksData?.filter(t => t.task_type === 'defect').length || 0,
-        teamMembers: membersData?.length || 0
+        totalTasks:      tasksData?.filter(t => t.task_type !== 'defect').length || 0,
+        completedTasks:  tasksData?.filter(t => t.status === 'done' && t.task_type !== 'defect').length || 0,
+        totalDefects:    tasksData?.filter(t => t.task_type === 'defect').length || 0,
+        teamMembers:     membersData?.length || 0,
       });
-    } catch (error: any) {
-      showToast('Fehler beim Laden', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } catch { showToast('Fehler beim Laden', 'error'); }
+    finally { setLoading(false); }
   };
 
   const handleGenerateReport = (report: ReportTemplate) => {
     setSelectedReport(report);
-    setExportFormat(report.formats.includes('pdf') ? 'pdf' : 'csv');
+    setExportFormat('pdf');
+    setExportTimeframe('all');
+    setExportStartDate('');
+    setExportEndDate('');
     setIsExportModalOpen(true);
   };
 
   const handleExport = async () => {
     if (!selectedReport || !id) return;
-    
     setExporting(true);
     try {
       const data = await fetchReportData(selectedReport.id);
-      
       if (exportFormat === 'pdf') {
-        const htmlContent = generateHTMLReport(selectedReport.id, data);
-        downloadPDF(htmlContent, `${selectedReport.title}_${new Date().toISOString().split('T')[0]}.html`);
+        await generatePDF(selectedReport, data);
       } else {
-        const csvContent = generateCSVReport(selectedReport.id, data);
-        downloadCSV(csvContent, `${selectedReport.title}_${new Date().toISOString().split('T')[0]}.csv`);
+        const csv = generateCSVReport(selectedReport.id, data);
+        downloadCSV(csv, `${selectedReport.title}_${new Date().toISOString().split('T')[0]}.csv`);
       }
-      
       showToast('Export erfolgreich!', 'success');
       setIsExportModalOpen(false);
     } catch (error: any) {
-      console.error('Error exporting:', error);
+      console.error('Export error:', error);
       showToast(error.message || 'Fehler beim Exportieren', 'error');
     } finally {
       setExporting(false);
     }
   };
 
+  // ── Data fetchers ──
+
+  const applyTimeframe = <T extends { created_at?: string; entry_date?: string; start_date?: string }>(items: T[]): T[] => {
+    if (exportTimeframe !== 'custom' || !exportStartDate || !exportEndDate) return items;
+    const start = new Date(exportStartDate).getTime();
+    const end   = new Date(exportEndDate).getTime() + 86400000; // inclusive end day
+    return items.filter(item => {
+      const d = new Date(item.entry_date || item.created_at || item.start_date || '').getTime();
+      return d >= start && d <= end;
+    });
+  };
+
   const fetchReportData = async (reportId: string) => {
     if (!id) throw new Error('Keine Projekt-ID');
-
     switch (reportId) {
       case 'status':
-      case 'complete':
-        return await fetchCompleteProjectData();
-      case 'tasks':
-        return await fetchTasksData();
-      case 'defects':
-        return await fetchDefectsData();
-      case 'diary':
-        return await fetchDiaryData();
-      case 'documentation':
-        return await fetchDocumentationData();
-      case 'participants':
-        return await fetchParticipantsData();
-      case 'timeline':
-        return await fetchTimelineData();
-      default:
-        throw new Error('Unbekannter Report-Typ');
+      case 'complete':  return await fetchCompleteProjectData();
+      case 'tasks':     return await fetchTasksData();
+      case 'defects':   return await fetchDefectsData();
+      case 'diary':     return await fetchDiaryData();
+      case 'documentation': return await fetchDocumentationData();
+      case 'participants':  return await fetchParticipantsData();
+      case 'timeline':  return await fetchTimelineData();
+      default: throw new Error('Unbekannter Report-Typ');
     }
   };
 
   const fetchCompleteProjectData = async () => {
-    const [tasks, members, diary, messages, milestones] = await Promise.all([
+    const [tasks, members, diary, notes, milestones] = await Promise.all([
       supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)').eq('project_id', id).order('created_at', { ascending: false }),
       supabase.from('project_members').select('*, profiles!project_members_user_id_fkey(first_name, last_name, email)').eq('project_id', id),
       supabase.from('diary_entries').select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)').eq('project_id', id).order('entry_date', { ascending: false }),
       supabase.from('project_messages').select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)').eq('project_id', id).eq('is_deleted', false).order('created_at', { ascending: false }),
-      supabase.from('timeline_events').select('*').eq('project_id', id).order('start_date', { ascending: true })
+      supabase.from('timeline_events').select('*').eq('project_id', id).order('start_date', { ascending: true }),
     ]);
-
     return {
-      project: projectData,
-      tasks: tasks.data || [],
-      members: members.data || [],
-      diary: diary.data || [],
-      messages: messages.data || [],
-      milestones: milestones.data || []
+      project:    projectData,
+      tasks:      tasks.data || [],
+      members:    members.data || [],
+      diary:      applyTimeframe(diary.data || []),
+      notes:      applyTimeframe(notes.data || []),
+      milestones: milestones.data || [],
     };
   };
 
   const fetchTasksData = async () => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
-      .eq('project_id', id)
-      .eq('task_type', 'task')
-      .order('created_at', { ascending: false });
-    
+    const { data, error } = await supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)').eq('project_id', id).eq('task_type', 'task').order('created_at', { ascending: false });
     if (error) throw error;
     return { tasks: data || [] };
   };
 
   const fetchDefectsData = async () => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)')
-      .eq('project_id', id)
-      .eq('task_type', 'defect')
-      .order('created_at', { ascending: false });
-    
+    const { data, error } = await supabase.from('tasks').select('*, profiles!tasks_assigned_to_fkey(first_name, last_name, email)').eq('project_id', id).eq('task_type', 'defect').order('created_at', { ascending: false });
     if (error) throw error;
     return { defects: data || [] };
   };
 
   const fetchDiaryData = async () => {
-    const { data, error } = await supabase
-      .from('diary_entries')
-      .select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)')
-      .eq('project_id', id)
-      .order('entry_date', { ascending: false });
-    
+    const { data, error } = await supabase.from('diary_entries').select('*, profiles!diary_entries_created_by_fkey(first_name, last_name, email)').eq('project_id', id).order('entry_date', { ascending: false });
     if (error) throw error;
-    return { entries: data || [] };
+    return { entries: applyTimeframe(data || []) };
   };
 
   const fetchDocumentationData = async () => {
-    const { data, error } = await supabase
-      .from('project_messages')
-      .select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)')
-      .eq('project_id', id)
-      .eq('message_type', 'note')
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false });
-    
+    const { data, error } = await supabase.from('project_messages').select('*, profiles!project_messages_user_id_fkey(first_name, last_name, email)').eq('project_id', id).eq('message_type', 'note').eq('is_deleted', false).order('created_at', { ascending: false });
     if (error) throw error;
-    return { notes: data || [] };
+    return { notes: applyTimeframe(data || []) };
   };
 
   const fetchParticipantsData = async () => {
-    const { data, error } = await supabase
-      .from('project_members')
-      .select('*, profiles!project_members_user_id_fkey(first_name, last_name, email, phone)')
-      .eq('project_id', id);
-    
+    const { data, error } = await supabase.from('project_members').select('*, profiles!project_members_user_id_fkey(first_name, last_name, email, phone)').eq('project_id', id);
     if (error) throw error;
     return { members: data || [] };
   };
 
   const fetchTimelineData = async () => {
-    const { data, error } = await supabase
-      .from('timeline_events')
-      .select('*')
-      .eq('project_id', id)
-      .order('start_date', { ascending: true });
-    
+    const { data, error } = await supabase.from('timeline_events').select('*').eq('project_id', id).order('start_date', { ascending: true });
     if (error) throw error;
     return { milestones: data || [] };
   };
 
-  const generateHTMLReport = (reportId: string, data: any): string => {
-    const headerHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>${selectedReport?.title || 'Bericht'}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; }
-          .logo { width: 80px; height: 80px; margin: 0 auto 20px; }
-          h1 { color: #1e3a5f; margin: 10px 0; font-size: 32px; }
-          h2 { color: #1e3a5f; margin: 25px 0 15px; font-size: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
-          h3 { color: #475569; margin: 20px 0 10px; font-size: 18px; }
-          .subtitle { color: #666; font-size: 14px; margin-top: 10px; }
-          .stats { display: flex; gap: 20px; margin: 30px 0; }
-          .stat-card { flex: 1; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; }
-          .stat-value { font-size: 32px; font-weight: bold; color: #1e3a5f; }
-          .stat-label { font-size: 12px; color: #64748b; text-transform: uppercase; margin-top: 5px; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          th { background: #f1f5f9; padding: 12px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #cbd5e1; }
-          td { padding: 12px; border-bottom: 1px solid #e2e8f0; }
-          tr:hover { background: #f8fafc; }
-          .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; display: inline-block; }
-          .status-todo { background: #fee2e2; color: #991b1b; }
-          .status-in-progress { background: #dbeafe; color: #1e40af; }
-          .status-done { background: #d1fae5; color: #065f46; }
-          .priority-high { color: #dc2626; font-weight: 600; }
-          .priority-medium { color: #f59e0b; font-weight: 600; }
-          .priority-low { color: #10b981; font-weight: 600; }
-          .entry { margin-bottom: 25px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; page-break-inside: avoid; }
-          .entry-header { font-weight: bold; color: #1e3a5f; margin-bottom: 10px; font-size: 16px; }
-          .entry-content { color: #0f172a; line-height: 1.6; }
-          .footer { margin-top: 50px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-          @media print { .entry, tr { page-break-inside: avoid; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#1e3a5f;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#0f2642;stop-opacity:1" />
-              </linearGradient>
-            </defs>
-            <rect width="512" height="512" rx="90" fill="url(#bgGrad)"/>
-            <path d="M 280 90 L 360 150 L 360 180 L 340 180 L 340 160 L 300 130 L 280 140 Z" fill="#1e3a5f" stroke="#fff" stroke-width="3"/>
-            <circle cx="445" cy="135" r="20" fill="#F59E0B" stroke="#fff" stroke-width="3"/>
-            <line x1="445" y1="155" x2="445" y2="200" stroke="#1e3a5f" stroke-width="8"/>
-            <text x="75" y="360" font-family="Arial, sans-serif" font-size="280" font-weight="bold" fill="#fff">DS</text>
-          </svg>
-          <h1>${selectedReport?.title || 'Bericht'}</h1>
-          <div class="subtitle">DocStruc - Baudokumentation • ${projectData?.name || 'Projekt'}</div>
-          <div class="subtitle">Exportiert am ${formatDateTime(new Date().toISOString())}</div>
-        </div>
-    `;
+  // ── Real PDF via jsPDF ──
 
-    let bodyHTML = '';
+  const generatePDF = async (report: ReportTemplate, data: any) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    switch (reportId) {
+    const margin  = 18;
+    const pageW   = doc.internal.pageSize.width;
+    const pageH   = doc.internal.pageSize.height;
+    const contentW = pageW - margin * 2;
+    let y = margin;
+
+    // ── Color palette ──
+    const NAVY  = [14, 42, 71]   as const;
+    const SLATE = [71, 85, 105]  as const;
+    const LIGHT = [248, 250, 252] as const;
+    const BORDER= [226, 232, 240] as const;
+    const AMBER = [245, 158, 11]  as const;
+    const TEXT  = [15, 23, 42]   as const;
+    const MUTED = [148, 163, 184] as const;
+    const GREEN = [5, 150, 105]  as const;
+    const BLUE  = [59, 130, 246] as const;
+    const RED   = [220, 38, 38]  as const;
+    const ORANGE= [234, 88, 12]  as const;
+
+    const checkPage = (needed: number) => {
+      if (y + needed > pageH - margin - 10) {
+        doc.addPage();
+        // Top stripe on continuation pages
+        doc.setFillColor(...NAVY);
+        doc.rect(0, 0, pageW, 6, 'F');
+        doc.setFillColor(...AMBER);
+        doc.rect(0, 6, pageW, 1.5, 'F');
+        y = 14;
+      }
+    };
+
+    // ── Cover header ──
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, pageW, 42, 'F');
+
+    // Logo box
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, 7, 24, 24, 3, 3, 'F');
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...NAVY);
+    doc.text('DS', margin + 6, 23);
+
+    // Title + subtitle
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(report.title, margin + 30, 18);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(203, 213, 225);
+    const projName = (data.project || projectData)?.name || 'Projekt';
+    doc.text(`${projName}  ·  DocStruc Baudokumentation`, margin + 30, 25);
+    doc.text(`Exportiert am ${fmtDT(new Date().toISOString())}`, margin + 30, 31);
+
+    doc.setFillColor(...AMBER);
+    doc.rect(0, 42, pageW, 2.5, 'F');
+    y = 52;
+
+    // ── Section heading helper ──
+    const sectionTitle = (title: string) => {
+      checkPage(14);
+      doc.setFillColor(...NAVY);
+      doc.rect(margin, y, contentW, 9, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(title, margin + 4, y + 6.2);
+      y += 13;
+    };
+
+    // ── Row helper for tables ──
+    const tableRow = (cells: string[], widths: number[], isHeader = false, shade = false) => {
+      checkPage(8);
+      if (isHeader) {
+        doc.setFillColor(241, 245, 249);
+        doc.rect(margin, y - 1, contentW, 8, 'F');
+      } else if (shade) {
+        doc.setFillColor(250, 251, 252);
+        doc.rect(margin, y - 1, contentW, 8, 'F');
+      }
+      let x = margin + 2;
+      cells.forEach((cell, i) => {
+        doc.setFontSize(isHeader ? 8 : 9);
+        doc.setFont('helvetica', isHeader ? 'bold' : 'normal');
+        if (isHeader) { doc.setTextColor(71, 85, 105); } else { doc.setTextColor(15, 23, 42); }
+        const txt = doc.splitTextToSize(cell, widths[i] - 2)[0];
+        doc.text(txt, x, y + 5);
+        x += widths[i];
+      });
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.2);
+      doc.line(margin, y + 7, pageW - margin, y + 7);
+      y += 8;
+    };
+
+    // ── Content by report type ──
+    switch (report.id) {
       case 'status':
-      case 'complete':
-        bodyHTML = generateCompleteReport(data);
+      case 'complete': {
+        const { tasks = [], members = [], diary = [], milestones = [] } = data;
+        const taskItems = tasks.filter((t: any) => t.task_type !== 'defect');
+        const defectItems = tasks.filter((t: any) => t.task_type === 'defect');
+        const done = taskItems.filter((t: any) => t.status === 'done').length;
+        const progress = taskItems.length > 0 ? Math.round((done / taskItems.length) * 100) : 0;
+
+        // Stats strip
+        const statBoxes = [
+          { label: 'Aufgaben',   value: String(taskItems.length),  color: BLUE },
+          { label: 'Erledigt',   value: String(done),              color: GREEN },
+          { label: 'Mängel',     value: String(defectItems.length),color: RED },
+          { label: 'Fortschritt',value: `${progress}%`,            color: AMBER },
+          { label: 'Team',       value: String(members.length),    color: SLATE },
+        ];
+        const boxW = contentW / statBoxes.length;
+        statBoxes.forEach(({ label, value, color }, i) => {
+          doc.setFillColor(...LIGHT);
+          doc.roundedRect(margin + i * boxW, y, boxW - 2, 18, 2, 2, 'F');
+          doc.setFontSize(16);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(color[0], color[1], color[2]);
+          doc.text(value, margin + i * boxW + boxW / 2 - 2, y + 10, { align: 'center' });
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...SLATE);
+          doc.text(label, margin + i * boxW + boxW / 2 - 2, y + 16, { align: 'center' });
+        });
+        y += 24;
+
+        // Progress bar
+        doc.setFillColor(...BORDER);
+        doc.roundedRect(margin, y, contentW, 5, 2, 2, 'F');
+        if (progress > 0) {
+          doc.setFillColor(...GREEN);
+          doc.roundedRect(margin, y, contentW * progress / 100, 5, 2, 2, 'F');
+        }
+        doc.setFontSize(8);
+        doc.setTextColor(...SLATE);
+        doc.text(`${progress}% abgeschlossen`, pageW - margin, y + 4, { align: 'right' });
+        y += 10;
+
+        if (report.id === 'complete') {
+          if (taskItems.length) {
+            sectionTitle('Aufgaben');
+            tableRow(['Titel', 'Status', 'Priorität', 'Zugewiesen an', 'Fällig'], [70, 28, 25, 40, 27], true);
+            taskItems.forEach((t: any, i: number) => tableRow([
+              t.title || '',
+              statusLabel(t.status),
+              priorityLabel(t.priority),
+              personName(t.profiles),
+              t.due_date ? fmtD(t.due_date) : '-',
+            ], [70, 28, 25, 40, 27], false, i % 2 === 1));
+          }
+          if (defectItems.length) {
+            sectionTitle('Mängel');
+            tableRow(['Titel', 'Status', 'Priorität', 'Zugewiesen an', 'Erstellt'], [70, 28, 25, 40, 27], true);
+            defectItems.forEach((t: any, i: number) => tableRow([
+              t.title || '',
+              defectStatusLabel(t.status),
+              priorityLabel(t.priority),
+              personName(t.profiles),
+              fmtD(t.created_at),
+            ], [70, 28, 25, 40, 27], false, i % 2 === 1));
+          }
+          if (milestones.length) {
+            sectionTitle('Meilensteine');
+            tableRow(['Meilenstein', 'Beschreibung', 'Zeitraum', 'Typ'], [55, 60, 40, 35], true);
+            milestones.forEach((m: any, i: number) => tableRow([
+              m.title || '',
+              m.description || '-',
+              fmtD(m.start_date) + (m.end_date ? ` – ${fmtD(m.end_date)}` : ''),
+              milestoneTypeLabel(m.event_type),
+            ], [55, 60, 40, 35], false, i % 2 === 1));
+          }
+          if (members.length) {
+            sectionTitle('Team');
+            tableRow(['Name', 'E-Mail', 'Telefon', 'Rolle'], [50, 65, 40, 35], true);
+            members.forEach((m: any, i: number) => tableRow([
+              personName(m.profiles),
+              m.profiles?.email || '-',
+              m.profiles?.phone || '-',
+              m.role || 'Mitglied',
+            ], [50, 65, 40, 35], false, i % 2 === 1));
+          }
+        }
         break;
-      case 'tasks':
-        bodyHTML = generateTasksReport(data.tasks);
+      }
+
+      case 'tasks': {
+        const { tasks = [] } = data;
+        sectionTitle(`Aufgaben (${tasks.length})`);
+        tableRow(['Titel', 'Status', 'Priorität', 'Zugewiesen an', 'Fällig am'], [65, 28, 25, 40, 32], true);
+        tasks.forEach((t: any, i: number) => tableRow([
+          t.title || '',
+          statusLabel(t.status),
+          priorityLabel(t.priority),
+          personName(t.profiles),
+          t.due_date ? fmtD(t.due_date) : '-',
+        ], [65, 28, 25, 40, 32], false, i % 2 === 1));
         break;
-      case 'defects':
-        bodyHTML = generateDefectsReport(data.defects);
+      }
+
+      case 'defects': {
+        const { defects = [] } = data;
+        sectionTitle(`Mängel (${defects.length})`);
+        tableRow(['Titel', 'Status', 'Priorität', 'Verantwortlich', 'Erstellt am'], [65, 28, 25, 40, 32], true);
+        defects.forEach((t: any, i: number) => tableRow([
+          t.title || '',
+          defectStatusLabel(t.status),
+          priorityLabel(t.priority),
+          personName(t.profiles),
+          fmtD(t.created_at),
+        ], [65, 28, 25, 40, 32], false, i % 2 === 1));
         break;
-      case 'diary':
-        bodyHTML = generateDiaryReport(data.entries);
+      }
+
+      case 'diary': {
+        const { entries = [] } = data;
+        sectionTitle(`Bautagebuch (${entries.length} Einträge)`);
+        entries.forEach((entry: any) => {
+          checkPage(30);
+          // Entry date bar
+          doc.setFillColor(...LIGHT);
+          doc.roundedRect(margin, y, contentW, 9, 2, 2, 'F');
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...NAVY);
+          doc.text(fmtD(entry.entry_date), margin + 3, y + 6.2);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...SLATE);
+          const metaTxt = `${entry.weather || ''}${entry.temperature != null ? ` · ${entry.temperature}°C` : ''}${entry.workers_present ? ` · ${entry.workers_present} Mitarb.` : ''}`;
+          doc.text(metaTxt, pageW - margin - 3, y + 6.2, { align: 'right' });
+          y += 12;
+
+          const field = (lbl: string, txt: string | null | undefined) => {
+            if (!txt) return;
+            checkPage(10);
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...MUTED);
+            doc.text(lbl.toUpperCase(), margin + 2, y);
+            y += 3.5;
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...TEXT);
+            const lines = doc.splitTextToSize(txt, contentW - 4);
+            lines.forEach((line: string) => { checkPage(5.5); doc.text(line, margin + 2, y); y += 5.5; });
+            y += 1;
+          };
+
+          if (entry.workers_list) field('Anwesende Mitarbeiter', entry.workers_list);
+          field('Durchgeführte Arbeiten', entry.work_performed);
+          if (entry.progress_notes)  field('Fortschrittsnotizen',    entry.progress_notes);
+          if (entry.special_events)  field('Besondere Vorkommnisse', entry.special_events);
+          if (entry.deliveries)      field('Lieferungen',            entry.deliveries);
+
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'italic');
+          doc.setTextColor(...MUTED);
+          const creatorName = entry.profiles ? `${entry.profiles.first_name || ''} ${entry.profiles.last_name || ''}`.trim() || entry.profiles.email : 'Unbekannt';
+          doc.text(`Erstellt von ${creatorName}  ·  ${fmtDT(entry.created_at)}`, margin + 2, y);
+          y += 4;
+
+          doc.setDrawColor(...BORDER);
+          doc.setLineWidth(0.2);
+          doc.line(margin, y, pageW - margin, y);
+          y += 5;
+        });
         break;
-      case 'documentation':
-        bodyHTML = generateDocumentationReport(data.notes);
+      }
+
+      case 'documentation': {
+        const { notes = [] } = data;
+        sectionTitle(`Notizen (${notes.length})`);
+        notes.forEach((note: any, i: number) => {
+          checkPage(25);
+          const userName = note.profiles ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() || note.profiles.email : 'Unbekannt';
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...NAVY);
+          doc.text(fmtDT(note.created_at), margin + 2, y);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...SLATE);
+          doc.text(`  · ${userName}`, margin + 2 + doc.getTextWidth(fmtDT(note.created_at)), y);
+          y += 5;
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...TEXT);
+          const stripped = (note.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const lines = doc.splitTextToSize(stripped, contentW - 4);
+          lines.forEach((line: string) => { checkPage(5.5); doc.text(line, margin + 2, y); y += 5.5; });
+          y += 2;
+          if (i < notes.length - 1) {
+            doc.setDrawColor(...BORDER); doc.setLineWidth(0.2);
+            doc.line(margin, y, pageW - margin, y); y += 4;
+          }
+        });
         break;
-      case 'participants':
-        bodyHTML = generateParticipantsReport(data.members);
+      }
+
+      case 'participants': {
+        const { members = [] } = data;
+        sectionTitle(`Teammitglieder (${members.length})`);
+        tableRow(['Name', 'E-Mail', 'Telefon', 'Rolle'], [50, 70, 35, 35], true);
+        members.forEach((m: any, i: number) => tableRow([
+          personName(m.profiles),
+          m.profiles?.email || '-',
+          m.profiles?.phone || '-',
+          m.role || 'Mitglied',
+        ], [50, 70, 35, 35], false, i % 2 === 1));
         break;
-      case 'timeline':
-        bodyHTML = generateTimelineReport(data.milestones);
+      }
+
+      case 'timeline': {
+        const { milestones = [] } = data;
+        sectionTitle(`Meilensteine (${milestones.length})`);
+        tableRow(['Meilenstein', 'Beschreibung', 'Zeitraum', 'Typ'], [55, 60, 42, 33], true);
+        milestones.forEach((m: any, i: number) => tableRow([
+          m.title || '',
+          m.description || '-',
+          fmtD(m.start_date) + (m.end_date ? ` – ${fmtD(m.end_date)}` : ''),
+          milestoneTypeLabel(m.event_type),
+        ], [55, 60, 42, 33], false, i % 2 === 1));
         break;
+      }
     }
 
-    return headerHTML + bodyHTML + `<div class="footer">© ${new Date().getFullYear()} DocStruc • Baudokumentation</div></body></html>`;
+    // ── Page footers ──
+    const totalPages = (doc.internal as any).getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text(
+        `Seite ${p} von ${totalPages}  ·  © ${new Date().getFullYear()} DocStruc`,
+        pageW / 2, pageH - 6, { align: 'center' }
+      );
+    }
+
+    doc.save(`${report.title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const generateCompleteReport = (data: any): string => {
-    let html = '<h2>Projektstatus</h2>';
-    html += `<div class="stats">
-      <div class="stat-card"><div class="stat-value">${data.tasks.length}</div><div class="stat-label">Aufgaben</div></div>
-      <div class="stat-card"><div class="stat-value">${data.tasks.filter((t: any) => t.status === 'done').length}</div><div class="stat-label">Erledigt</div></div>
-      <div class="stat-card"><div class="stat-value">${data.tasks.filter((t: any) => t.task_type === 'defect').length}</div><div class="stat-label">Mängel</div></div>
-      <div class="stat-card"><div class="stat-value">${data.members.length}</div><div class="stat-label">Team</div></div>
-    </div>`;
+  // ── Format helpers ──
+  const fmtD  = (s: string) => { if (!s) return ''; return new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }); };
+  const fmtDT = (s: string) => { if (!s) return ''; return new Date(s).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+  const personName = (p: any) => p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.email || '-' : '-';
+  const statusLabel  = (s: string) => ({ done: 'Erledigt', in_progress: 'In Bearb.', blocked: 'Blockiert', open: 'Offen' }[s] || s || '-');
+  const defectStatusLabel = (s: string) => ({ done: 'Behoben', in_progress: 'In Bearb.', open: 'Offen' }[s] || s || '-');
+  const priorityLabel = (p: string) => ({ high: 'Hoch', medium: 'Mittel', low: 'Niedrig', critical: 'Kritisch' }[p] || p || '-');
+  const milestoneTypeLabel = (t: string) => ({ deadline: 'Deadline', meeting: 'Meeting', milestone: 'Meilenstein' }[t] || 'Meilenstein');
 
-    html += '<h2>Aufgaben</h2>' + generateTasksReport(data.tasks.filter((t: any) => t.task_type === 'task'));
-    html += '<h2>Mängel</h2>' + generateDefectsReport(data.tasks.filter((t: any) => t.task_type === 'defect'));
-    html += '<h2>Meilensteine</h2>' + generateTimelineReport(data.milestones);
-    html += '<h2>Team</h2>' + generateParticipantsReport(data.members);
-    
-    return html;
-  };
-
-  const generateTasksReport = (tasks: any[]): string => {
-    if (tasks.length === 0) return '<p>Keine Aufgaben vorhanden.</p>';
-    
-    let html = `<table>
-      <thead>
-        <tr>
-          <th>Titel</th>
-          <th>Status</th>
-          <th>Priorität</th>
-          <th>Zugewiesen an</th>
-          <th>Fällig am</th>
-        </tr>
-      </thead>
-      <tbody>`;
-    
-    tasks.forEach(task => {
-      const statusClass = task.status === 'done' ? 'status-done' : task.status === 'in-progress' ? 'status-in-progress' : 'status-todo';
-      const priorityClass = task.priority === 'high' ? 'priority-high' : task.priority === 'medium' ? 'priority-medium' : 'priority-low';
-      const statusLabel = task.status === 'done' ? 'Erledigt' : task.status === 'in-progress' ? 'In Bearbeitung' : 'Offen';
-      const priorityLabel = task.priority === 'high' ? 'Hoch' : task.priority === 'medium' ? 'Mittel' : 'Niedrig';
-      const assignedTo = task.profiles ? `${task.profiles.first_name || ''} ${task.profiles.last_name || ''}`.trim() : 'Nicht zugewiesen';
-      
-      html += `<tr>
-        <td><strong>${task.title}</strong>${task.description ? `<br><small style="color: #64748b;">${task.description}</small>` : ''}</td>
-        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-        <td><span class="${priorityClass}">${priorityLabel}</span></td>
-        <td>${assignedTo}</td>
-        <td>${task.due_date ? formatDate(task.due_date) : '-'}</td>
-      </tr>`;
-    });
-    
-    html += '</tbody></table>';
-    return html;
-  };
-
-  const generateDefectsReport = (defects: any[]): string => {
-    if (defects.length === 0) return '<p>Keine Mängel vorhanden.</p>';
-    
-    let html = `<table>
-      <thead>
-        <tr>
-          <th>Titel</th>
-          <th>Status</th>
-          <th>Priorität</th>
-          <th>Verantwortlich</th>
-          <th>Erstellt am</th>
-        </tr>
-      </thead>
-      <tbody>`;
-    
-    defects.forEach(defect => {
-      const statusClass = defect.status === 'done' ? 'status-done' : defect.status === 'in-progress' ? 'status-in-progress' : 'status-todo';
-      const priorityClass = defect.priority === 'high' ? 'priority-high' : defect.priority === 'medium' ? 'priority-medium' : 'priority-low';
-      const statusLabel = defect.status === 'done' ? 'Behoben' : defect.status === 'in-progress' ? 'In Bearbeitung' : 'Offen';
-      const priorityLabel = defect.priority === 'high' ? 'Hoch' : defect.priority === 'medium' ? 'Mittel' : 'Niedrig';
-      const assignedTo = defect.profiles ? `${defect.profiles.first_name || ''} ${defect.profiles.last_name || ''}`.trim() : 'Nicht zugewiesen';
-      
-      html += `<tr>
-        <td><strong>${defect.title}</strong>${defect.description ? `<br><small style="color: #64748b;">${defect.description}</small>` : ''}</td>
-        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-        <td><span class="${priorityClass}">${priorityLabel}</span></td>
-        <td>${assignedTo}</td>
-        <td>${formatDate(defect.created_at)}</td>
-      </tr>`;
-    });
-    
-    html += '</tbody></table>';
-    return html;
-  };
-
-  const generateDiaryReport = (entries: any[]): string => {
-    if (entries.length === 0) return '<p>Keine Bautagebuch-Einträge vorhanden.</p>';
-    
-    let html = '';
-    entries.forEach(entry => {
-      const creatorName = entry.profiles ? `${entry.profiles.first_name || ''} ${entry.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      
-      html += `<div class="entry">
-        <div class="entry-header">${formatDate(entry.entry_date)} • ${entry.weather || 'Wetter unbekannt'}${entry.temperature ? ` • ${entry.temperature}°C` : ''}</div>
-        ${entry.workers_present ? `<p><strong>Mitarbeiter vor Ort:</strong> ${entry.workers_present}</p>` : ''}
-        ${entry.workers_list ? `<p><strong>Anwesende:</strong> ${entry.workers_list}</p>` : ''}
-        <div class="entry-content">
-          ${entry.work_performed ? `<p><strong>Durchgeführte Arbeiten:</strong><br>${entry.work_performed}</p>` : ''}
-          ${entry.progress_notes ? `<p><strong>Fortschritt:</strong><br>${entry.progress_notes}</p>` : ''}
-          ${entry.special_events ? `<p><strong>Besondere Vorkommnisse:</strong><br>${entry.special_events}</p>` : ''}
-          ${entry.deliveries ? `<p><strong>Lieferungen:</strong><br>${entry.deliveries}</p>` : ''}
-        </div>
-        <small style="color: #94a3b8;">Erstellt von ${creatorName} am ${formatDateTime(entry.created_at)}</small>
-      </div>`;
-    });
-    
-    return html;
-  };
-
-  const generateDocumentationReport = (notes: any[]): string => {
-    if (notes.length === 0) return '<p>Keine Notizen vorhanden.</p>';
-    
-    let html = '';
-    notes.forEach(note => {
-      const userName = note.profiles ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      
-      html += `<div class="entry">
-        <div class="entry-header">${formatDateTime(note.created_at)}${note.is_pinned ? ' 📌 Angeheftet' : ''}</div>
-        <div class="entry-content">${note.content}</div>
-        <small style="color: #94a3b8;">Von ${userName}${note.is_edited ? ' (bearbeitet am ' + formatDateTime(note.edited_at) + ')' : ''}</small>
-      </div>`;
-    });
-    
-    return html;
-  };
-
-  const generateParticipantsReport = (members: any[]): string => {
-    if (members.length === 0) return '<p>Keine Teammitglieder vorhanden.</p>';
-    
-    let html = `<table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>E-Mail</th>
-          <th>Telefon</th>
-          <th>Rolle</th>
-        </tr>
-      </thead>
-      <tbody>`;
-    
-    members.forEach(member => {
-      const name = member.profiles ? `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      const email = member.profiles?.email || '-';
-      const phone = member.profiles?.phone || '-';
-      const role = member.role || 'Mitglied';
-      
-      html += `<tr>
-        <td><strong>${name}</strong></td>
-        <td>${email}</td>
-        <td>${phone}</td>
-        <td>${role}</td>
-      </tr>`;
-    });
-    
-    html += '</tbody></table>';
-    return html;
-  };
-
-  const generateTimelineReport = (milestones: any[]): string => {
-    if (milestones.length === 0) return '<p>Keine Meilensteine vorhanden.</p>';
-    
-    let html = `<table>
-      <thead>
-        <tr>
-          <th>Meilenstein</th>
-          <th>Beschreibung</th>
-          <th>Zeitraum</th>
-          <th>Typ</th>
-        </tr>
-      </thead>
-      <tbody>`;
-    
-    milestones.forEach(milestone => {
-      const eventType = milestone.event_type || 'milestone';
-      const typeLabel = eventType === 'deadline' ? 'Deadline' : eventType === 'meeting' ? 'Meeting' : 'Meilenstein';
-      
-      html += `<tr>
-        <td><strong>${milestone.title}</strong></td>
-        <td>${milestone.description || '-'}</td>
-        <td>${milestone.start_date ? formatDate(milestone.start_date) : '-'}${milestone.end_date ? ' - ' + formatDate(milestone.end_date) : ''}</td>
-        <td>${typeLabel}</td>
-      </tr>`;
-    });
-    
-    html += '</tbody></table>';
-    return html;
-  };
-
+  // ── CSV generation (unchanged logic) ──
   const generateCSVReport = (reportId: string, data: any): string => {
     switch (reportId) {
-      case 'tasks':
-        return generateTasksCSV(data.tasks);
-      case 'defects':
-        return generateDefectsCSV(data.defects);
-      case 'diary':
-        return generateDiaryCSV(data.entries);
-      case 'documentation':
-        return generateDocumentationCSV(data.notes);
-      case 'participants':
-        return generateParticipantsCSV(data.members);
-      case 'timeline':
-        return generateTimelineCSV(data.milestones);
+      case 'tasks':         return toCSV(['Titel','Beschreibung','Status','Priorität','Zugewiesen','Fällig','Erstellt'], (data.tasks||[]).map((t: any) => [t.title||'', t.description||'', statusLabel(t.status), priorityLabel(t.priority), personName(t.profiles), t.due_date ? fmtD(t.due_date) : '', fmtDT(t.created_at)]));
+      case 'defects':       return toCSV(['Titel','Beschreibung','Status','Priorität','Zugewiesen','Erstellt'], (data.defects||[]).map((t: any) => [t.title||'', t.description||'', defectStatusLabel(t.status), priorityLabel(t.priority), personName(t.profiles), fmtDT(t.created_at)]));
+      case 'diary':         return toCSV(['Datum','Wetter','Temp','Mitarbeiter','Anwesende','Arbeiten','Fortschritt','Ereignisse','Lieferungen','Erstellt von','Erstellt am'], (data.entries||[]).map((e: any) => [fmtD(e.entry_date), e.weather||'', e.temperature?`${e.temperature}°C`:'', e.workers_present||'', e.workers_list||'', e.work_performed||'', e.progress_notes||'', e.special_events||'', e.deliveries||'', personName(e.profiles), fmtDT(e.created_at)]));
+      case 'documentation': return toCSV(['Datum','Inhalt','Erstellt von'], (data.notes||[]).map((n: any) => [fmtDT(n.created_at), (n.content||'').replace(/<[^>]+>/g,' ').trim(), personName(n.profiles)]));
+      case 'participants':  return toCSV(['Name','E-Mail','Telefon','Rolle'], (data.members||[]).map((m: any) => [personName(m.profiles), m.profiles?.email||'', m.profiles?.phone||'', m.role||'Mitglied']));
+      case 'timeline':      return toCSV(['Meilenstein','Beschreibung','Start','Ende','Typ'], (data.milestones||[]).map((m: any) => [m.title||'', m.description||'', m.start_date?fmtD(m.start_date):'', m.end_date?fmtD(m.end_date):'', milestoneTypeLabel(m.event_type)]));
       case 'status':
-      case 'complete':
-        return generateCompleteCSV(data);
-      default:
-        return '';
+      case 'complete': {
+        const { tasks=[], members=[], diary=[], milestones=[] } = data;
+        let csv = '=== PROJEKTSTATUS ===\n';
+        csv += `Aufgaben,${tasks.filter((t:any)=>t.task_type!=='defect').length}\n`;
+        csv += `Erledigt,${tasks.filter((t:any)=>t.status==='done'&&t.task_type!=='defect').length}\n`;
+        csv += `Mängel,${tasks.filter((t:any)=>t.task_type==='defect').length}\n\n`;
+        csv += '=== AUFGABEN ===\n' + generateCSVReport('tasks', { tasks: tasks.filter((t:any)=>t.task_type!=='defect') }) + '\n\n';
+        csv += '=== MÄNGEL ===\n' + generateCSVReport('defects', { defects: tasks.filter((t:any)=>t.task_type==='defect') }) + '\n\n';
+        csv += '=== MEILENSTEINE ===\n' + generateCSVReport('timeline', { milestones }) + '\n\n';
+        csv += '=== TEAM ===\n' + generateCSVReport('participants', { members });
+        return csv;
+      }
+      default: return '';
     }
   };
 
-  const generateTasksCSV = (tasks: any[]): string => {
-    const headers = ['Titel', 'Beschreibung', 'Status', 'Priorität', 'Zugewiesen an', 'Fällig am', 'Erstellt am'];
-    const rows = tasks.map(task => {
-      const assignedTo = task.profiles ? `${task.profiles.first_name || ''} ${task.profiles.last_name || ''}`.trim() : 'Nicht zugewiesen';
-      const statusLabel = task.status === 'done' ? 'Erledigt' : task.status === 'in-progress' ? 'In Bearbeitung' : 'Offen';
-      const priorityLabel = task.priority === 'high' ? 'Hoch' : task.priority === 'medium' ? 'Mittel' : 'Niedrig';
-      
-      return [
-        task.title,
-        task.description || '',
-        statusLabel,
-        priorityLabel,
-        assignedTo,
-        task.due_date ? formatDate(task.due_date) : '',
-        formatDateTime(task.created_at)
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
+  const toCSV = (headers: string[], rows: any[][]): string =>
+    [headers, ...rows].map(r => r.map(c => `"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');
 
-  const generateDefectsCSV = (defects: any[]): string => {
-    const headers = ['Titel', 'Beschreibung', 'Status', 'Priorität', 'Verantwortlich', 'Erstellt am'];
-    const rows = defects.map(defect => {
-      const assignedTo = defect.profiles ? `${defect.profiles.first_name || ''} ${defect.profiles.last_name || ''}`.trim() : 'Nicht zugewiesen';
-      const statusLabel = defect.status === 'done' ? 'Behoben' : defect.status === 'in-progress' ? 'In Bearbeitung' : 'Offen';
-      const priorityLabel = defect.priority === 'high' ? 'Hoch' : defect.priority === 'medium' ? 'Mittel' : 'Niedrig';
-      
-      return [
-        defect.title,
-        defect.description || '',
-        statusLabel,
-        priorityLabel,
-        assignedTo,
-        formatDateTime(defect.created_at)
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
-
-  const generateDiaryCSV = (entries: any[]): string => {
-    const headers = ['Datum', 'Wetter', 'Temperatur', 'Mitarbeiter', 'Anwesende', 'Arbeiten', 'Fortschritt', 'Ereignisse', 'Lieferungen', 'Erstellt von', 'Erstellt am'];
-    const rows = entries.map(entry => {
-      const creatorName = entry.profiles ? `${entry.profiles.first_name || ''} ${entry.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      
-      return [
-        formatDate(entry.entry_date),
-        entry.weather || '',
-        entry.temperature ? `${entry.temperature}°C` : '',
-        entry.workers_present || '',
-        entry.workers_list || '',
-        entry.work_performed || '',
-        entry.progress_notes || '',
-        entry.special_events || '',
-        entry.deliveries || '',
-        creatorName,
-        formatDateTime(entry.created_at)
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
-
-  const generateDocumentationCSV = (notes: any[]): string => {
-    const headers = ['Datum', 'Inhalt', 'Erstellt von', 'Angeheftet', 'Bearbeitet'];
-    const rows = notes.map(note => {
-      const userName = note.profiles ? `${note.profiles.first_name || ''} ${note.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      
-      return [
-        formatDateTime(note.created_at),
-        note.content,
-        userName,
-        note.is_pinned ? 'Ja' : 'Nein',
-        note.is_edited ? formatDateTime(note.edited_at) : 'Nein'
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
-
-  const generateParticipantsCSV = (members: any[]): string => {
-    const headers = ['Name', 'E-Mail', 'Telefon', 'Rolle'];
-    const rows = members.map(member => {
-      const name = member.profiles ? `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() : 'Unbekannt';
-      
-      return [
-        name,
-        member.profiles?.email || '',
-        member.profiles?.phone || '',
-        member.role || 'Mitglied'
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
-
-  const generateTimelineCSV = (milestones: any[]): string => {
-    const headers = ['Meilenstein', 'Beschreibung', 'Startdatum', 'Enddatum', 'Typ'];
-    const rows = milestones.map(milestone => {
-      const eventType = milestone.event_type || 'milestone';
-      const typeLabel = eventType === 'deadline' ? 'Deadline' : eventType === 'meeting' ? 'Meeting' : 'Meilenstein';
-      
-      return [
-        milestone.title,
-        milestone.description || '',
-        milestone.start_date ? formatDate(milestone.start_date) : '',
-        milestone.end_date ? formatDate(milestone.end_date) : '',
-        typeLabel
-      ];
-    });
-    
-    return [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-  };
-
-  const generateCompleteCSV = (data: any): string => {
-    let csv = '=== PROJEKTSTATUS ===\n';
-    csv += `Gesamtaufgaben,${data.tasks.length}\n`;
-    csv += `Erledigte Aufgaben,${data.tasks.filter((t: any) => t.status === 'done').length}\n`;
-    csv += `Mängel,${data.tasks.filter((t: any) => t.task_type === 'defect').length}\n`;
-    csv += `Teammitglieder,${data.members.length}\n\n`;
-
-    csv += '=== AUFGABEN ===\n';
-    csv += generateTasksCSV(data.tasks.filter((t: any) => t.task_type === 'task')) + '\n\n';
-
-    csv += '=== MÄNGEL ===\n';
-    csv += generateDefectsCSV(data.tasks.filter((t: any) => t.task_type === 'defect')) + '\n\n';
-
-    csv += '=== MEILENSTEINE ===\n';
-    csv += generateTimelineCSV(data.milestones) + '\n\n';
-
-    csv += '=== TEAM ===\n';
-    csv += generateParticipantsCSV(data.members);
-
-    return csv;
-  };
-
-  const downloadPDF = (htmlContent: string, filename: string) => {
-    const blob = new Blob([htmlContent], { type: 'text/html' });
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const downloadCSV = (csvContent: string, filename: string) => {
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  const formatDateTime = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('de-DE', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const handleScheduleReport = () => {
-    showToast('Automatische Report-Versendung folgt', 'info');
-  };
+  const handleScheduleReport = () => { showToast('Automatische Report-Versendung folgt', 'info'); };
 
   if (loading) {
-    return (<View style={styles.loadingContainer}>
-        <LottieLoader size={120} />
-      </View>);
+    return (<View style={styles.loadingContainer}><LottieLoader size={120} /></View>);
   }
+
+  const showTimeframe = selectedReport && TIMEFRAME_REPORTS.has(selectedReport.id);
+  const canExport = !exporting && !(exportTimeframe === 'custom' && (!exportStartDate || !exportEndDate));
 
   return (
     <View style={styles.container}>
@@ -758,35 +615,32 @@ export function ProjectReports() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Stats */}
         <Card style={styles.statsCard}>
           <Text style={styles.statsTitle}>Projekt-Kennzahlen</Text>
           <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.totalTasks}</Text>
-              <Text style={styles.statLabel}>Aufgaben</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.completedTasks}</Text>
-              <Text style={styles.statLabel}>Erledigt</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.totalDefects}</Text>
-              <Text style={styles.statLabel}>Mängel</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.teamMembers}</Text>
-              <Text style={styles.statLabel}>Team</Text>
-            </View>
+            {[
+              { value: stats.totalTasks,     label: 'Aufgaben' },
+              { value: stats.completedTasks, label: 'Erledigt' },
+              { value: stats.totalDefects,   label: 'Mängel' },
+              { value: stats.teamMembers,    label: 'Team' },
+            ].map(({ value, label }) => (
+              <View key={label} style={styles.statItem}>
+                <Text style={styles.statValue}>{value}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
+              </View>
+            ))}
           </View>
           <View style={styles.progressSection}>
             <Text style={styles.progressLabel}>Projektfortschritt</Text>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0}%` }]} />
+              <View style={[styles.progressFill, { width: `${stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0}%` as any }]} />
             </View>
             <Text style={styles.progressText}>{stats.totalTasks > 0 ? Math.round((stats.completedTasks / stats.totalTasks) * 100) : 0}%</Text>
           </View>
         </Card>
 
+        {/* Report cards */}
         <View style={styles.reportsSection}>
           <Text style={styles.sectionTitle}>Verfügbare Reports</Text>
           <View style={styles.reportGrid}>
@@ -797,16 +651,8 @@ export function ProjectReports() {
                   <View style={styles.reportHeader}>
                     <View style={styles.reportIconContainer}><IconComponent size={24} color={colors.primary} /></View>
                     <View style={styles.formatBadges}>
-                      {report.formats.includes('pdf') && (
-                        <View style={[styles.formatBadge, { backgroundColor: '#DC2626' }]}>
-                          <Text style={styles.formatBadgeText}>PDF</Text>
-                        </View>
-                      )}
-                      {report.formats.includes('csv') && (
-                        <View style={[styles.formatBadge, { backgroundColor: '#3B82F6' }]}>
-                          <Text style={styles.formatBadgeText}>CSV</Text>
-                        </View>
-                      )}
+                      {report.formats.includes('pdf') && <View style={[styles.formatBadge, { backgroundColor: '#DC2626' }]}><Text style={styles.formatBadgeText}>PDF</Text></View>}
+                      {report.formats.includes('csv') && <View style={[styles.formatBadge, { backgroundColor: '#3B82F6' }]}><Text style={styles.formatBadgeText}>CSV</Text></View>}
                     </View>
                   </View>
                   <Text style={styles.reportTitle}>{report.title}</Text>
@@ -822,62 +668,66 @@ export function ProjectReports() {
         </View>
       </ScrollView>
 
+      {/* Export Modal */}
       <ModernModal
         visible={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        title={`${selectedReport?.title} exportieren`}
+        title={`${selectedReport?.title || 'Report'} exportieren`}
       >
         <View style={styles.modalContent}>
-          <Text style={styles.modalLabel}>Export-Format wählen</Text>
+
+          {/* Format picker */}
+          <Text style={styles.modalLabel}>Format</Text>
           <View style={styles.formatOptions}>
-            {selectedReport?.formats.includes('pdf') && (
-              <TouchableOpacity
-                style={[styles.formatOption, exportFormat === 'pdf' && styles.formatOptionActive]}
-                onPress={() => setExportFormat('pdf')}
-              >
-                <FileText size={24} color={exportFormat === 'pdf' ? colors.primary : '#64748b'} />
-                <Text style={[styles.formatOptionText, exportFormat === 'pdf' && styles.formatOptionTextActive]}>
-                  PDF (HTML)
-                </Text>
-                <Text style={styles.formatOptionDesc}>Visuell formatiertes Dokument</Text>
-              </TouchableOpacity>
-            )}
-            {selectedReport?.formats.includes('csv') && (
-              <TouchableOpacity
-                style={[styles.formatOption, exportFormat === 'csv' && styles.formatOptionActive]}
-                onPress={() => setExportFormat('csv')}
-              >
-                <FileSpreadsheet size={24} color={exportFormat === 'csv' ? colors.primary : '#64748b'} />
-                <Text style={[styles.formatOptionText, exportFormat === 'csv' && styles.formatOptionTextActive]}>
-                  CSV
-                </Text>
-                <Text style={styles.formatOptionDesc}>Daten für Excel/Tabellen</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[styles.formatOption, exportFormat === 'pdf' && styles.formatOptionActive]}
+              onPress={() => setExportFormat('pdf')}
+            >
+              <FileText size={22} color={exportFormat === 'pdf' ? colors.primary : '#64748b'} />
+              <Text style={[styles.formatOptionText, exportFormat === 'pdf' && styles.formatOptionTextActive]}>PDF</Text>
+              <Text style={styles.formatOptionDesc}>Druckbares Dokument</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.formatOption, exportFormat === 'csv' && styles.formatOptionActive]}
+              onPress={() => setExportFormat('csv')}
+            >
+              <FileSpreadsheet size={22} color={exportFormat === 'csv' ? colors.primary : '#64748b'} />
+              <Text style={[styles.formatOptionText, exportFormat === 'csv' && styles.formatOptionTextActive]}>CSV</Text>
+              <Text style={styles.formatOptionDesc}>Daten für Excel</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => setIsExportModalOpen(false)}
-            >
-              <X size={18} color="#64748b" />
-              <Text style={styles.modalCancelText}>Abbrechen</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalExportButton, exporting && styles.modalExportButtonDisabled]}
-              onPress={handleExport}
-              disabled={exporting}
-            >
-              {exporting ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <>
-                  <Download size={18} color="#ffffff" />
-                  <Text style={styles.modalExportText}>Exportieren</Text>
-                </>
+          {/* Timeframe (only for date-based reports) */}
+          {showTimeframe && (
+            <>
+              <Text style={styles.modalLabel}>Zeitraum</Text>
+              <View style={styles.timeframeOptions}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer' }}>
+                  <input type="radio" checked={exportTimeframe === 'all'} onChange={() => setExportTimeframe('all')} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                  <span style={{ fontSize: 14, color: '#334155', fontWeight: 600 }}>Gesamtes Projekt</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer' }}>
+                  <input type="radio" checked={exportTimeframe === 'custom'} onChange={() => setExportTimeframe('custom')} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                  <span style={{ fontSize: 14, color: '#334155', fontWeight: 600 }}>Benutzerdefinierter Zeitraum</span>
+                </label>
+              </View>
+              {exportTimeframe === 'custom' && (
+                <View style={styles.dateRange}>
+                  <View style={{ flex: 1 }}><DatePicker label="Von" value={exportStartDate} onChange={setExportStartDate} placeholder="TT.MM.JJJJ" /></View>
+                  <View style={{ flex: 1 }}><DatePicker label="Bis" value={exportEndDate}   onChange={setExportEndDate}   placeholder="TT.MM.JJJJ" /></View>
+                </View>
               )}
-            </TouchableOpacity>
+            </>
+          )}
+
+          {/* Actions */}
+          <View style={styles.modalActions}>
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)} style={{ flex: 1 }}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleExport} disabled={!canExport} style={{ flex: 1 }}>
+              {exporting ? <ActivityIndicator size="small" color="#fff" /> : <><Download size={16} /> Exportieren</>}
+            </Button>
           </View>
         </View>
       </ModernModal>
@@ -901,7 +751,7 @@ const styles = StyleSheet.create({
   progressSection: { gap: 8 },
   progressLabel: { fontSize: 14, fontWeight: '600', color: '#475569' },
   progressBar: { height: 12, backgroundColor: '#E2E8F0', borderRadius: 6, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.primary },
+  progressFill: { height: '100%' as any, backgroundColor: colors.primary },
   progressText: { fontSize: 14, fontWeight: '700', color: colors.primary, textAlign: 'right' },
   reportsSection: { marginBottom: 24 },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
@@ -916,19 +766,16 @@ const styles = StyleSheet.create({
   reportDescription: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 16 },
   generateButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 10 },
   generateButtonText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
-  modalContent: { gap: 20 },
-  modalLabel: { fontSize: 15, fontWeight: '600', color: '#0f172a', marginBottom: 8 },
+  modalContent: { gap: 16 },
+  modalLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 4 },
   formatOptions: { flexDirection: 'row', gap: 12 },
-  formatOption: { flex: 1, padding: 20, borderWidth: 2, borderColor: '#e2e8f0', borderRadius: 12, alignItems: 'center', gap: 8 },
+  formatOption: { flex: 1, padding: 16, borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, alignItems: 'center', gap: 6 },
   formatOptionActive: { borderColor: colors.primary, backgroundColor: '#EFF6FF' },
-  formatOptionText: { fontSize: 15, fontWeight: '600', color: '#64748b' },
+  formatOptionText: { fontSize: 14, fontWeight: '700', color: '#64748b' },
   formatOptionTextActive: { color: colors.primary },
-  formatOptionDesc: { fontSize: 12, color: '#94a3b8', textAlign: 'center' },
-  modalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end', marginTop: 10 },
-  modalCancelButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: '#F1F5F9', borderRadius: 12 },
-  modalCancelText: { fontSize: 15, fontWeight: '600', color: '#64748b' },
-  modalExportButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: colors.primary, borderRadius: 12 },
-  modalExportButtonDisabled: { backgroundColor: '#CBD5E1' },
-  modalExportText: { fontSize: 15, fontWeight: '600', color: '#ffffff' }
+  formatOptionDesc: { fontSize: 11, color: '#94a3b8', textAlign: 'center' },
+  timeframeOptions: { gap: 0, marginBottom: 4 },
+  dateRange: { flexDirection: 'row', gap: 12 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
 });
 

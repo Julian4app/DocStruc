@@ -624,32 +624,61 @@ class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
                     // ── Photos ───────────────────────────────────────────────
                     const Text('Bilder hinzufügen', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
                     const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: () async {
-                        final picker = ImagePicker();
-                        final picked = await picker.pickMultiImage();
-                        if (picked.isEmpty) return;
-                        final items = <({String name, Uint8List bytes})>[];
-                        for (final f in picked) {
-                          final bytes = await f.readAsBytes();
-                          items.add((name: f.name, bytes: bytes));
-                        }
-                        ss(() => pendingImages = [...pendingImages, ...items]);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.danger.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                    Row(children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickMultiImage();
+                            if (picked.isEmpty) return;
+                            final items = <({String name, Uint8List bytes})>[];
+                            for (final f in picked) {
+                              final bytes = await f.readAsBytes();
+                              items.add((name: f.name, bytes: bytes));
+                            }
+                            ss(() => pendingImages = [...pendingImages, ...items]);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              Icon(LucideIcons.image, size: 20, color: AppColors.textSecondary),
+                              SizedBox(height: 6),
+                              Text('Galerie', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+                            ]),
+                          ),
                         ),
-                        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(LucideIcons.camera, size: 18, color: AppColors.danger),
-                          SizedBox(width: 8),
-                          Text('Bilder aus Galerie wählen', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.danger)),
-                        ]),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final picker = ImagePicker();
+                            final picked = await picker.pickImage(source: ImageSource.camera);
+                            if (picked == null) return;
+                            final bytes = await picked.readAsBytes();
+                            ss(() => pendingImages = [...pendingImages, (name: picked.name, bytes: bytes)]);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              Icon(LucideIcons.camera, size: 20, color: AppColors.textSecondary),
+                              SizedBox(height: 6),
+                              Text('Kamera', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ]),
                     if (pendingImages.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       SizedBox(

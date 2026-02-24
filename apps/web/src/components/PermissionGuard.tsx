@@ -16,6 +16,7 @@ interface ProjectOutletContext {
   canEdit: (moduleKey: string) => boolean;
   canDelete: (moduleKey: string) => boolean;
   permissionsLoading: boolean;
+  project: any; // Project data loaded by ProjectDetail
 }
 
 interface PermissionGuardProps {
@@ -41,8 +42,6 @@ export function PermissionGuard({ moduleKey, children }: PermissionGuardProps) {
 
   // If no context or still loading permissions, show a spinner instead of blank
   if (!context || context.permissionsLoading) {
-    console.log(`[PermGuard] RENDER → spinner (context=${!!context}, permissionsLoading=${context?.permissionsLoading})`);
-    (window as any).__debugPush?.(`[PermGuard] spinner ctx=${!!context} permLoading=${context?.permissionsLoading}`);
     return (
       <View style={styles.loadingContainer}>
         <LottieLoader size={120} />

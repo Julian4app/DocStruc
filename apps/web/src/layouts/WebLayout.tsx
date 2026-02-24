@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { LayoutContext } from './LayoutContext';
 import { ProfileDropdown } from '../components/ProfileDropdown';
+import { GlobalSearch } from '../components/GlobalSearch';
 import { NotificationCenterWrapper } from '../components/NotificationCenterWrapper';
 import { CustomModal } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
@@ -12,7 +13,6 @@ import {
   LayoutDashboard, 
   Folder, 
   Users, 
-  Search,
   Bell,
   Smartphone,
   UsersRound
@@ -240,13 +240,7 @@ export function WebLayout() {
       <View style={styles.main}>
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.searchBar}>
-            <Search size={18} color="#94a3b8" />
-            <Text style={styles.searchText}>Search...</Text>
-            <View style={styles.searchShortcut}>
-              <Text style={styles.searchShortcutText}>⌘ F</Text>
-            </View>
-          </View>
+          <GlobalSearch />
           
           <View style={styles.headerRight}>
             <View ref={notificationRef} style={{ position: 'relative' as any, zIndex: 100 }}>
@@ -344,10 +338,6 @@ const styles = StyleSheet.create({
 
   /* Header */
   header: { height: 72, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 32, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', position: 'relative' as any, zIndex: 100 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 16, height: 42, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', width: 280, gap: 10 },
-  searchText: { flex: 1, color: '#94a3b8', fontSize: 14 },
-  searchShortcut: { backgroundColor: '#fff', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' },
-  searchShortcutText: { fontSize: 11, fontWeight: '600', color: '#94a3b8' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16, position: 'relative' as any, zIndex: 200 },
   headerIconBtn: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center', position: 'relative' as any },
   notifDot: { position: 'absolute' as any, top: 10, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#F8FAFC' },

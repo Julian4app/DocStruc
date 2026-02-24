@@ -15,7 +15,7 @@ import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadMoreButton } from '../../components/LoadMoreButton';
-import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock, History, Pencil, Save } from 'lucide-react';
+import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock, History, Pencil, Save, AlertCircle } from 'lucide-react';
 
 interface DiaryHistoryItem {
   id: string;
@@ -82,6 +82,7 @@ export function ProjectDiary() {
   const [historyEntry, setHistoryEntry] = useState<DiaryEntry | null>(null);
   const [historyItems, setHistoryItems] = useState<DiaryHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // Pagination state
@@ -375,12 +376,13 @@ export function ProjectDiary() {
     try {
       const manualCount = manualWorkerCount ? parseInt(manualWorkerCount) || 0 : 0;
       const totalWorkers = manualCount + selectedWorkers.length;
+      const newTemp = temperature ? parseInt(temperature) : null;
 
       const updates: Partial<DiaryEntry> = {
         entry_date: selectedDate,
         weather,
-        temperature: temperature ? parseInt(temperature) : undefined,
-        workers_present: totalWorkers || undefined,
+        temperature: newTemp ?? undefined,
+        workers_present: totalWorkers > 0 ? totalWorkers : undefined,
         work_performed: workPerformed,
         progress_notes: progressNotes || undefined,
         special_events: specialEvents || undefined,
@@ -389,21 +391,23 @@ export function ProjectDiary() {
         updated_by: userId,
       };
 
-      // Build history entries for changed fields
-      const fieldLabels: Record<string, string> = {
-        entry_date: 'Datum',
-        weather: 'Wetter',
-        temperature: 'Temperatur',
-        workers_present: 'Mitarbeiter',
-        work_performed: 'Durchgeführte Arbeiten',
-        progress_notes: 'Fortschrittsnotizen',
-        special_events: 'Besondere Vorkommnisse',
-        deliveries: 'Lieferungen',
-      };
+      // Build history records by comparing old vs new values
+      // Use normalised strings so null/""/undefined all compare as ''
+      const norm = (v: any): string => (v == null || v === 'undefined' ? '' : String(v).trim());
+
+      const fieldComparisons: Array<{ field: string; label: string; oldVal: string; newVal: string }> = [
+        { field: 'entry_date',     label: 'Datum',                    oldVal: norm(editingEntry.entry_date),     newVal: norm(selectedDate) },
+        { field: 'weather',        label: 'Wetter',                   oldVal: norm(editingEntry.weather),        newVal: norm(weather) },
+        { field: 'temperature',    label: 'Temperatur',               oldVal: norm(editingEntry.temperature),    newVal: norm(newTemp) },
+        { field: 'workers_present',label: 'Mitarbeiter (Anzahl)',     oldVal: norm(editingEntry.workers_present),newVal: norm(totalWorkers > 0 ? totalWorkers : null) },
+        { field: 'work_performed', label: 'Durchgeführte Arbeiten',   oldVal: norm(editingEntry.work_performed), newVal: norm(workPerformed) },
+        { field: 'progress_notes', label: 'Fortschrittsnotizen',      oldVal: norm(editingEntry.progress_notes), newVal: norm(progressNotes) },
+        { field: 'special_events', label: 'Besondere Vorkommnisse',   oldVal: norm(editingEntry.special_events), newVal: norm(specialEvents) },
+        { field: 'deliveries',     label: 'Lieferungen',              oldVal: norm(editingEntry.deliveries),     newVal: norm(deliveries) },
+      ];
+
       const historyInserts: any[] = [];
-      for (const [field, label] of Object.entries(fieldLabels)) {
-        const oldVal = String((editingEntry as any)[field] ?? '');
-        const newVal = String((updates as any)[field] ?? '');
+      for (const { label, oldVal, newVal } of fieldComparisons) {
         if (oldVal !== newVal) {
           historyInserts.push({
             diary_entry_id: editingEntry.id,
@@ -429,7 +433,7 @@ export function ProjectDiary() {
         const { error: hErr } = await supabase.from('diary_entry_history').insert(historyInserts);
         if (hErr) {
           console.error('History insert failed:', hErr);
-          // Don't block success toast — history is best-effort
+          showToast(`Verlauf konnte nicht gespeichert werden: ${hErr.message}`, 'error');
         }
       }
 
@@ -450,29 +454,48 @@ export function ProjectDiary() {
     setIsHistoryModalOpen(true);
     setHistoryLoading(true);
     setHistoryItems([]);
+    setHistoryError(null);
     try {
+      // Step 1: fetch raw history rows (no join — changed_by refs auth.users, not public.profiles)
       const { data, error } = await supabase
         .from('diary_entry_history')
-        .select(`
-          *,
-          profiles:changed_by(first_name, last_name, email)
-        `)
+        .select('*')
         .eq('diary_entry_id', entry.id)
         .order('changed_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading history:', error);
+        setHistoryError(
+          error.code === '42P01'
+            ? 'Verlaufstabelle nicht gefunden. Bitte führe die SQL-Migration in Supabase aus.'
+            : `Fehler: ${error.message}`
+        );
+        return;
+      }
 
-      const transformed: DiaryHistoryItem[] = (data || []).map((item: any) => ({
+      // Step 2: collect unique changer UUIDs and fetch names from public.profiles
+      const rows = data || [];
+      const changerIds = [...new Set(rows.map((r: any) => r.changed_by).filter(Boolean))];
+      let profileMap: Record<string, string> = {};
+      if (changerIds.length > 0) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('id', changerIds);
+        (profileData || []).forEach((p: any) => {
+          profileMap[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.email || 'Unbekannt';
+        });
+      }
+
+      // Step 3: merge
+      const transformed: DiaryHistoryItem[] = rows.map((item: any) => ({
         ...item,
-        changer_name: item.profiles
-          ? `${item.profiles.first_name || ''} ${item.profiles.last_name || ''}`.trim() || item.profiles.email
-          : 'Unbekannt',
+        changer_name: item.changed_by ? (profileMap[item.changed_by] || 'Unbekannt') : 'Unbekannt',
       }));
       setHistoryItems(transformed);
     } catch (error: any) {
       console.error('Error loading history:', error);
-      // If table doesn't exist yet, show friendly message
-      setHistoryItems([]);
+      setHistoryError('Unerwarteter Fehler beim Laden des Verlaufs.');
     } finally {
       setHistoryLoading(false);
     }
@@ -499,13 +522,9 @@ export function ProjectDiary() {
         return;
       }
 
-      // Generate document content
       if (exportFormat === 'pdf') {
-        // Generate PDF
-        const content = generatePDFContent(entriesToExport);
-        downloadPDF(content, `Bautagebuch_${new Date().toISOString().split('T')[0]}.pdf`);
+        await generateRealPDF(entriesToExport);
       } else {
-        // Generate CSV
         const csv = generateCSVContent(entriesToExport);
         downloadCSV(csv, `Bautagebuch_${new Date().toISOString().split('T')[0]}.csv`);
       }
@@ -520,13 +539,14 @@ export function ProjectDiary() {
     }
   };
 
-  const generateCSVContent = (entries: DiaryEntry[]) => {
-    const headers = ['Datum', 'Wetter', 'Temperatur', 'Mitarbeiter', 'Arbeiten', 'Fortschritt', 'Ereignisse', 'Lieferungen', 'Erstellt von', 'Erstellt am'];
-    const rows = entries.map(entry => [
+  const generateCSVContent = (entriesToExport: DiaryEntry[]) => {
+    const headers = ['Datum', 'Wetter', 'Temperatur', 'Mitarbeiter', 'Anwesende', 'Arbeiten', 'Fortschritt', 'Ereignisse', 'Lieferungen', 'Erstellt von', 'Erstellt am'];
+    const rows = entriesToExport.map(entry => [
       formatDate(entry.entry_date),
       getWeatherLabel(entry.weather),
       entry.temperature ? `${entry.temperature}°C` : '',
       entry.workers_present || '',
+      entry.workers_list || '',
       entry.work_performed || '',
       entry.progress_notes || '',
       entry.special_events || '',
@@ -534,109 +554,159 @@ export function ProjectDiary() {
       entry.creator_name || '',
       formatDateTime(entry.created_at)
     ]);
-    
     return [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
       .join('\n');
   };
 
-  const generatePDFContent = (entries: DiaryEntry[]) => {
-    let html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Bautagebuch Export</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #1e3a5f; padding-bottom: 20px; }
-          .logo { width: 80px; height: 80px; margin: 0 auto 20px; }
-          h1 { color: #1e3a5f; margin: 10px 0; }
-          .subtitle { color: #666; font-size: 14px; }
-          .entry { margin-bottom: 30px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px; page-break-inside: avoid; }
-          .entry-header { background: #f8fafc; padding: 12px; margin: -20px -20px 15px; border-radius: 8px 8px 0 0; border-bottom: 2px solid #e2e8f0; }
-          .entry-date { font-size: 18px; font-weight: bold; color: #1e3a5f; margin-bottom: 5px; }
-          .entry-meta { display: flex; gap: 20px; font-size: 13px; color: #64748b; }
-          .section { margin: 15px 0; }
-          .section-title { font-weight: bold; color: #475569; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
-          .section-content { color: #0f172a; line-height: 1.6; }
-          .footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; font-style: italic; }
-          @media print { .entry { page-break-inside: avoid; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-            <rect width="512" height="512" rx="90" fill="#1e3a5f"/>
-            <path d="M 280 90 L 360 150 L 360 180 L 340 180 L 340 160 L 300 130 L 280 140 Z" fill="#1e3a5f" stroke="#fff" stroke-width="3"/>
-            <circle cx="445" cy="135" r="20" fill="#F59E0B" stroke="#fff" stroke-width="3"/>
-            <line x1="445" y1="155" x2="445" y2="200" stroke="#1e3a5f" stroke-width="8"/>
-            <text x="75" y="360" font-family="Arial" font-size="280" font-weight="bold" fill="#fff">DS</text>
-          </svg>
-          <h1>Bautagebuch</h1>
-          <div class="subtitle">DocStruc - Baudokumentation • Exportiert am ${formatDateTime(new Date().toISOString())}</div>
-        </div>
-    `;
+  const generateRealPDF = async (entriesToExport: DiaryEntry[]) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margin = 18;
+    const pageW = doc.internal.pageSize.width;
+    const pageH = doc.internal.pageSize.height;
+    const contentW = pageW - margin * 2;
+    let y = margin;
 
-    entries.forEach(entry => {
-      html += `
-        <div class="entry">
-          <div class="entry-header">
-            <div class="entry-date">${formatDate(entry.entry_date)}</div>
-            <div class="entry-meta">
-              <span>${getWeatherLabel(entry.weather)}${entry.temperature ? ` • ${entry.temperature}°C` : ''}</span>
-              ${entry.workers_present ? `<span>👷 ${entry.workers_present} Mitarbeiter</span>` : ''}
-            </div>
-          </div>
-          ${entry.workers_list ? `
-            <div class="section">
-              <div class="section-title">Anwesende Mitarbeiter</div>
-              <div class="section-content">${entry.workers_list}</div>
-            </div>
-          ` : ''}
-          <div class="section">
-            <div class="section-title">Durchgeführte Arbeiten</div>
-            <div class="section-content">${entry.work_performed}</div>
-          </div>
-          ${entry.progress_notes ? `
-            <div class="section">
-              <div class="section-title">Fortschrittsnotizen</div>
-              <div class="section-content">${entry.progress_notes}</div>
-            </div>
-          ` : ''}
-          ${entry.special_events ? `
-            <div class="section">
-              <div class="section-title">Besondere Vorkommnisse</div>
-              <div class="section-content">${entry.special_events}</div>
-            </div>
-          ` : ''}
-          ${entry.deliveries ? `
-            <div class="section">
-              <div class="section-title">Lieferungen</div>
-              <div class="section-content">${entry.deliveries}</div>
-            </div>
-          ` : ''}
-          <div class="footer">
-            Erstellt von: ${entry.creator_name} • ${formatDateTime(entry.created_at)}
-          </div>
-        </div>
-      `;
+    const NAVY  = [14, 42, 71] as const;
+    const SLATE = [71, 85, 105] as const;
+    const LIGHT = [248, 250, 252] as const;
+    const BORDER= [226, 232, 240] as const;
+    const AMBER = [245, 158, 11] as const;
+    const TEXT  = [15, 23, 42] as const;
+    const MUTED = [148, 163, 184] as const;
+
+    const checkPage = (needed: number) => {
+      if (y + needed > pageH - margin) {
+        doc.addPage();
+        y = margin;
+        // Repeat header stripe on new pages
+        doc.setFillColor(...NAVY);
+        doc.rect(0, 0, pageW, 8, 'F');
+        y = 14;
+      }
+    };
+
+    // ── Header stripe ──
+    doc.setFillColor(...NAVY);
+    doc.rect(0, 0, pageW, 38, 'F');
+
+    // Logo square
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, 6, 22, 22, 3, 3, 'F');
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...NAVY);
+    doc.text('DS', margin + 5.5, 21);
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text('Bautagebuch', margin + 28, 16);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(203, 213, 225);
+    doc.text('DocStruc · Baudokumentation', margin + 28, 23);
+
+    // Amber accent bar
+    doc.setFillColor(...AMBER);
+    doc.rect(0, 38, pageW, 2.5, 'F');
+    y = 48;
+
+    // Meta line
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...SLATE);
+    doc.text(`Exportiert am ${formatDateTime(new Date().toISOString())}  ·  ${entriesToExport.length} Einträge`, margin, y);
+    y += 8;
+
+    // Divider
+    doc.setDrawColor(...BORDER);
+    doc.setLineWidth(0.4);
+    doc.line(margin, y, pageW - margin, y);
+    y += 6;
+
+    // ── Entries ──
+    entriesToExport.forEach((entry, idx) => {
+      checkPage(40);
+
+      // Date header band
+      doc.setFillColor(...LIGHT);
+      doc.roundedRect(margin, y, contentW, 11, 2, 2, 'F');
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...NAVY);
+      doc.text(formatDate(entry.entry_date), margin + 4, y + 7.5);
+
+      // Weather + workers badges (right side)
+      const meta = `${getWeatherLabel(entry.weather)}${entry.temperature != null ? `  ·  ${entry.temperature}°C` : ''}${entry.workers_present ? `  ·  ${entry.workers_present} Mitarbeiter` : ''}`;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...SLATE);
+      const metaW = doc.getTextWidth(meta);
+      doc.text(meta, pageW - margin - metaW, y + 7.5);
+      y += 14;
+
+      const section = (label: string, text: string | undefined | null) => {
+        if (!text) return;
+        checkPage(12);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...MUTED);
+        doc.text(label.toUpperCase(), margin + 2, y);
+        y += 4;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...TEXT);
+        const lines = doc.splitTextToSize(text, contentW - 4);
+        lines.forEach((line: string) => {
+          checkPage(6);
+          doc.text(line, margin + 2, y);
+          y += 5.5;
+        });
+        y += 2;
+      };
+
+      if (entry.workers_list) section('Anwesende Mitarbeiter', entry.workers_list);
+      section('Durchgeführte Arbeiten', entry.work_performed);
+      if (entry.progress_notes)  section('Fortschrittsnotizen', entry.progress_notes);
+      if (entry.special_events)  section('Besondere Vorkommnisse', entry.special_events);
+      if (entry.deliveries)      section('Lieferungen', entry.deliveries);
+
+      // Footer line
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(...MUTED);
+      doc.text(`Erstellt von ${entry.creator_name || 'Unbekannt'}  ·  ${formatDateTime(entry.created_at)}`, margin + 2, y);
+      y += 4;
+
+      // Separator (except after last entry)
+      if (idx < entriesToExport.length - 1) {
+        checkPage(4);
+        doc.setDrawColor(...BORDER);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageW - margin, y);
+        y += 5;
+      }
     });
 
-    html += '</body></html>';
-    return html;
-  };
+    // ── Page footer on every page ──
+    const totalPages = (doc.internal as any).getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...MUTED);
+      doc.text(
+        `Seite ${p} von ${totalPages}  ·  © ${new Date().getFullYear()} DocStruc`,
+        pageW / 2, pageH - 8,
+        { align: 'center' }
+      );
+    }
 
-  const downloadPDF = (htmlContent: string, filename: string) => {
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename.replace('.pdf', '.html');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    doc.save(`Bautagebuch_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const downloadCSV = (csvContent: string, filename: string) => {
@@ -1218,6 +1288,11 @@ export function ProjectDiary() {
           {historyLoading ? (
             <View style={styles.historyLoadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : historyError ? (
+            <View style={styles.historyEmptyContainer}>
+              <AlertCircle size={32} color="#ef4444" />
+              <Text style={[styles.historyEmptyText, { color: '#ef4444' }]}>{historyError}</Text>
             </View>
           ) : historyItems.length === 0 ? (
             <View style={styles.historyEmptyContainer}>

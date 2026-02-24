@@ -4,16 +4,15 @@
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS diary_entry_history (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  diary_entry_id UUID NOT NULL REFERENCES diary_entries(id) ON DELETE CASCADE,
-  project_id    UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  changed_by    UUID NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
-  changed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  -- Snapshot of what changed
-  field_name    TEXT NOT NULL,          -- e.g. 'work_performed', 'weather'
-  old_value     TEXT,
-  new_value     TEXT,
-  change_type   TEXT NOT NULL DEFAULT 'edit'  -- 'edit' | 'create'
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  diary_entry_id UUID        NOT NULL REFERENCES diary_entries(id) ON DELETE CASCADE,
+  project_id     UUID        NOT NULL REFERENCES projects(id)      ON DELETE CASCADE,
+  changed_by     UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  changed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  field_name     TEXT        NOT NULL,
+  old_value      TEXT,
+  new_value      TEXT,
+  change_type    TEXT        NOT NULL DEFAULT 'edit'
 );
 
 -- Index for fast lookup by diary entry

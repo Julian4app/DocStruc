@@ -192,6 +192,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
               if (existing == null) ...[
                 _label('Übergeordneter Ordner (optional)'),
                 _folderDropdown(
+                  context: ctx2,
                   value: parentId,
                   folders: _folders,
                   onChanged: (v) => setSt(() => parentId = v),
@@ -509,6 +510,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
               const SizedBox(height: 16),
               _label('Zielordner auswählen'),
               _folderDropdown(
+                context: ctx2,
                 value: selectedFolderId,
                 folders: _folders,
                 onChanged: (v) => setSt(() => selectedFolderId = v),
@@ -2231,33 +2233,147 @@ InputDecoration _inputDeco(String hint) => InputDecoration(
     );
 
 Widget _folderDropdown({
+  required BuildContext context,
   required String? value,
   required List<Map<String, dynamic>> folders,
   required void Function(String?) onChanged,
-}) =>
-    DropdownButtonFormField<String>(
-      initialValue: value,
-      hint: const Text('Kein übergeordneter Ordner'),
-      decoration: InputDecoration(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border),
+}) {
+  final selectedName = value == null
+      ? 'Kein übergeordneter Ordner'
+      : (folders.firstWhere(
+              (f) => f['id'] == value,
+              orElse: () => {'name': 'Ordner'},
+            )['name'] as String? ?? 'Ordner');
+
+  return GestureDetector(
+    onTap: () async {
+      final result = await showModalBottomSheet<String?>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 10, 20, 12),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.folder, size: 18, color: AppColors.primary),
+                    SizedBox(width: 10),
+                    Text('Ordner wählen',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.text)),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              LimitedBox(
+                maxHeight: 320,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    _FolderPickerTile(
+                      icon: LucideIcons.x,
+                      label: 'Kein übergeordneter Ordner',
+                      isSelected: value == null,
+                      onTap: () => Navigator.pop(ctx, '__none__'),
+                    ),
+                    ...folders.map((f) => _FolderPickerTile(
+                          icon: LucideIcons.folder,
+                          label: f['name'] as String? ?? 'Ordner',
+                          isSelected: value == f['id'],
+                          onTap: () => Navigator.pop(ctx, f['id'] as String),
+                        )),
+                  ],
+                ),
+              ),
+              SizedBox(height: MediaQuery.of(ctx).padding.bottom + 8),
+            ],
+          ),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      );
+      if (result == null) return;
+      onChanged(result == '__none__' ? null : result);
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
       ),
-      items: [
-        const DropdownMenuItem<String>(
-          value: null,
-          child: Text('Kein übergeordneter Ordner'),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.folder, size: 16, color: AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              selectedName,
+              style: const TextStyle(fontSize: 14, color: AppColors.text),
+            ),
+          ),
+          const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.textSecondary),
+        ],
+      ),
+    ),
+  );
+}
+
+class _FolderPickerTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FolderPickerTile({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        color: isSelected ? AppColors.primary.withValues(alpha: 0.06) : null,
+        child: Row(
+          children: [
+            Icon(icon, size: 16,
+                color: isSelected ? AppColors.primary : AppColors.textSecondary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: isSelected ? AppColors.primary : AppColors.text)),
+            ),
+            if (isSelected)
+              const Icon(LucideIcons.check, size: 16, color: AppColors.primary),
+          ],
         ),
-        ...folders.map((f) => DropdownMenuItem<String>(
-              value: f['id'] as String?,
-              child: Text(f['name'] as String? ?? 'Ordner'),
-            )),
-      ],
-      onChanged: onChanged,
+      ),
     );
+  }
+}
 
 Widget _actionRow({
   required VoidCallback onCancel,

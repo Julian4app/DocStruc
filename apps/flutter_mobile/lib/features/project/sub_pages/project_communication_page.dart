@@ -81,8 +81,22 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
       ]);
       if (!mounted) return;
       setState(() {
-        _messages = results[0];
-        _notes = results[1];
+        _messages = List<Map<String,dynamic>>.from(results[0])
+          ..sort((a, b) {
+            final ap = a['is_pinned'] as bool? ?? false;
+            final bp = b['is_pinned'] as bool? ?? false;
+            if (ap && !bp) return -1;
+            if (!ap && bp) return 1;
+            return 0;
+          });
+        _notes = List<Map<String,dynamic>>.from(results[1])
+          ..sort((a, b) {
+            final ap = a['is_pinned'] as bool? ?? false;
+            final bp = b['is_pinned'] as bool? ?? false;
+            if (ap && !bp) return -1;
+            if (!ap && bp) return 1;
+            return 0;
+          });
         _messageOffset = results[0].length;
         _noteOffset = results[1].length;
         _hasMoreMessages = results[0].length >= _pageSize;
@@ -183,7 +197,10 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
         _snack('Fehler: $e', error: true);
       }
     }
-    ctrl.dispose();
+    // Defer disposal to the next frame so the modal's dispose() can finish
+    // removing its listener first — disposing synchronously here causes a
+    // '_dependents.isEmpty' assertion in debug mode.
+    Future.microtask(() => ctrl.dispose());
   }
 
   Future<void> _togglePin(Map<String, dynamic> item) async {
@@ -266,17 +283,6 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
     ));
   }
 
-  int get _activeUsers {
-    final ids = <String>{};
-    for (final m in _messages) {
-      if (m['user_id'] != null) ids.add(m['user_id'] as String);
-    }
-    for (final n in _notes) {
-      if (n['user_id'] != null) ids.add(n['user_id'] as String);
-    }
-    return ids.length;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -289,24 +295,14 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
         title: const Text('Kommunikation',
             style: TextStyle(
                 color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 18)),
-        actions: [
-          if (_activeTab == 'notes')
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: TextButton.icon(
-                onPressed: () => _openNoteModal(),
-                icon: const Icon(LucideIcons.plus, size: 16, color: Colors.white),
-                label: const Text('Notiz erstellen',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                style: TextButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-        ],
       ),
+      floatingActionButton: _activeTab == 'notes'
+          ? FloatingActionButton(
+              onPressed: () => _openNoteModal(),
+              backgroundColor: AppColors.primary,
+              child: const Icon(LucideIcons.plus, color: Colors.white),
+            )
+          : null,
       body: _loading
           ? const LottieLoader()
           : RefreshIndicator(
@@ -315,167 +311,44 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header + Stats + TabBar — scrollable top section
+                  // Tab bar
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.screenH, 20, AppSpacing.screenH, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Kommunikation',
-                            style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
-                                letterSpacing: -0.5)),
-                        const SizedBox(height: 2),
-                        const Text('Nachrichten, Notizen und Kommunikation',
-                            style: TextStyle(
-                                fontSize: 14, color: AppColors.textSecondary)),
-                        const SizedBox(height: 20),
-                        _StatsRow(
-                          messageCount: _messages.length,
-                          noteCount: _notes.length,
-                          activeUsers: _activeUsers,
-                        ),
-                        const SizedBox(height: 16),
-                        _TabBar(
-                          activeTab: _activeTab,
-                          onTabChanged: (t) => setState(() => _activeTab = t),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
+                        AppSpacing.screenH, 12, AppSpacing.screenH, 8),
+                    child: _TabBar(
+                      activeTab: _activeTab,
+                      onTabChanged: (t) => setState(() => _activeTab = t),
                     ),
                   ),
-                  // Content card fills remaining space
+                  // Content fills remaining space directly on background
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.screenH, 0, AppSpacing.screenH, 16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                          border: Border.all(color: const Color(0xFFF1F5F9)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
-                          child: _activeTab == 'messages'
-                              ? _MessagesContent(
-                                  messages: _messages,
-                                  currentUserId: _currentUserId,
-                                  msgCtrl: _msgCtrl,
-                                  sending: _sending,
-                                  hasMore: _hasMoreMessages,
-                                  loadingMore: _loadingMoreMessages,
-                                  onSend: ref.permissions(widget.projectId).canCreate('communication') ? _sendMessage : null,
-                                  onLoadMore: _loadMoreMessages,
-                                  onPin: _togglePin,
-                                  onDelete: _deleteItem,
-                                )
-                              : _NotesContent(
-                                  notes: _notes,
-                                  currentUserId: _currentUserId,
-                                  hasMore: _hasMoreNotes,
-                                  loadingMore: _loadingMoreNotes,
-                                  onLoadMore: _loadMoreNotes,
-                                  onPin: _togglePin,
-                                  onEdit: (n) => _openNoteModal(existing: n),
-                                  onDelete: _deleteItem,
-                                ),
-                        ),
-                      ),
-                    ),
+                    child: _activeTab == 'messages'
+                        ? _MessagesContent(
+                            messages: _messages,
+                            currentUserId: _currentUserId,
+                            msgCtrl: _msgCtrl,
+                            sending: _sending,
+                            hasMore: _hasMoreMessages,
+                            loadingMore: _loadingMoreMessages,
+                            onSend: ref.permissions(widget.projectId).canCreate('communication') ? _sendMessage : null,
+                            onLoadMore: _loadMoreMessages,
+                            onPin: _togglePin,
+                            onDelete: _deleteItem,
+                          )
+                        : _NotesContent(
+                            notes: _notes,
+                            currentUserId: _currentUserId,
+                            hasMore: _hasMoreNotes,
+                            loadingMore: _loadingMoreNotes,
+                            onLoadMore: _loadMoreNotes,
+                            onPin: _togglePin,
+                            onEdit: (n) => _openNoteModal(existing: n),
+                            onDelete: _deleteItem,
+                          ),
                   ),
                 ],
               ),
             ),
-    );
-  }
-}
-
-// =============================================================================
-// Stats Row
-// =============================================================================
-class _StatsRow extends StatelessWidget {
-  final int messageCount;
-  final int noteCount;
-  final int activeUsers;
-  const _StatsRow(
-      {required this.messageCount, required this.noteCount, required this.activeUsers});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-            child: _StatCard(
-                icon: LucideIcons.messageSquare,
-                label: 'Nachrichten',
-                value: '$messageCount',
-                color: AppColors.info)),
-        const SizedBox(width: 12),
-        Expanded(
-            child: _StatCard(
-                icon: LucideIcons.stickyNote,
-                label: 'Notizen',
-                value: '$noteCount',
-                color: AppColors.warning)),
-        const SizedBox(width: 12),
-        Expanded(
-            child: _StatCard(
-                icon: LucideIcons.users,
-                label: 'Aktive User',
-                value: '$activeUsers',
-                color: AppColors.success)),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-  const _StatCard(
-      {required this.icon, required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 4,
-              offset: const Offset(0, 1))
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 6),
-          Text(value,
-              style: const TextStyle(
-                  color: Color(0xFF0F172A), fontWeight: FontWeight.w800, fontSize: 22)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
-        ],
-      ),
     );
   }
 }

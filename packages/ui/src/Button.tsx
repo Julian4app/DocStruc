@@ -41,7 +41,20 @@ function renderChildren(
     return <Text style={textSty}>{children}</Text>;
   }
 
-  const nodes = React.Children.toArray(children);
+  // Flatten fragments so <><Icon /> "text</> works correctly
+  const flattenNodes = (nodes: React.ReactNode[]): React.ReactNode[] => {
+    const result: React.ReactNode[] = [];
+    for (const node of nodes) {
+      if (React.isValidElement(node) && (node.type === React.Fragment)) {
+        result.push(...flattenNodes(React.Children.toArray((node.props as any).children)));
+      } else {
+        result.push(node);
+      }
+    }
+    return result;
+  };
+
+  const nodes = flattenNodes(React.Children.toArray(children));
 
   if (nodes.length === 1) {
     const node = nodes[0];

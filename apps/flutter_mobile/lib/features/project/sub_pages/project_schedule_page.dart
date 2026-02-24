@@ -74,6 +74,7 @@ class ProjectSchedulePage extends StatefulWidget {
 class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTickerProviderStateMixin {
   late TabController _tabs;
   bool _loading = true;
+  String? _loadError;
   List<Map<String,dynamic>> _milestones = [];
   List<Map<String,dynamic>> _allTasks = [];
   String? _projectStart, _projectEnd;
@@ -90,19 +91,27 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
   @override void dispose() { _tabs.dispose(); _searchCtrl.dispose(); _searchFocusNode.dispose(); super.dispose(); }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _loadError = null; });
     try {
-      final r = await Future.wait([
-        SupabaseService.getTimelineEvents(widget.projectId),
+      final results = await Future.wait([
+        SupabaseService.getTimelineEvents(widget.projectId).catchError((e) {
+          debugPrint('[Schedule] getTimelineEvents error: $e');
+          return <Map<String,dynamic>>[];
+        }),
         SupabaseService.getProjectDates(widget.projectId),
         SupabaseService.getTasks(widget.projectId),
       ]);
-      final raw = (r[0] as List).cast<Map<String,dynamic>>();
-      final dates = r[1] as Map<String,dynamic>?;
-      final tasks = (r[2] as List).cast<Map<String,dynamic>>();
+      final raw = (results[0] as List).cast<Map<String,dynamic>>();
+      final dates = results[1] as Map<String,dynamic>?;
+      final tasks = (results[2] as List).cast<Map<String,dynamic>>();
       final withItems = await Future.wait(raw.map((m) async {
-        final items = await SupabaseService.getMilestoneTasks(m['id'] as String);
-        return {...m, 'linkedItems': items};
+        try {
+          final items = await SupabaseService.getMilestoneTasks(m['id'] as String);
+          return {...m, 'linkedItems': items};
+        } catch (e) {
+          debugPrint('[Schedule] getMilestoneTasks error: $e');
+          return {...m, 'linkedItems': <Map<String,dynamic>>[]};
+        }
       }));
       final start = dates?['start_date'] as String?;
       final end = dates?['target_end_date'] as String?;
@@ -114,7 +123,10 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
         _scheduleStatus = _calcStatus(withItems.toList(), start, end);
         _loading = false;
       });
-    } catch (_) { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      debugPrint('[Schedule] load error: $e');
+      if (mounted) setState(() { _loading = false; _loadError = e.toString(); });
+    }
   }
 
   String _calcStatus(List<Map<String,dynamic>> ms, String? start, String? end) {
@@ -199,7 +211,30 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
         child: const Icon(LucideIcons.plus, color: Colors.white),
       ),
       body: _loading ? const LottieLoader()
-        : TabBarView(controller: _tabs, children: [
+        : _loadError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(LucideIcons.alertCircle, size: 48, color: AppColors.danger),
+                    const SizedBox(height: 16),
+                    const Text('Fehler beim Laden', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+                    const SizedBox(height: 8),
+                    Text(_loadError!, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), textAlign: TextAlign.center),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(LucideIcons.refreshCw, size: 16),
+                      label: const Text('Erneut versuchen'),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : TabBarView(controller: _tabs, children: [
           _listTab(),
           _timelineTab(),
           _calendarTab(),
