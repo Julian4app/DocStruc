@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -213,7 +214,7 @@ class _ProjectDocumentationPageState extends State<ProjectDocumentationPage> {
         title: const Text('Dokumentation'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : Column(
               children: [
                 // ── Subtitle bar ────────────────────────────────────────────
@@ -356,7 +357,7 @@ class _ProjectDocumentationPageState extends State<ProjectDocumentationPage> {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: _loadingMore
-                ? const Center(child: CircularProgressIndicator())
+                ? const LottieLoader()
                 : OutlinedButton.icon(
                     onPressed: () => _loadPage(),
                     icon: const Icon(LucideIcons.chevronDown, size: 16),

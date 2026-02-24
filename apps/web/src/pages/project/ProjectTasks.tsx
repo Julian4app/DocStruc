@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -35,6 +37,12 @@ interface Task {
   created_at: string;
   updated_at?: string;
   creator_id?: string;
+  creator?: {
+    id: string;
+    email: string;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
 }
 
 interface TaskImage {
@@ -187,7 +195,8 @@ export function ProjectTasks() {
           .from('tasks')
           .select(`
             *,
-            profiles:assigned_to(id, email, first_name, last_name)
+            profiles:assigned_to(id, email, first_name, last_name),
+            creator:creator_id(id, email, first_name, last_name)
           `, { count: 'exact' })
           .eq('project_id', id)
           .order('board_position', { ascending: true })
@@ -230,7 +239,8 @@ export function ProjectTasks() {
         .from('tasks')
         .select(`
           *,
-          profiles:assigned_to(id, email, first_name, last_name)
+          profiles:assigned_to(id, email, first_name, last_name),
+          creator:creator_id(id, email, first_name, last_name)
         `, { count: 'exact' })
         .eq('project_id', id)
         .order('board_position', { ascending: true })
@@ -259,7 +269,8 @@ export function ProjectTasks() {
         .from('tasks')
         .select(`
           *,
-          profiles:assigned_to(id, email, first_name, last_name)
+          profiles:assigned_to(id, email, first_name, last_name),
+          creator:creator_id(id, email, first_name, last_name)
         `, { count: 'exact' })
         .eq('project_id', id)
         .order('board_position', { ascending: true })
@@ -600,6 +611,40 @@ export function ProjectTasks() {
     }
   };
 
+  const handleVoiceDocUpload = async (file: File) => {
+    if (!selectedTask || !userId) return;
+    try {
+      const ext = file.name.split('.').pop() || 'm4a';
+      const filePath = `${id}/${selectedTask.id}/voice_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('task-images').upload(filePath, file);
+      if (upErr) throw upErr;
+      await supabase.from('task_documentation').insert({
+        task_id: selectedTask.id, project_id: id, user_id: userId,
+        documentation_type: 'voice', storage_path: filePath, file_name: file.name,
+      });
+      showToast('Sprachdatei hochgeladen', 'success');
+      setDocFormData({ type: '', content: '' });
+      loadTaskDetails(selectedTask.id);
+    } catch (e: any) { showToast('Fehler: ' + e.message, 'error'); }
+  };
+
+  const handleVideoDocUpload = async (file: File) => {
+    if (!selectedTask || !userId) return;
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const filePath = `${id}/${selectedTask.id}/video_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('task-images').upload(filePath, file);
+      if (upErr) throw upErr;
+      await supabase.from('task_documentation').insert({
+        task_id: selectedTask.id, project_id: id, user_id: userId,
+        documentation_type: 'video', storage_path: filePath, file_name: file.name,
+      });
+      showToast('Video hochgeladen', 'success');
+      setDocFormData({ type: '', content: '' });
+      loadTaskDetails(selectedTask.id);
+    } catch (e: any) { showToast('Fehler: ' + e.message, 'error'); }
+  };
+
   const openTaskDetail = async (task: Task) => {
     setSelectedTask(task);
     setEditFormData({
@@ -799,6 +844,23 @@ export function ProjectTasks() {
     return profile.email;
   };
 
+  const getCreatorName = (task: Task): string => {
+    if (task.creator) {
+      const c = task.creator;
+      if (c.first_name && c.last_name) return `${c.first_name} ${c.last_name}`;
+      return c.email;
+    }
+    if (task.creator_id) return getUserName(task.creator_id);
+    return 'Unbekannt';
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  };
+
   // Render functions for different views
   const renderKanbanView = () => {
     const columns = [
@@ -878,10 +940,16 @@ export function ProjectTasks() {
                     </div>
                     
                     {task.description && (
-                      <p style={{ fontSize: 13, color: '#64748b', lineHeight: '18px', marginBottom: 12, margin: '0 0 12px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+                      <p style={{ fontSize: 13, color: '#64748b', lineHeight: '18px', marginBottom: 12, margin: '0 0 8px 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
                         {task.description}
                       </p>
                     )}
+
+                    {/* Creator info */}
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <User size={10} color="#94a3b8" />
+                      <span>{getCreatorName(task)} · {new Date(task.created_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                    </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -946,6 +1014,9 @@ export function ProjectTasks() {
                   {task.description && (
                     <Text style={styles.listCardDesc} numberOfLines={1}>{task.description}</Text>
                   )}
+                  <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    Hinzugefügt von {getCreatorName(task)} · {new Date(task.created_at).toLocaleDateString('de-DE')}
+                  </Text>
                 </View>
               </View>
               
@@ -1192,7 +1263,7 @@ export function ProjectTasks() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -1441,6 +1512,8 @@ export function ProjectTasks() {
         onDelete={() => selectedTask && handleDeleteTask(selectedTask.id)}
         onStatusChange={(status) => selectedTask && handleStatusChange(selectedTask.id, status)}
         onImageUpload={handleImageUpload}
+        onVoiceUpload={handleVoiceDocUpload}
+        onVideoUpload={handleVideoDocUpload}
         onChangeDocFormData={(field, value) => setDocFormData({ ...docFormData, [field]: value })}
         onSaveDocumentation={() => handleAddDocumentation(docFormData.type as any)}
         onCancelDocumentation={() => {

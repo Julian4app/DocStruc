@@ -9,6 +9,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 const _pageSize = 50;
 const _notePageSize = 30;
@@ -307,7 +308,7 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const LottieLoader()
           : RefreshIndicator(
               color: AppColors.primary,
               onRefresh: () => _load(silent: true),

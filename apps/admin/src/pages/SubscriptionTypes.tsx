@@ -71,6 +71,18 @@ export default function SubscriptionTypes() {
        }
   };
 
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"?`)) return;
+    try {
+      const { error } = await supabase.from('subscription_types').delete().eq('id', id);
+      if (error) throw error;
+      setTypes(types.filter(t => t.id !== id));
+    } catch (e) {
+      console.error(e);
+      alert('Error deleting plan');
+    }
+  };
+
   const openModal = (type?: any) => {
       if (type) {
           setEditingType(type);

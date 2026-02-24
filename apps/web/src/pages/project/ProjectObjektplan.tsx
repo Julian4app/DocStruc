@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -1189,7 +1191,7 @@ export function ProjectObjektplan() {
     );
   };
 
-  if (loading) return <View style={pageStyles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  if (loading) return <View style={pageStyles.loadingContainer}><LottieLoader size={120} /></View>;
 
   // Plan view
   if (planMode && selectedApartment) {

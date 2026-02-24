@@ -1,8 +1,9 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { View, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { colors } from '@docstruc/theme';
 import { useAuth } from '../contexts/AuthContext';
+import { LottieLoader } from './LottieLoader';
 
 /**
  * Protects routes that require superuser access.
@@ -20,7 +21,7 @@ export function SuperuserGuard({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%' as any }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }

@@ -599,7 +599,7 @@ export default function CustomerDetail() {
                                         <Input value={String(company.bought_accounts || 0)} onChangeText={(t) => setCompany({...company, bought_accounts: parseInt(t) || 0})} />
                                     </View>
                                 </View>
-                                <Select label="Account Status" value={company.status} options={statusOptions} onChange={(v: string) => setCompany({...company, status: v})} />
+                                <Select label="Account Status" value={company.status} options={statusOptions} onChange={(v) => setCompany({...company, status: String(v)})} />
                             </View>
                         </View>
                     </View>
@@ -613,7 +613,7 @@ export default function CustomerDetail() {
                                 </TouchableOpacity>
                             </View>
                             <View style={{ marginBottom: 16 }}>
-                                <Select label="Select Contact" value={company.contact_person_id || ''} options={contactOptions} onChange={(v: string) => setCompany({...company, contact_person_id: v})} />
+                                <Select label="Select Contact" value={company.contact_person_id || ''} options={contactOptions} onChange={(v) => setCompany({...company, contact_person_id: String(v)})} />
                             </View>
                             
                             {/* Display Selected Contact Card */}
@@ -754,7 +754,7 @@ export default function CustomerDetail() {
                                     label="Plan Type" 
                                     value={subscription.subscription_type_id} 
                                     options={subTypes.map(s => ({ label: `${s.title} ($${s.price})`, value: s.id }))}
-                                    onChange={(v: string) => setSubscription({...subscription, subscription_type_id: v})}
+                                    onChange={(v) => setSubscription({...subscription, subscription_type_id: String(v)})}
                                 />
                                 
                                 <View style={styles.row}>
@@ -767,7 +767,7 @@ export default function CustomerDetail() {
                                                 { label: 'Quarterly', value: 'quarterly' },
                                                 { label: 'Yearly', value: 'yearly' }
                                             ]}
-                                            onChange={(v: string) => setSubscription({...subscription, payment_cycle: v})}
+                                            onChange={(v) => setSubscription({...subscription, payment_cycle: String(v)})}
                                         />
                                     </View>
                                     <View style={{ flex: 1 }}>
@@ -1286,5 +1286,19 @@ const styles = StyleSheet.create({
       backgroundColor: '#f8fafc',
       alignItems: 'center',
       justifyContent: 'center'
+  },
+  logoOverlay: {
+    position: 'absolute' as any,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  logoOverlayText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   }
 });

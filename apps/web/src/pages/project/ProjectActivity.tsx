@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
+import { DatePicker } from '../../components/DatePicker';
 import { 
   Activity, CheckCircle, Plus, Edit, Trash2, AlertCircle, FileText, 
   Users, MessageSquare, Calendar, Archive, Upload, UserPlus, UserMinus,
-  Clock, CheckSquare, XCircle, RefreshCw, Flag
+  Clock, CheckSquare, XCircle, RefreshCw, Flag, X
 } from 'lucide-react';
 
 interface ActivityLog {
@@ -37,6 +40,8 @@ export function ProjectActivity() {
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [filter, setFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -211,14 +216,29 @@ export function ProjectActivity() {
     });
   };
 
-  const filteredActivities = filter === 'all' 
-    ? activities 
-    : activities.filter(a => a.entity_type === filter);
+  const filteredActivities = activities.filter(a => {
+    if (filter !== 'all' && a.entity_type !== filter) return false;
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (new Date(a.created_at) < from) return false;
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (new Date(a.created_at) > to) return false;
+    }
+    return true;
+  });
+
+  const hasDateFilter = dateFrom !== '' || dateTo !== '';
+
+  const clearDateFilter = () => { setDateFrom(''); setDateTo(''); };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -234,7 +254,7 @@ export function ProjectActivity() {
         </View>
       </View>
 
-      {/* Filter */}
+      {/* Entity filter chips */}
       <View style={styles.filterBar}>
         {['all', 'task', 'defect', 'document', 'member', 'message', 'diary_entry', 'file'].map(f => (
           <TouchableOpacity
@@ -254,6 +274,29 @@ export function ProjectActivity() {
             </Text>
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Date/time range filter */}
+      <View style={styles.dateFilterBar as any}>
+        <Calendar size={15} color="#64748b" />
+        <Text style={styles.dateFilterLabel as any}>Von:</Text>
+        <DatePicker
+          value={dateFrom}
+          onChange={setDateFrom}
+          placeholder="TT.MM.JJJJ"
+        />
+        <Text style={styles.dateFilterLabel as any}>Bis:</Text>
+        <DatePicker
+          value={dateTo}
+          onChange={setDateTo}
+          placeholder="TT.MM.JJJJ"
+        />
+        {hasDateFilter && (
+          <TouchableOpacity onPress={clearDateFilter} style={styles.clearDateBtn as any}>
+            <X size={13} color="#ef4444" />
+            <Text style={styles.clearDateText as any}>Filter löschen</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Activity Timeline */}
@@ -320,7 +363,7 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 24,
+    marginBottom: 12,
     flexWrap: 'wrap',
   },
   filterChip: {
@@ -342,6 +385,33 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: '#ffffff',
+  },
+  dateFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+    flexWrap: 'wrap',
+  },
+  dateFilterLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  clearDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#fee2e2',
+    borderRadius: 6,
+  },
+  clearDateText: {
+    fontSize: 12,
+    color: '#ef4444',
+    fontWeight: '600',
   },
   timeline: {
     flex: 1,

@@ -35,16 +35,34 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
   const [permissions, setPermissions] = useState<UserPermissions>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
-  const permissionsLoadedRef = useRef(false);
+
+  // ── Deduplication: prevent concurrent loadPermissions calls from racing ──
+  const loadInFlightRef = useRef(false);
+  // Track whether we loaded at least once — after that, refetches are silent
+  // (no setIsLoading(true)) so PermissionGuard never re-shows spinner.
+  const hasLoadedOnceRef = useRef(false);
+  // Monotonic counter: if a newer call starts, older ones discard their result
+  const loadGenRef = useRef(0);
 
   const loadPermissions = useCallback(async () => {
     if (!projectId || !userId || authLoading) {
-      if (!authLoading) setIsLoading(false);
+      if (!authLoading && !hasLoadedOnceRef.current) {
+        setIsLoading(false);
+      }
       return;
     }
 
-    setIsLoading(true);
-    permissionsLoadedRef.current = false;
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+
+    const gen = ++loadGenRef.current;
+
+    // Only show spinner on the very first load. After that, keep showing
+    // the old permissions while we refetch silently — this prevents the
+    // PermissionGuard from flashing the spinner on every tab switch.
+    if (!hasLoadedOnceRef.current) {
+      setIsLoading(true);
+    }
     
     try {
       // Step 1: Check project ownership (single query — profile already cached)
@@ -53,6 +71,9 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
         .select('owner_id')
         .eq('id', projectId)
         .single();
+
+      // Stale check — a newer call superseded us
+      if (gen !== loadGenRef.current) return;
 
       const isOwner = project?.owner_id === userId;
       setIsProjectOwner(isOwner);
@@ -64,6 +85,8 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
           .select('module_key')
           .eq('is_active', true);
 
+        if (gen !== loadGenRef.current) return;
+
         const fullPermissions: UserPermissions = {};
         (modules || []).forEach(module => {
           fullPermissions[module.module_key] = {
@@ -72,15 +95,10 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
         });
 
         setPermissions(fullPermissions);
-        permissionsLoadedRef.current = true;
+        hasLoadedOnceRef.current = true;
         setIsLoading(false);
         return;
       }
-
-      // All non-owner, non-superuser users (including team admins) get their
-      // permissions from the RPC, which respects their assigned role.
-      // Team admins are NOT automatically granted full access — they follow
-      // the same role-based permission system as regular members.
 
       // Regular user / team admin: get permissions via RPC
       const { data, error } = await supabase
@@ -89,9 +107,12 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
           p_project_id: projectId
         });
 
+      if (gen !== loadGenRef.current) return;
+
       if (error) {
         console.error('usePermissions: RPC error:', error);
-        setPermissions({});
+        // On refetch errors, keep old permissions — don't wipe them
+        if (!hasLoadedOnceRef.current) setPermissions({});
       } else {
         const permsObj: UserPermissions = {};
         (data || []).forEach((perm: any) => {
@@ -105,18 +126,46 @@ export function usePermissions(projectId: string | undefined): PermissionCheckRe
         setPermissions(permsObj);
       }
       
-      permissionsLoadedRef.current = true;
+      hasLoadedOnceRef.current = true;
     } catch (error) {
       console.error('usePermissions: Unexpected error:', error);
-      setPermissions({});
+      // On refetch errors, keep old permissions
+      if (!hasLoadedOnceRef.current) setPermissions({});
     } finally {
-      setIsLoading(false);
+      if (gen === loadGenRef.current) {
+        setIsLoading(false);
+      }
+      loadInFlightRef.current = false;
     }
   }, [projectId, userId, authIsSuperuser, authLoading]);
+
+  // Reset when projectId changes (navigating to a different project)
+  useEffect(() => {
+    hasLoadedOnceRef.current = false;
+    loadGenRef.current++;
+    loadInFlightRef.current = false;
+    setIsLoading(true);
+    setPermissions({});
+    setIsProjectOwner(false);
+  }, [projectId]);
 
   useEffect(() => {
     loadPermissions();
   }, [loadPermissions]);
+
+  // ── Safety timeout: if permissions are still loading after 12 seconds,
+  // force isLoading to false so the user is never stuck on a spinner.
+  // The next visibility refetch or navigation will retry.
+  useEffect(() => {
+    if (!isLoading) return;
+    const safetyTimer = setTimeout(() => {
+      if (isLoading) {
+        console.warn('usePermissions: safety timeout — forcing isLoading=false');
+        setIsLoading(false);
+      }
+    }, 12_000);
+    return () => clearTimeout(safetyTimer);
+  }, [isLoading]);
 
   const canView = useCallback((moduleKey: string): boolean => {
     if (isProjectOwner || authIsSuperuser) return true;

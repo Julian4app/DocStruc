@@ -18,6 +18,7 @@ import 'sub_pages/project_participants_page.dart';
 import 'sub_pages/project_documentation_page.dart';
 import 'sub_pages/project_activity_page.dart';
 import 'sub_pages/project_objektplan_page.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // Maps drawer route keys → permission module keys
 const _routeToModule = {
@@ -92,7 +93,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: LottieLoader());
     }
 
     final name   = _project?['name'] ?? 'Projekt';
@@ -124,7 +125,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         openDrawer: () => _scaffoldKey.currentState?.openDrawer(),
         navigateTo: (route) => setState(() => _activeRoute = route),
         child: permsAsync.isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const LottieLoader()
             : _buildSubPage(perms),
       ),
     );

@@ -9,6 +9,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 class ProjectDashboardPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -113,7 +114,7 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(leading: burgerMenuLeading(context), title: const Text('Übersicht')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.primary,

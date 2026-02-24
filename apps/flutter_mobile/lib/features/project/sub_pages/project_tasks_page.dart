@@ -16,6 +16,7 @@ import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ── Priority helpers ─────────────────────────────────────────────────────────
 const _priorities = [
@@ -90,6 +91,7 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
   bool _searchOpen = false;
   final _searchFocusNode = FocusNode();
   DateTime _calMonth = DateTime.now();
+  bool _isProjectOwner = false;
 
   @override
   void initState() {
@@ -112,7 +114,22 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
       final tasks = await SupabaseService.getTasks(widget.projectId, taskType: 'task');
       List<Map<String, dynamic>> members = [];
       try { members = await SupabaseService.getProjectMembers(widget.projectId); } catch (_) {}
-      if (mounted) setState(() { _tasks = tasks; _members = members; _loading = false; });
+
+      // Check if current user is project owner (for full task visibility + FAB)
+      bool isOwner = false;
+      try {
+        final uid = SupabaseService.currentUserId;
+        if (uid != null) {
+          final proj = await SupabaseService.client
+              .from('projects')
+              .select('owner_id')
+              .eq('id', widget.projectId)
+              .maybeSingle();
+          isOwner = proj != null && proj['owner_id'] == uid;
+        }
+      } catch (_) {}
+
+      if (mounted) setState(() { _tasks = tasks; _members = members; _isProjectOwner = isOwner; _loading = false; });
     } catch (e) {
       if (mounted) setState(() => _loading = false);
     }
@@ -144,7 +161,7 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
           tabs: const [Tab(text: 'Liste'), Tab(text: 'Kanban'), Tab(text: 'Kalender')],
         ),
       ),
-      floatingActionButton: ref.permissions(widget.projectId).canCreate('tasks')
+      floatingActionButton: (_isProjectOwner || ref.permissions(widget.projectId).canCreate('tasks'))
           ? FloatingActionButton(
               onPressed: () => _showCreateSheet(context),
               backgroundColor: AppColors.primary,
@@ -152,7 +169,7 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
             )
           : null,
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : TabBarView(
               controller: _tabs,
               children: [_listView(), _kanbanView(), _calendarView()],
@@ -740,6 +757,19 @@ class _TaskCard extends StatelessWidget {
     return '';
   }
 
+  String _creatorName() {
+    final creator = task['creator'] as Map<String, dynamic>?;
+    if (creator != null) {
+      final fn = (creator['first_name'] as String? ?? '').trim();
+      final ln = (creator['last_name'] as String? ?? '').trim();
+      final full = '$fn $ln'.trim();
+      if (full.isNotEmpty) return full;
+      final email = creator['email'] as String?;
+      if (email != null && email.isNotEmpty) return email;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final title      = task['title'] ?? '';
@@ -748,6 +778,8 @@ class _TaskCard extends StatelessWidget {
     final dueDate    = task['due_date'] as String?;
     final storyPoints = task['story_points'];
     final assigneeName = _mName();
+    final creatorName = _creatorName();
+    final createdAt = task['created_at'] as String?;
 
     return Container(
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
@@ -785,6 +817,21 @@ class _TaskCard extends StatelessWidget {
               Text('$storyPoints SP', style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
             ]),
           ]),
+          if (creatorName.isNotEmpty || createdAt != null) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(LucideIcons.userCheck, size: 11, color: AppColors.textTertiary),
+              const SizedBox(width: 4),
+              Text(
+                [
+                  if (creatorName.isNotEmpty) creatorName,
+                  if (createdAt != null) _fmtDate(createdAt),
+                ].join(' · '),
+                style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ]),
+          ],
         ])),
       ),
     );
@@ -797,11 +844,27 @@ class _TaskCard extends StatelessWidget {
 class _KanbanCard extends StatelessWidget {
   final Map<String, dynamic> task;
   const _KanbanCard(this.task);
+
+  String _creatorName() {
+    final creator = task['creator'] as Map<String, dynamic>?;
+    if (creator != null) {
+      final fn = (creator['first_name'] as String? ?? '').trim();
+      final ln = (creator['last_name'] as String? ?? '').trim();
+      final full = '$fn $ln'.trim();
+      if (full.isNotEmpty) return full;
+      final email = creator['email'] as String?;
+      if (email != null && email.isNotEmpty) return email;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final priority = task['priority'] ?? 'medium';
     final dueDate  = task['due_date'] as String?;
     final dueFmt   = dueDate != null ? DateFormat('dd.MM.').format(DateTime.tryParse(dueDate) ?? DateTime.now()) : '';
+    final creatorName = _creatorName();
+    final createdAt = task['created_at'] as String?;
     return Container(padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -813,6 +876,18 @@ class _KanbanCard extends StatelessWidget {
         if (dueFmt.isNotEmpty) ...[
           const SizedBox(height: 6),
           Row(children: [const Icon(LucideIcons.calendar, size: 12, color: AppColors.textTertiary), const SizedBox(width: 4), Text(dueFmt, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary))]),
+        ],
+        if (creatorName.isNotEmpty || createdAt != null) ...[
+          const SizedBox(height: 4),
+          Row(children: [
+            const Icon(LucideIcons.userCheck, size: 11, color: AppColors.textTertiary),
+            const SizedBox(width: 4),
+            Expanded(child: Text(
+              [if (creatorName.isNotEmpty) creatorName, if (createdAt != null) _fmtDate(createdAt)].join(' · '),
+              style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+              overflow: TextOverflow.ellipsis,
+            )),
+          ]),
         ],
       ]),
     );
@@ -1334,7 +1409,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
       Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
         icon: const Icon(LucideIcons.camera, size: 18), label: const Text('Bilder hinzuf\u00fcgen'), onPressed: _uploadImages))),
       const SizedBox(height: 12),
-      if (_loadingMedia) const Expanded(child: Center(child: CircularProgressIndicator()))
+      if (_loadingMedia) const Expanded(child: LottieLoader())
       else if (_images.isEmpty) Expanded(child: Center(child: Container(
         margin: const EdgeInsets.all(24), padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
@@ -1432,7 +1507,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
         ]),
       ),
       // Docs list
-      if (_loadingMedia) const Expanded(child: Center(child: CircularProgressIndicator()))
+      if (_loadingMedia) const Expanded(child: LottieLoader())
       else if (_docs.isEmpty) Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Icon(LucideIcons.fileText, size: 48, color: AppColors.textTertiary),
         const SizedBox(height: 12),

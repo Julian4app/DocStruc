@@ -8,7 +8,11 @@ export type User = {
 
 export type AppRole = 'owner' | 'builder' | 'trade' | 'viewer';
 
-export type ProjectStatus = 'planning' | 'active' | 'completed' | 'archived';
+export type ProjectStatus =
+  | 'planning' | 'active' | 'completed' | 'archived'
+  | 'Angefragt' | 'In Planung' | 'Genehmigt' | 'In Ausführung'
+  | 'Abgeschlossen' | 'Pausiert' | 'Abgebrochen' | 'Nachbesserung'
+  | string;
 
 export interface Project {
   id: string;

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert, Linking } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input, Card } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
@@ -408,7 +410,7 @@ export function Accessors() {
 
         {loading && !cache.current[activeTab] ? (
             <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={colors.primary} />
+                <LottieLoader size={120} />
             </View>
         ) : (
             <ScrollView contentContainerStyle={styles.grid}>

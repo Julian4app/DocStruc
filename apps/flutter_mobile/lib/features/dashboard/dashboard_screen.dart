@@ -15,6 +15,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/shimmer_loading.dart';
 import '../../core/widgets/status_pill.dart';
 import '../../core/widgets/empty_state.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -28,6 +29,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _loading = true;
   String _searchQuery = '';
   String _activeFilter = 'Alle';
+
+  // Photo/map toggle per project: true = show photo, false = show map
+  final Map<String, String?> _projectImageUrls = {}; // projectId → image URL
+  final Map<String, bool> _showPhoto = {}; // projectId → bool
 
   final _searchCtrl = TextEditingController();
   final _dateFormat = DateFormat('dd.MM.yyyy', 'de');
@@ -177,6 +182,57 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     try {
       final data = await SupabaseService.getProjects();
       if (mounted) setState(() => _projects = data);
+
+      // Fetch first image URL per project for card toggle
+      if (data.isNotEmpty) {
+        final projectIds = data.map((p) => p['id'] as String).toList();
+        try {
+          final infoRows = await SupabaseService.client
+              .from('project_info')
+              .select('id, project_id')
+              .inFilter('project_id', projectIds);
+
+          if ((infoRows as List).isNotEmpty) {
+            final infoIds = infoRows.map((r) => r['id'] as String).toList();
+            final imgRows = await SupabaseService.client
+                .from('project_info_images')
+                .select('project_info_id, storage_path, display_order')
+                .inFilter('project_info_id', infoIds)
+                .order('display_order', ascending: true);
+
+            // Build infoId → projectId map
+            final infoToProject = <String, String>{};
+            for (final r in infoRows) {
+              infoToProject[r['id'] as String] = r['project_id'] as String;
+            }
+
+            // Take the first image per project
+            final newImageUrls = <String, String?>{};
+            for (final img in (imgRows as List)) {
+              final infoId = img['project_info_id'] as String?;
+              if (infoId == null) continue;
+              final pid = infoToProject[infoId];
+              if (pid == null || newImageUrls.containsKey(pid)) continue;
+              final storagePath = img['storage_path'] as String?;
+              if (storagePath != null) {
+                newImageUrls[pid] = SupabaseService.getProjectInfoImageUrl(storagePath);
+              }
+            }
+
+            if (mounted) {
+              setState(() {
+                _projectImageUrls.addAll(newImageUrls);
+                // Default: show photo if available (only set once, don't override user choice)
+                for (final pid in newImageUrls.keys) {
+                  _showPhoto.putIfAbsent(pid, () => true);
+                }
+              });
+            }
+          }
+        } catch (_) {
+          // Images are optional – silently ignore
+        }
+      }
     } catch (_) {
       // Silently handle – empty list shown
     } finally {
@@ -456,10 +512,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         itemCount: projects.length,
         itemBuilder: (context, index) {
           final p = projects[index];
+          final pid = p['id'] as String;
           return _ProjectCard(
             project: p,
             color: _projectColor(p),
             dateFormat: _dateFormat,
+            imageUrl: _projectImageUrls[pid],
+            showPhoto: _showPhoto[pid] ?? false,
+            onToggleView: (val) => setState(() => _showPhoto[pid] = val),
             onTap: () => context.go('/project/${p['id']}'),
             onLongPress: () => _showEditSheet(p),
           ).animate().fadeIn(
@@ -580,6 +640,9 @@ class _ProjectCard extends StatelessWidget {
   final Map<String, dynamic> project;
   final Color color;
   final DateFormat dateFormat;
+  final String? imageUrl;
+  final bool showPhoto;
+  final ValueChanged<bool> onToggleView;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
@@ -587,6 +650,9 @@ class _ProjectCard extends StatelessWidget {
     required this.project,
     required this.color,
     required this.dateFormat,
+    this.imageUrl,
+    required this.showPhoto,
+    required this.onToggleView,
     required this.onTap,
     required this.onLongPress,
   });
@@ -605,6 +671,10 @@ class _ProjectCard extends StatelessWidget {
       } catch (_) {}
     }
 
+    final hasImage = imageUrl != null && imageUrl!.isNotEmpty;
+    final hasAddress = address != null && address.isNotEmpty;
+    final showMediaHeader = hasImage || hasAddress;
+
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -615,121 +685,210 @@ class _ProjectCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppSpacing.cardRadius),
           border: Border.all(color: AppColors.border),
         ),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              // Color indicator bar
-              Container(
-                width: 5,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(AppSpacing.cardRadius),
-                    bottomLeft: Radius.circular(AppSpacing.cardRadius),
-                  ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Media header (image or map placeholder) ──────────────────
+            if (showMediaHeader)
+              ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(AppSpacing.cardRadius),
+                  topRight: Radius.circular(AppSpacing.cardRadius),
                 ),
-              ),
-
-              // Content
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.cardPadding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title + status
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              name,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.text,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                child: Stack(
+                  children: [
+                    // Media content
+                    SizedBox(
+                      height: 140,
+                      width: double.infinity,
+                      child: hasImage && showPhoto
+                          ? Image.network(
+                              imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _mapPlaceholder(address),
+                            )
+                          : _mapPlaceholder(address),
+                    ),
+                    // Toggle button — only if both image and address exist
+                    if (hasImage && hasAddress)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () => onToggleView(!showPhoto),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              showPhoto ? LucideIcons.map : LucideIcons.image,
+                              size: 18,
+                              color: const Color(0xFF1e293b),
                             ),
                           ),
-                          if (statusLabel.isNotEmpty)
-                            StatusPill(
-                              label: statusLabel,
-                              color: AppColors.statusColor(status),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+            // ── Content row (color bar + text + actions) ──────────────────
+            IntrinsicHeight(
+              child: Row(
+                children: [
+                  // Color indicator bar
+                  Container(
+                    width: 5,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: showMediaHeader
+                          ? const BorderRadius.only(
+                              bottomLeft: Radius.circular(AppSpacing.cardRadius),
+                            )
+                          : const BorderRadius.only(
+                              topLeft: Radius.circular(AppSpacing.cardRadius),
+                              bottomLeft: Radius.circular(AppSpacing.cardRadius),
                             ),
+                    ),
+                  ),
+
+                  // Content
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title + status
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.text,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (statusLabel.isNotEmpty)
+                                StatusPill(
+                                  label: statusLabel,
+                                  color: AppColors.statusColor(status),
+                                ),
+                            ],
+                          ),
+
+                          if (address != null && address.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Icon(LucideIcons.mapPin,
+                                    size: 14, color: AppColors.textTertiary),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    address,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+
+                          if (dateStr != null) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(LucideIcons.calendar,
+                                    size: 13, color: AppColors.textTertiary),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Erstellt am $dateStr',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
-
-                      if (address != null && address.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(LucideIcons.mapPin,
-                                size: 14, color: AppColors.textTertiary),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                address,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-
-                      if (dateStr != null) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(LucideIcons.calendar,
-                                size: 13, color: AppColors.textTertiary),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Erstellt am $dateStr',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-
-              // Edit + Chevron
-              GestureDetector(
-                onTap: onLongPress, // edit on tap of pencil icon
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.border),
                     ),
-                    child: const Icon(LucideIcons.pencil,
-                        size: 15, color: AppColors.textTertiary),
                   ),
-                ),
+
+                  // Edit + Chevron
+                  GestureDetector(
+                    onTap: onLongPress,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Icon(LucideIcons.pencil,
+                            size: 15, color: AppColors.textTertiary),
+                      ),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Icon(LucideIcons.chevronRight,
+                        size: 18, color: AppColors.textTertiary),
+                  ),
+                ],
               ),
-              const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: Icon(LucideIcons.chevronRight,
-                    size: 18, color: AppColors.textTertiary),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _mapPlaceholder(String? address) {
+    return Container(
+      color: const Color(0xFFe2e8f0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(LucideIcons.map, size: 32, color: Color(0xFF94a3b8)),
+          if (address != null && address.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                address,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748b)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1471,7 +1630,7 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
           const SizedBox(height: 4),
         ])),
         Flexible(child: _loading
-          ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+          ? const LottieLoader()
           : _filtered.isEmpty
             ? const Padding(padding: EdgeInsets.all(32),
                 child: Center(child: Text('Keine Kontakte gefunden', style: TextStyle(color: AppColors.textSecondary))))

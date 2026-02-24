@@ -10,6 +10,7 @@ import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PRIORITY / STATUS HELPERS
@@ -303,7 +304,7 @@ class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
             )
           : null,
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : Column(
               children: [
                 // ── Top bar: stats + search icon ──
@@ -740,6 +741,19 @@ class _DefectCard extends StatelessWidget {
   final bool canDelete;
   const _DefectCard({required this.defect, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
 
+  String _creatorName() {
+    final creator = defect['creator'] as Map<String, dynamic>?;
+    if (creator != null) {
+      final fn = (creator['first_name'] as String? ?? '').trim();
+      final ln = (creator['last_name'] as String? ?? '').trim();
+      final full = '$fn $ln'.trim();
+      if (full.isNotEmpty) return full;
+      final email = creator['email'] as String?;
+      if (email != null && email.isNotEmpty) return email;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final status     = defect['status']   ?? 'open';
@@ -823,6 +837,23 @@ class _DefectCard extends StatelessWidget {
               Text(assigneeName, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary), overflow: TextOverflow.ellipsis),
             ],
           ]),
+          Builder(builder: (_) {
+            final cName = _creatorName();
+            final cAt = defect['created_at'] as String?;
+            if (cName.isEmpty && cAt == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(children: [
+                const Icon(LucideIcons.userCheck, size: 11, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Expanded(child: Text(
+                  [if (cName.isNotEmpty) cName, if (cAt != null) _fmtDate(cAt)].join(' · '),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                  overflow: TextOverflow.ellipsis,
+                )),
+              ]),
+            );
+          }),
         ])),
                 ),
               ),
@@ -1300,7 +1331,7 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
     return Column(children: [
       Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: SizedBox(width: double.infinity, child: ElevatedButton.icon(icon: const Icon(LucideIcons.camera, size: 18), label: const Text('Bilder hinzufügen'), onPressed: _uploadImg))),
       const SizedBox(height: 12),
-      if (_loadingDet) const Expanded(child: Center(child: CircularProgressIndicator()))
+      if (_loadingDet) const Expanded(child: LottieLoader())
       else if (_images.isEmpty)
         Expanded(child: Center(child: Container(
           padding: const EdgeInsets.all(24),
@@ -1407,7 +1438,7 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
           ),
         ]),
       ),
-      if (_loadingDet) const Expanded(child: Center(child: CircularProgressIndicator()))
+      if (_loadingDet) const Expanded(child: LottieLoader())
       else if (_docs.isEmpty)
         const Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(LucideIcons.fileText, size: 48, color: AppColors.textTertiary), SizedBox(height: 12),

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -518,7 +520,7 @@ export function ProjectDocumentation() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -737,7 +739,7 @@ export function ProjectDocumentation() {
                 <TouchableOpacity
                   key={entry.id}
                   onPress={() => setSelectedTaskId(entry.task_id)}
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: 'pointer' } as any}
                 >
                   <Card style={styles.entryCard}>
                   <View style={styles.entryHeader}>

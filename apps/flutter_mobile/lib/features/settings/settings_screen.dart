@@ -8,6 +8,7 @@ import '../../core/providers/notifications_provider.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ── Language options ─────────────────────────────────────────────────────────
 const _languages = [
@@ -170,7 +171,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Mehr')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : ListView(
               padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 96),
               children: [

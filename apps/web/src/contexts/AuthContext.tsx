@@ -16,16 +16,11 @@ export interface UserProfile {
 }
 
 interface AuthState {
-  /** The authenticated user id, or null if not logged in */
   userId: string | null;
-  /** Cached profile (loaded once, refreshable) */
   profile: UserProfile | null;
-  /** True while the initial auth check + profile load is in progress */
   loading: boolean;
-  /** Convenience booleans */
   isSuperuser: boolean;
   isTeamAdmin: boolean;
-  /** Force a profile re-fetch (e.g. after editing profile) */
   refreshProfile: () => Promise<void>;
 }
 
@@ -40,73 +35,125 @@ const AuthContext = createContext<AuthState>({
 
 export const useAuth = () => useContext(AuthContext);
 
+// ── Module-level flags — survive StrictMode double-mount / HMR ──
+// explicitSignOut: true only when user clicked the logout button.
+// Supabase fires spurious SIGNED_OUT on background token-refresh failures;
+// we must NOT react to those.
+let _explicitSignOut = false;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Stable ref: latest userId without stale closure issues
+  const userIdRef = useRef<string | null>(null);
+  // mountedRef: prevent state updates after unmount (avoids memory leak warnings)
   const mountedRef = useRef(true);
 
   const loadProfile = useCallback(async (uid: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, first_name, last_name, company_name, avatar_url, is_superuser, team_id, team_role, phone')
-      .eq('id', uid)
-      .single();
-
-    if (!error && data && mountedRef.current) {
-      setProfile({
-        ...data,
-        is_superuser: data.is_superuser === true,
-      });
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, first_name, last_name, company_name, avatar_url, is_superuser, team_id, team_role, phone')
+        .eq('id', uid)
+        .single();
+      if (error) {
+        console.error('AuthContext: loadProfile error', error.message);
+        return;
+      }
+      if (data && mountedRef.current) {
+        setProfile({ ...data, is_superuser: data.is_superuser === true });
+      }
+    } catch (e) {
+      console.error('AuthContext: loadProfile unexpected error', e);
     }
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (userId) await loadProfile(userId);
-  }, [userId, loadProfile]);
+    if (userIdRef.current) await loadProfile(userIdRef.current);
+  }, [loadProfile]);
 
   useEffect(() => {
     mountedRef.current = true;
 
-    // Fast path: check session from cache first (no network round-trip)
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && mountedRef.current) {
-          setUserId(session.user.id);
-          await loadProfile(session.user.id);
-        }
-      } catch (e) {
-        console.error('AuthContext: init error', e);
-      } finally {
-        if (mountedRef.current) setLoading(false);
-      }
+    // ── Intercept signOut to flag explicit logouts ──
+    const origSignOut = supabase.auth.signOut.bind(supabase.auth);
+    (supabase.auth as any).signOut = async (...args: any[]) => {
+      _explicitSignOut = true;
+      return (origSignOut as any)(...args);
     };
 
-    init();
+    // ── CRITICAL: setLoading(false) must NEVER be delayed by async work ──
+    //
+    // Supabase's onAuthStateChange callback is awaited by the library itself
+    // (_notifyAllSubscribers awaits every registered callback). If we do any
+    // async work (like loadProfile) inside this callback, we hold the Supabase
+    // internal lock — which blocks _INITIAL_SESSION from firing for new
+    // subscriptions, creating a deadlock where loading never resolves.
+    //
+    // Fix: the callback is SYNCHRONOUS for all state/loading decisions.
+    // Profile loading is fired-and-forgotten (not awaited here).
+    //
+    // This also means INITIAL_SESSION resolves loading instantly from
+    // localStorage — no network round-trip needed.
+    let initialEventReceived = false;
 
-    // Listen for auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mountedRef.current) return;
+      (event, session) => {
         if (session?.user) {
-          setUserId(session.user.id);
-          // Always reload profile on SIGNED_IN.
-          // Also reload on TOKEN_REFRESHED if we somehow lost the profile
-          // (e.g. tab was in background and React GC'd the state).
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            await loadProfile(session.user.id);
+          userIdRef.current = session.user.id;
+          if (mountedRef.current) setUserId(session.user.id);
+          _explicitSignOut = false;
+
+          // Fire-and-forget profile load — do NOT await here.
+          // Awaiting would hold the Supabase lock and delay INITIAL_SESSION.
+          if (
+            event === 'SIGNED_IN' ||
+            event === 'TOKEN_REFRESHED' ||
+            event === 'INITIAL_SESSION'
+          ) {
+            loadProfile(session.user.id); // intentionally not awaited
           }
         } else if (event === 'SIGNED_OUT') {
-          setUserId(null);
-          setProfile(null);
+          if (_explicitSignOut) {
+            // Real logout: user clicked the button
+            userIdRef.current = null;
+            if (mountedRef.current) { setUserId(null); setProfile(null); }
+            _explicitSignOut = false;
+          } else {
+            // FALSE POSITIVE: Supabase fires SIGNED_OUT when a background
+            // token-refresh request fails (e.g. network blip after tab switch).
+            // The user did NOT log out — ignore this event completely.
+          }
+        } else if (event === 'INITIAL_SESSION' && !session) {
+          // No session at startup = genuinely logged out
+          userIdRef.current = null;
+          if (mountedRef.current) { setUserId(null); setProfile(null); }
+        }
+
+        // Resolve loading after the very first auth event (INITIAL_SESSION).
+        if (!initialEventReceived) {
+          initialEventReceived = true;
+          if (mountedRef.current) setLoading(false);
         }
       }
     );
 
+    // Safety net: if INITIAL_SESSION never fires (e.g. Supabase init failure),
+    // unblock the UI after 4 seconds so the user isn't stuck on a spinner.
+    const safetyTimer = setTimeout(() => {
+      if (!initialEventReceived && mountedRef.current) {
+        initialEventReceived = true;
+        setLoading(false);
+      }
+    }, 4000);
+
     return () => {
       mountedRef.current = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
+      (supabase.auth as any).signOut = origSignOut;
     };
   }, [loadProfile]);
 

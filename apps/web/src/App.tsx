@@ -1,8 +1,8 @@
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginForm, RegisterData } from '@docstruc/ui';
 import { supabase } from './lib/supabase';
-import { Session } from '@supabase/supabase-js';
+import { LottieLoader } from './components/LottieLoader';
 
 // ─── Lazy-loaded page components (code splitting) ──────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -61,12 +61,17 @@ export function prefetchProjectChunks() {
   });
 }
 
-import { QueryClient } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+// ─── Wipe any stale persisted React Query cache from previous sessions ─────
+// The old PersistQueryClientProvider stored data under this key. If that
+// data is corrupt/stale it blocks fresh fetches permanently. Remove it once
+// at module-load time, before React even renders.
+try {
+  localStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
+} catch (e) { /* ignore — localStorage may be unavailable (private mode) */ }
 import { ToastProvider } from './components/ToastProvider';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WebLayout } from './layouts/WebLayout';
 import { PermissionGuard } from './components/PermissionGuard';
 import { SuperuserGuard } from './components/SuperuserGuard';
@@ -74,57 +79,35 @@ import { SuperuserGuard } from './components/SuperuserGuard';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      // Never cache to disk — avoids stale localStorage data blocking fresh fetches.
+      gcTime: 0,
+      staleTime: 0,
+      retry: (failureCount, error: any) => {
+        const status = error?.status ?? error?.code;
+        if (status === 401 || status === 403 || status === 'PGRST301') return false;
+        if (error?.code === '42P17') return false;
+        return failureCount < 1;
+      },
     },
   },
 });
 
-const persister = createSyncStoragePersister({
-  storage: window.localStorage,
-});
+// ─── Spinner shown during initial auth resolution ──────────────────────────
+const FullPageSpinner = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
+    <LottieLoader size={180} />
+  </div>
+);
 
-function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  // initializing is ONLY true during the first mount, until the INITIAL_SESSION
-  // event fires from the local cache. After that it is never set true again —
-  // so token refreshes, idle periods and any other auth events never unmount the
-  // app tree or show a blank spinner.
-  const [initializing, setInitializing] = useState(true);
+// ─── Inner app that reads AuthContext (single source of truth) ─────────────
+function AppRoutes() {
+  const { userId, loading: authLoading } = useAuth();
+  const isAuthenticated = !!userId;
+
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [loginLockUntil, setLoginLockUntil] = useState<number | null>(null);
-
-  useEffect(() => {
-    // onAuthStateChange is the single source of truth for session state.
-    // It fires INITIAL_SESSION synchronously from localStorage on first mount,
-    // so the app is unblocked immediately without a network round-trip.
-    //
-    // CRITICAL: we only set `initializing = false` once (on INITIAL_SESSION).
-    // We never set any loading/blocking state on TOKEN_REFRESHED or other events.
-    // This ensures idle token refreshes never unmount the app tree.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      // Always keep session in sync
-      if (event === 'SIGNED_OUT') {
-        setSession(null);
-      } else if (newSession) {
-        setSession(newSession);
-      }
-      // Only unblock initial render once
-      if (initializing) setInitializing(false);
-    });
-
-    // Safety: if onAuthStateChange somehow never fires (e.g., SSR, blocked JS),
-    // unblock after 3 seconds so the user isn't stuck on a blank screen.
-    const safetyTimer = setTimeout(() => setInitializing(false), 3000);
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(safetyTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleLogin = async (email: string, pass: string) => {
     // Client-side rate limiting: max 5 attempts, then 60s lockout
@@ -193,75 +176,75 @@ function App() {
     }
   };
 
-  if (initializing) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
-        <div style={{ width: 40, height: 40, border: '4px solid #E2E8F0', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+  // While AuthContext is resolving the initial session, show a spinner.
+  // This only happens once on first mount (reads from localStorage — instant).
+  // After that, authLoading is never set to true again, so the app tree stays mounted.
+  if (authLoading) {
+    return <FullPageSpinner />;
   }
 
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
+    <BrowserRouter>
+      <Suspense fallback={<FullPageSpinner />}>
+      <Routes>
+        <Route path="/login" element={
+          !isAuthenticated ? (
+            <LoginForm onLogin={handleLogin} onRegister={handleRegister} onOAuthLogin={handleOAuthLogin} error={authError} successMessage={authSuccess} />
+          ) : <Navigate to="/" />
+        } />
+        
+        {/* Public invitation acceptance route */}
+        <Route path="/accept-invitation" element={<AcceptInvitation />} />
+        
+        <Route element={isAuthenticated ? <WebLayout /> : <Navigate to="/login" />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/accessors" element={<Accessors />} />
+          <Route path="/my-team" element={<MyTeam />} />
+          <Route path="/manage-projects" element={<SuperuserGuard><ManageProjects /></SuperuserGuard>} />
+          <Route path="/manage-projects/:id" element={<SuperuserGuard><ProjectManagementDetail /></SuperuserGuard>} />
+          <Route path="/project/:id" element={<ProjectDetail />}>
+            <Route index element={<ProjectDashboard />} />
+            <Route path="general-info" element={<PermissionGuard><ProjectGeneralInfo /></PermissionGuard>} />
+            <Route path="tasks" element={<PermissionGuard><ProjectTasks /></PermissionGuard>} />
+            <Route path="defects" element={<PermissionGuard><ProjectDefects /></PermissionGuard>} />
+            <Route path="schedule" element={<PermissionGuard><ProjectSchedule /></PermissionGuard>} />
+            <Route path="objektplan" element={<PermissionGuard moduleKey="documentation"><ProjectObjektplan /></PermissionGuard>} />
+            <Route path="documentation" element={<PermissionGuard><ProjectDocumentation /></PermissionGuard>} />
+            <Route path="files" element={<PermissionGuard><ProjectFiles /></PermissionGuard>} />
+            <Route path="diary" element={<PermissionGuard><ProjectDiary /></PermissionGuard>} />
+            <Route path="communication" element={<PermissionGuard><ProjectCommunication /></PermissionGuard>} />
+            <Route path="participants" element={<PermissionGuard><ProjectParticipants /></PermissionGuard>} />
+            <Route path="reports" element={<PermissionGuard><ProjectReports /></PermissionGuard>} />
+            <Route path="activity" element={<PermissionGuard><ProjectActivity /></PermissionGuard>} />
+          </Route>
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/datenschutz" element={<Datenschutz />} />
+          <Route path="/impressum" element={<Impressum />} />
+          <Route path="/feedback" element={<Feedback />} />
+          <Route path="/help" element={<Help />} />
+          <Route path="/help/erste-schritte" element={<HelpWalkthroughs />} />
+          <Route path="/help/video-tutorials" element={<HelpVideos />} />
+          <Route path="/help/dokumentation" element={<HelpDocuments />} />
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+      </Suspense>
+    </BrowserRouter>
+  );
+}
+
+// ─── Root: Providers wrap the app, AuthContext is the SINGLE source of truth ─
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
       <AuthProvider>
       <ToastProvider>
-        <BrowserRouter>
-          <Suspense fallback={
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC' }}>
-              <div style={{ width: 40, height: 40, border: '4px solid #E2E8F0', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-            </div>
-          }>
-          <Routes>
-            <Route path="/login" element={
-              !session ? (
-                <LoginForm onLogin={handleLogin} onRegister={handleRegister} onOAuthLogin={handleOAuthLogin} error={authError} successMessage={authSuccess} />
-              ) : <Navigate to="/" />
-            } />
-            
-            {/* Public invitation acceptance route */}
-            <Route path="/accept-invitation" element={<AcceptInvitation />} />
-            
-            <Route element={session ? <WebLayout /> : <Navigate to="/login" />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/accessors" element={<Accessors />} />
-              <Route path="/my-team" element={<MyTeam />} />
-              <Route path="/manage-projects" element={<SuperuserGuard><ManageProjects /></SuperuserGuard>} />
-              <Route path="/manage-projects/:id" element={<SuperuserGuard><ProjectManagementDetail /></SuperuserGuard>} />
-              <Route path="/project/:id" element={<ProjectDetail />}>
-                <Route index element={<ProjectDashboard />} />
-                <Route path="general-info" element={<PermissionGuard><ProjectGeneralInfo /></PermissionGuard>} />
-                <Route path="tasks" element={<PermissionGuard><ProjectTasks /></PermissionGuard>} />
-                <Route path="defects" element={<PermissionGuard><ProjectDefects /></PermissionGuard>} />
-                <Route path="schedule" element={<PermissionGuard><ProjectSchedule /></PermissionGuard>} />
-                <Route path="objektplan" element={<PermissionGuard moduleKey="documentation"><ProjectObjektplan /></PermissionGuard>} />
-                <Route path="documentation" element={<PermissionGuard><ProjectDocumentation /></PermissionGuard>} />
-                <Route path="files" element={<PermissionGuard><ProjectFiles /></PermissionGuard>} />
-                <Route path="diary" element={<PermissionGuard><ProjectDiary /></PermissionGuard>} />
-                <Route path="communication" element={<PermissionGuard><ProjectCommunication /></PermissionGuard>} />
-                <Route path="participants" element={<PermissionGuard><ProjectParticipants /></PermissionGuard>} />
-                <Route path="reports" element={<PermissionGuard><ProjectReports /></PermissionGuard>} />
-                <Route path="activity" element={<PermissionGuard><ProjectActivity /></PermissionGuard>} />
-              </Route>
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/datenschutz" element={<Datenschutz />} />
-              <Route path="/impressum" element={<Impressum />} />
-              <Route path="/feedback" element={<Feedback />} />
-              <Route path="/help" element={<Help />} />
-              <Route path="/help/erste-schritte" element={<HelpWalkthroughs />} />
-              <Route path="/help/video-tutorials" element={<HelpVideos />} />
-              <Route path="/help/dokumentation" element={<HelpDocuments />} />
-            </Route>
-
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-          </Suspense>
-        </BrowserRouter>
+        <AppRoutes />
       </ToastProvider>
       </AuthProvider>
-    </PersistQueryClientProvider>
+    </QueryClientProvider>
   );
 }
 

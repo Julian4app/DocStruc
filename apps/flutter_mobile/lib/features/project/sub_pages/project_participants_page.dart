@@ -8,6 +8,7 @@ import '../../../core/providers/permissions_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data helpers
@@ -494,8 +495,22 @@ class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPag
 
   @override
   Widget build(BuildContext context) {
+    final canAddTeam = _activeTab == 'members' &&
+        ((_isTeamAdmin && _hasTeamAccess) ||
+            ref.permissions(widget.projectId).canCreate('members'));
+
     return Scaffold(
       backgroundColor: AppColors.background,
+      floatingActionButton: canAddTeam
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddTeamModal(),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(LucideIcons.users, size: 18),
+              label: const Text('Team',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            )
+          : null,
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
@@ -504,16 +519,6 @@ class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPag
         title: const Text('Beteiligte', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           if (_activeTab == 'members') ...[
-            if ((_isTeamAdmin && _hasTeamAccess) || ref.permissions(widget.projectId).canCreate('members'))
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: TextButton.icon(
-                  onPressed: () => _showAddTeamModal(),
-                  icon: const Icon(LucideIcons.users, size: 15, color: Colors.white),
-                  label: const Text('Team', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                  style: TextButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                ),
-              ),
             if (_isProjectOwner && (_statusCounts['open'] ?? 0) > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -528,7 +533,7 @@ class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPag
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          ? const LottieLoader()
           : RefreshIndicator(
               color: AppColors.primary,
               onRefresh: _load,

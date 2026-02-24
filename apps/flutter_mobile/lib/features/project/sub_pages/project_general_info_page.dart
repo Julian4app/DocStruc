@@ -19,6 +19,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─── Rich Text Formatting ────────────────────────────────────────────────────
 
@@ -1066,7 +1067,7 @@ class _ProjectGeneralInfoPageState extends State<ProjectGeneralInfoPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.primary,
@@ -1413,51 +1414,11 @@ class _ProjectGeneralInfoPageState extends State<ProjectGeneralInfoPage> {
           ? _canEdit
               ? _emptyWithAction('Noch keine Bilder', LucideIcons.image, 'Bild hinzufügen', _pickAndUploadImage)
               : _emptyState(LucideIcons.image, 'Noch keine Bilder vorhanden')
-          : GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 1.2,
-              ),
-              itemCount: _images.length,
-              itemBuilder: (ctx, i) {
-                final img = _images[i];
-                final storagePath = img['storage_path']?.toString() ?? '';
-                final caption = img['caption']?.toString();
-                final url = storagePath.isNotEmpty ? SupabaseService.getProjectInfoImageUrl(storagePath) : '';
-                return Stack(
-                  children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: url.isNotEmpty
-                              ? Image.network(url, fit: BoxFit.cover, width: double.infinity,
-                                  errorBuilder: (_, __, ___) => _imgPlaceholder())
-                              : _imgPlaceholder(),
-                        ),
-                      ),
-                      if (caption != null && caption.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(caption, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                    ]),
-                    if (_canEdit)
-                      Positioned(
-                        top: 6, right: 6,
-                        child: GestureDetector(
-                          onTap: () => _deleteImage(img),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
-                            child: const Icon(LucideIcons.x, size: 12, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+          : _ImageCarousel(
+              images: _images,
+              getImageUrl: SupabaseService.getProjectInfoImageUrl,
+              canDelete: _canEdit,
+              onDelete: _deleteImage,
             ),
     );
   }
@@ -1895,6 +1856,418 @@ class _FullscreenMapPage extends StatelessWidget {
               ),
             ),
           ]),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Image Carousel Widget ────────────────────────────────────────────────────
+
+class _ImageCarousel extends StatefulWidget {
+  final List<Map<String, dynamic>> images;
+  final String Function(String) getImageUrl;
+  final bool canDelete;
+  final Future<void> Function(Map<String, dynamic>) onDelete;
+
+  const _ImageCarousel({
+    required this.images,
+    required this.getImageUrl,
+    required this.canDelete,
+    required this.onDelete,
+  });
+
+  @override
+  State<_ImageCarousel> createState() => _ImageCarouselState();
+}
+
+class _ImageCarouselState extends State<_ImageCarousel> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int index) {
+    _pageController.animateToPage(index,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+  }
+
+  void _openFullscreen(int index) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _FullscreenGallery(
+        images: widget.images,
+        initialIndex: index,
+        getImageUrl: widget.getImageUrl,
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.images;
+    return Column(
+      children: [
+        // Main carousel area
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            children: [
+              SizedBox(
+                height: 220,
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: images.length,
+                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  itemBuilder: (ctx, i) {
+                    final img = images[i];
+                    final path = img['storage_path']?.toString() ?? '';
+                    final url = path.isNotEmpty ? widget.getImageUrl(path) : '';
+                    return GestureDetector(
+                      onTap: () => _openFullscreen(i),
+                      child: url.isNotEmpty
+                          ? Image.network(
+                              url,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: AppColors.border,
+                                child: const Icon(LucideIcons.image, color: AppColors.textTertiary, size: 48),
+                              ),
+                            )
+                          : Container(color: AppColors.border, child: const Icon(LucideIcons.image, color: AppColors.textTertiary, size: 48)),
+                    );
+                  },
+                ),
+              ),
+              // Prev / Next arrows
+              if (images.length > 1) ...[
+                Positioned(
+                  left: 8, top: 0, bottom: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () { if (_currentIndex > 0) _goTo(_currentIndex - 1); },
+                      child: Container(
+                        width: 34, height: 34,
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), shape: BoxShape.circle),
+                        child: const Icon(LucideIcons.chevronLeft, size: 18, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 8, top: 0, bottom: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () { if (_currentIndex < images.length - 1) _goTo(_currentIndex + 1); },
+                      child: Container(
+                        width: 34, height: 34,
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), shape: BoxShape.circle),
+                        child: const Icon(LucideIcons.chevronRight, size: 18, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              // Counter badge
+              Positioned(
+                top: 10, right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(12)),
+                  child: Text('${_currentIndex + 1} / ${images.length}',
+                      style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              // Zoom hint
+              Positioned(
+                bottom: 10, left: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(12)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(LucideIcons.maximize2, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('Tippen zum Vergrößern', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w500)),
+                  ]),
+                ),
+              ),
+              // Caption
+              if ((images[_currentIndex]['caption']?.toString() ?? '').isNotEmpty)
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 20, 12, 10),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black54],
+                      ),
+                    ),
+                    child: Text(
+                      images[_currentIndex]['caption']!.toString(),
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              // Delete button
+              if (widget.canDelete)
+                Positioned(
+                  top: 10, left: 10,
+                  child: GestureDetector(
+                    onTap: () => widget.onDelete(images[_currentIndex]),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.8), shape: BoxShape.circle),
+                      child: const Icon(LucideIcons.trash2, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Dot indicators
+        if (images.length > 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(images.length, (i) => GestureDetector(
+              onTap: () => _goTo(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: i == _currentIndex ? 18 : 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: i == _currentIndex ? AppColors.primary : AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            )),
+          ),
+        const SizedBox(height: 10),
+        // Thumbnail strip
+        if (images.length > 1)
+          SizedBox(
+            height: 56,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: images.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (ctx, i) {
+                final path = images[i]['storage_path']?.toString() ?? '';
+                final url = path.isNotEmpty ? widget.getImageUrl(path) : '';
+                final isActive = i == _currentIndex;
+                return GestureDetector(
+                  onTap: () => _goTo(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 72,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isActive ? AppColors.primary : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Opacity(
+                        opacity: isActive ? 1.0 : 0.55,
+                        child: url.isNotEmpty
+                            ? Image.network(url, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: AppColors.border, child: const Icon(LucideIcons.image, size: 16, color: AppColors.textTertiary)))
+                            : Container(color: AppColors.border),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Fullscreen Gallery ───────────────────────────────────────────────────────
+
+class _FullscreenGallery extends StatefulWidget {
+  final List<Map<String, dynamic>> images;
+  final int initialIndex;
+  final String Function(String) getImageUrl;
+
+  const _FullscreenGallery({
+    required this.images,
+    required this.initialIndex,
+    required this.getImageUrl,
+  });
+
+  @override
+  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
+}
+
+class _FullscreenGalleryState extends State<_FullscreenGallery> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int index) {
+    _pageController.animateToPage(index,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.images;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(LucideIcons.x),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          '${_currentIndex + 1} / ${images.length}',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        centerTitle: true,
+      ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: images.length,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
+            itemBuilder: (ctx, i) {
+              final path = images[i]['storage_path']?.toString() ?? '';
+              final url = path.isNotEmpty ? widget.getImageUrl(path) : '';
+              return InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4.0,
+                child: Center(
+                  child: url.isNotEmpty
+                      ? Image.network(url, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(LucideIcons.image, color: Colors.white54, size: 64))
+                      : const Icon(LucideIcons.image, color: Colors.white54, size: 64),
+                ),
+              );
+            },
+          ),
+          // Prev/Next
+          if (images.length > 1) ...[
+            Positioned(
+              left: 8, top: 0, bottom: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () { if (_currentIndex > 0) _goTo(_currentIndex - 1); },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+                    child: const Icon(LucideIcons.chevronLeft, size: 22, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 8, top: 0, bottom: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () { if (_currentIndex < images.length - 1) _goTo(_currentIndex + 1); },
+                  child: Container(
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+                    child: const Icon(LucideIcons.chevronRight, size: 22, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          // Caption + thumbnail strip
+          if ((images[_currentIndex]['caption']?.toString() ?? '').isNotEmpty || images.length > 1)
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if ((images[_currentIndex]['caption']?.toString() ?? '').isNotEmpty)
+                      Text(
+                        images[_currentIndex]['caption']!.toString(),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                    if (images.length > 1) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 52,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          shrinkWrap: true,
+                          itemCount: images.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 6),
+                          itemBuilder: (ctx, i) {
+                            final path = images[i]['storage_path']?.toString() ?? '';
+                            final url = path.isNotEmpty ? widget.getImageUrl(path) : '';
+                            return GestureDetector(
+                              onTap: () => _goTo(i),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                width: 60,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: i == _currentIndex ? Colors.white : Colors.transparent, width: 2),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Opacity(
+                                    opacity: i == _currentIndex ? 1.0 : 0.5,
+                                    child: url.isNotEmpty
+                                        ? Image.network(url, fit: BoxFit.cover)
+                                        : Container(color: Colors.white24),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

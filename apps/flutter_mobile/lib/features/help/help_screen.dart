@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/lottie_loader.dart';
 
 class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
@@ -151,10 +152,7 @@ class _HelpScreenState extends State<HelpScreen> {
           // ── FAQs ──
           _loading
               ? const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
+                  child: LottieLoader(),
                 )
               : filtered.isEmpty
                   ? SliverToBoxAdapter(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─── Entity type labels ───────────────────────────────────────────────────────
 const _kEntityTypeMap = {
@@ -265,6 +266,8 @@ class _ProjectActivityPageState extends State<ProjectActivityPage> {
   bool _loading = true;
   List<Map<String, dynamic>> _logs = [];
   String _filter = 'all';
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
 
   static const _filterOptions = [
     ('all', 'Alle'),
@@ -291,9 +294,54 @@ class _ProjectActivityPageState extends State<ProjectActivityPage> {
   }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_filter == 'all') return _logs;
-    return _logs.where((l) => l['entity_type'] == _filter).toList();
+    return _logs.where((l) {
+      if (_filter != 'all' && l['entity_type'] != _filter) return false;
+      if (_dateFrom != null || _dateTo != null) {
+        final createdAt = l['created_at'] as String?;
+        if (createdAt == null) return false;
+        final dt = DateTime.tryParse(createdAt);
+        if (dt == null) return false;
+        if (_dateFrom != null) {
+          final fromDay = DateTime(_dateFrom!.year, _dateFrom!.month, _dateFrom!.day);
+          if (dt.isBefore(fromDay)) return false;
+        }
+        if (_dateTo != null) {
+          final toDay = DateTime(_dateTo!.year, _dateTo!.month, _dateTo!.day, 23, 59, 59);
+          if (dt.isAfter(toDay)) return false;
+        }
+      }
+      return true;
+    }).toList();
   }
+
+  Future<void> _pickDateFrom() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateFrom ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      locale: const Locale('de'),
+    );
+    if (picked != null) setState(() => _dateFrom = picked);
+  }
+
+  Future<void> _pickDateTo() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateTo ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      locale: const Locale('de'),
+    );
+    if (picked != null) setState(() => _dateTo = picked);
+  }
+
+  String _fmtDate(DateTime? d) {
+    if (d == null) return 'Datum wählen';
+    return DateFormat('dd.MM.yyyy').format(d);
+  }
+
+  bool get _hasDateFilter => _dateFrom != null || _dateTo != null;
 
   @override
   Widget build(BuildContext context) {
@@ -313,49 +361,132 @@ class _ProjectActivityPageState extends State<ProjectActivityPage> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: filtered.isEmpty
-                  ? ListView(children: [
-                      const SizedBox(height: 120),
-                      Center(
-                        child: Column(children: [
-                          Icon(LucideIcons.activity,
-                              size: 48,
-                              color: AppColors.textTertiary),
-                          const SizedBox(height: 12),
-                          Text(
-                            _filter == 'all'
-                                ? 'Keine Aktivitäten'
-                                : 'Keine Aktivitäten in dieser Kategorie',
-                            style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary),
+          ? const LottieLoader()
+          : Column(
+              children: [
+                // ── Date range filter bar ───────────────────────────────
+                Container(
+                  color: AppColors.surface,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.calendar, size: 15, color: AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      // From date
+                      GestureDetector(
+                        onTap: _pickDateFrom,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _dateFrom != null ? AppColors.primary.withValues(alpha: 0.1) : AppColors.background,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _dateFrom != null ? AppColors.primary : AppColors.border,
+                            ),
                           ),
-                        ]),
+                          child: Text(
+                            'Von: ${_fmtDate(_dateFrom)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _dateFrom != null ? AppColors.primary : AppColors.textSecondary,
+                              fontWeight: _dateFrom != null ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ),
                       ),
-                    ])
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                      itemCount: filtered.length,
-                      itemBuilder: (_, i) {
-                        final log = filtered[i];
-                        final showDate = i == 0 ||
-                            _differentDay(
-                              filtered[i - 1]['created_at'],
-                              log['created_at'],
-                            );
-                        final isLast = i == filtered.length - 1;
-                        return _TimelineItem(
-                          log: log,
-                          showDate: showDate,
-                          isFirst: i == 0,
-                          isLast: isLast,
-                        );
-                      },
-                    ),
+                      const SizedBox(width: 6),
+                      // To date
+                      GestureDetector(
+                        onTap: _pickDateTo,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _dateTo != null ? AppColors.primary.withValues(alpha: 0.1) : AppColors.background,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _dateTo != null ? AppColors.primary : AppColors.border,
+                            ),
+                          ),
+                          child: Text(
+                            'Bis: ${_fmtDate(_dateTo)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _dateTo != null ? AppColors.primary : AppColors.textSecondary,
+                              fontWeight: _dateTo != null ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_hasDateFilter)
+                        GestureDetector(
+                          onTap: () => setState(() { _dateFrom = null; _dateTo = null; }),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFfee2e2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(LucideIcons.x, size: 12, color: Color(0xFFef4444)),
+                                SizedBox(width: 3),
+                                Text('Löschen', style: TextStyle(fontSize: 11, color: Color(0xFFef4444), fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // ── Activity list ──────────────────────────────────────
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: filtered.isEmpty
+                        ? ListView(children: [
+                            const SizedBox(height: 120),
+                            Center(
+                              child: Column(children: [
+                                Icon(LucideIcons.activity,
+                                    size: 48,
+                                    color: AppColors.textTertiary),
+                                const SizedBox(height: 12),
+                                Text(
+                                  (_filter == 'all' && !_hasDateFilter)
+                                      ? 'Keine Aktivitäten'
+                                      : 'Keine Aktivitäten für diesen Filter',
+                                  style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ]),
+                            ),
+                          ])
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final log = filtered[i];
+                              final showDate = i == 0 ||
+                                  _differentDay(
+                                    filtered[i - 1]['created_at'],
+                                    log['created_at'],
+                                  );
+                              final isLast = i == filtered.length - 1;
+                              return _TimelineItem(
+                                log: log,
+                                showDate: showDate,
+                                isFirst: i == 0,
+                                isLast: isLast,
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ],
             ),
     );
   }

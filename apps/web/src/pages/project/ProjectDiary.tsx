@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -13,7 +15,19 @@ import { SearchableSelect } from '../../components/SearchableSelect';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadMoreButton } from '../../components/LoadMoreButton';
-import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock } from 'lucide-react';
+import { BookOpen, Plus, Calendar, CloudRain, Sun, Cloud, Users, Truck, Download, FileText, Clock, History, Pencil, Save } from 'lucide-react';
+
+interface DiaryHistoryItem {
+  id: string;
+  diary_entry_id: string;
+  changed_by: string;
+  changed_at: string;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  change_type: string;
+  changer_name?: string;
+}
 
 interface DiaryEntry {
   id: string;
@@ -29,6 +43,8 @@ interface DiaryEntry {
   deliveries?: string;
   created_by: string;
   created_at: string;
+  updated_at?: string;
+  updated_by?: string;
   creator_name?: string;
 }
 
@@ -57,6 +73,16 @@ export function ProjectDiary() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Edit state
+  const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // History state
+  const [historyEntry, setHistoryEntry] = useState<DiaryEntry | null>(null);
+  const [historyItems, setHistoryItems] = useState<DiaryHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // Pagination state
   const DIARY_PAGE_SIZE = 30;
@@ -329,6 +355,129 @@ export function ProjectDiary() {
     }
   };
 
+  const openEditModal = (entry: DiaryEntry) => {
+    setEditingEntry({ ...entry });
+    // Pre-fill form fields for editing
+    setSelectedDate(entry.entry_date);
+    setWeather(entry.weather as any);
+    setTemperature(entry.temperature?.toString() || '');
+    setManualWorkerCount(entry.workers_present?.toString() || '');
+    setWorkPerformed(entry.work_performed);
+    setProgressNotes(entry.progress_notes || '');
+    setSpecialEvents(entry.special_events || '');
+    setDeliveries(entry.deliveries || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingEntry || !userId) return;
+    setIsSaving(true);
+
+    try {
+      const manualCount = manualWorkerCount ? parseInt(manualWorkerCount) || 0 : 0;
+      const totalWorkers = manualCount + selectedWorkers.length;
+
+      const updates: Partial<DiaryEntry> = {
+        entry_date: selectedDate,
+        weather,
+        temperature: temperature ? parseInt(temperature) : undefined,
+        workers_present: totalWorkers || undefined,
+        work_performed: workPerformed,
+        progress_notes: progressNotes || undefined,
+        special_events: specialEvents || undefined,
+        deliveries: deliveries || undefined,
+        updated_at: new Date().toISOString(),
+        updated_by: userId,
+      };
+
+      // Build history entries for changed fields
+      const fieldLabels: Record<string, string> = {
+        entry_date: 'Datum',
+        weather: 'Wetter',
+        temperature: 'Temperatur',
+        workers_present: 'Mitarbeiter',
+        work_performed: 'Durchgeführte Arbeiten',
+        progress_notes: 'Fortschrittsnotizen',
+        special_events: 'Besondere Vorkommnisse',
+        deliveries: 'Lieferungen',
+      };
+      const historyInserts: any[] = [];
+      for (const [field, label] of Object.entries(fieldLabels)) {
+        const oldVal = String((editingEntry as any)[field] ?? '');
+        const newVal = String((updates as any)[field] ?? '');
+        if (oldVal !== newVal) {
+          historyInserts.push({
+            diary_entry_id: editingEntry.id,
+            project_id: editingEntry.project_id,
+            changed_by: userId,
+            field_name: label,
+            old_value: oldVal || null,
+            new_value: newVal || null,
+            change_type: 'edit',
+          });
+        }
+      }
+
+      const { error } = await supabase
+        .from('diary_entries')
+        .update(updates)
+        .eq('id', editingEntry.id);
+
+      if (error) throw error;
+
+      // Insert history records
+      if (historyInserts.length > 0) {
+        const { error: hErr } = await supabase.from('diary_entry_history').insert(historyInserts);
+        if (hErr) {
+          console.error('History insert failed:', hErr);
+          // Don't block success toast — history is best-effort
+        }
+      }
+
+      showToast('Eintrag erfolgreich aktualisiert', 'success');
+      setEditingEntry(null);
+      resetForm();
+      loadDiaryEntries();
+    } catch (error: any) {
+      console.error('Error updating entry:', error);
+      showToast(error.message || 'Fehler beim Speichern', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadHistory = async (entry: DiaryEntry) => {
+    setHistoryEntry(entry);
+    setIsHistoryModalOpen(true);
+    setHistoryLoading(true);
+    setHistoryItems([]);
+    try {
+      const { data, error } = await supabase
+        .from('diary_entry_history')
+        .select(`
+          *,
+          profiles:changed_by(first_name, last_name, email)
+        `)
+        .eq('diary_entry_id', entry.id)
+        .order('changed_at', { ascending: false });
+
+      if (error) throw error;
+
+      const transformed: DiaryHistoryItem[] = (data || []).map((item: any) => ({
+        ...item,
+        changer_name: item.profiles
+          ? `${item.profiles.first_name || ''} ${item.profiles.last_name || ''}`.trim() || item.profiles.email
+          : 'Unbekannt',
+      }));
+      setHistoryItems(transformed);
+    } catch (error: any) {
+      console.error('Error loading history:', error);
+      // If table doesn't exist yet, show friendly message
+      setHistoryItems([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     
@@ -564,7 +713,7 @@ export function ProjectDiary() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -630,6 +779,26 @@ export function ProjectDiary() {
                       {defaultVisibility !== 'all_participants' && (
                         <VisibilityBadge visibility={defaultVisibility} size="small" />
                       )}
+                      {/* Spacer */}
+                      <View style={{ flex: 1 }} />
+                      {/* History icon button */}
+                      <TouchableOpacity
+                        style={styles.iconBtn}
+                        onPress={() => loadHistory(entry)}
+                        accessibilityLabel="Änderungsverlauf anzeigen"
+                      >
+                        <History size={16} color="#64748b" />
+                      </TouchableOpacity>
+                      {/* Edit icon button */}
+                      {pCanEdit && (
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          onPress={() => openEditModal(entry)}
+                          accessibilityLabel="Eintrag bearbeiten"
+                        >
+                          <Pencil size={16} color={colors.primary} />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                   <View style={styles.entryMeta}>
@@ -637,15 +806,14 @@ export function ProjectDiary() {
                       {getWeatherIcon(entry.weather)}
                       <Text style={styles.metaText}>
                         {getWeatherLabel(entry.weather)}
-                        {entry.temperature && ` • ${entry.temperature}°C`}
+                        {entry.temperature != null && ` • ${entry.temperature}°C`}
                       </Text>
                     </View>
-                    {entry.workers_present && (
-                      <View style={styles.metaItem}>
-                        <Users size={16} color="#64748b" />
-                        <Text style={styles.metaText}>{entry.workers_present} Mitarbeiter</Text>
-                      </View>
-                    )}
+                    {/* Show workers even when 0 — consistent design */}
+                    <View style={styles.metaItem}>
+                      <Users size={16} color="#64748b" />
+                      <Text style={styles.metaText}>{entry.workers_present ?? 0} Mitarbeiter</Text>
+                    </View>
                   </View>
                   {entry.workers_list && (
                     <View style={styles.entrySection}>
@@ -683,6 +851,9 @@ export function ProjectDiary() {
                   <View style={styles.entryFooter}>
                     <Text style={styles.entryCreator}>
                       Erstellt von: {entry.creator_name} • {formatDateTime(entry.created_at)}
+                      {entry.updated_at && (
+                        <Text style={styles.entryUpdated}> · Bearbeitet: {formatDateTime(entry.updated_at)}</Text>
+                      )}
                     </Text>
                   </View>
                 </Card>
@@ -912,6 +1083,172 @@ export function ProjectDiary() {
           </View>
         </View>
       </ModernModal>
+
+      {/* Edit Entry Modal */}
+      <ModernModal
+        visible={!!editingEntry}
+        onClose={() => { setEditingEntry(null); resetForm(); }}
+        title="Eintrag bearbeiten"
+      >
+        <View style={styles.modalContent}>
+          <DatePicker
+            label="Datum *"
+            value={selectedDate}
+            onChange={setSelectedDate}
+            placeholder="TT.MM.JJJJ"
+          />
+
+          <View>
+            <Text style={styles.inputLabel}>Wetter</Text>
+            <View style={styles.weatherGrid}>
+              {(['sunny', 'cloudy', 'rainy', 'snowy', 'stormy', 'foggy'] as const).map((w) => (
+                <TouchableOpacity
+                  key={w}
+                  style={[styles.weatherOption, weather === w && styles.weatherOptionActive]}
+                  onPress={() => setWeather(w)}
+                >
+                  {getWeatherIcon(w)}
+                  <Text style={styles.weatherOptionText}>{getWeatherLabel(w)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <Input
+            label="Temperatur (°C)"
+            value={temperature}
+            onChangeText={setTemperature}
+            placeholder="z.B. 18"
+          />
+
+          <Input
+            label="Zusätzliche Mitarbeiter (Anzahl)"
+            value={manualWorkerCount}
+            onChangeText={setManualWorkerCount}
+            placeholder="z.B. 5 externe Mitarbeiter"
+            keyboardType="numeric"
+          />
+
+          <SearchableSelect
+            label="Anwesende Projektmitarbeiter"
+            options={projectMembers
+              .filter(member => member.profiles?.email)
+              .map(member => ({
+                label: `${member.profiles.first_name || ''} ${member.profiles.last_name || ''}`.trim() || member.profiles.email,
+                value: member.user_id
+              }))}
+            values={selectedWorkers}
+            onChange={setSelectedWorkers}
+            placeholder="Mitarbeiter auswählen..."
+            multi
+          />
+
+          <Text style={styles.workerCountInfo}>
+            Gesamt: {(manualWorkerCount ? parseInt(manualWorkerCount) || 0 : 0) + selectedWorkers.length} Mitarbeiter
+          </Text>
+
+          <Input
+            label="Durchgeführte Arbeiten *"
+            value={workPerformed}
+            onChangeText={setWorkPerformed}
+            placeholder="Beschreibung der durchgeführten Arbeiten..."
+            multiline
+            numberOfLines={4}
+          />
+
+          <Input
+            label="Fortschrittsnotizen"
+            value={progressNotes}
+            onChangeText={setProgressNotes}
+            placeholder="Zusätzliche Notizen zum Baufortschritt..."
+            multiline
+            numberOfLines={3}
+          />
+
+          <Input
+            label="Besondere Vorkommnisse"
+            value={specialEvents}
+            onChangeText={setSpecialEvents}
+            placeholder="z.B. Abnahmen, Besprechungen, Besuche..."
+            multiline
+          />
+
+          <Input
+            label="Lieferungen"
+            value={deliveries}
+            onChangeText={setDeliveries}
+            placeholder="z.B. Materiallieferungen, Geräte..."
+            multiline
+          />
+
+          <View style={styles.modalActions}>
+            <Button
+              variant="outline"
+              onClick={() => { setEditingEntry(null); resetForm(); }}
+              style={{ flex: 1 }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              style={{ flex: 1 }}
+              disabled={isSaving || !workPerformed.trim()}
+            >
+              {isSaving
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <><Save size={16} /> Speichern</>
+              }
+            </Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* History Modal */}
+      <ModernModal
+        visible={isHistoryModalOpen}
+        onClose={() => { setIsHistoryModalOpen(false); setHistoryEntry(null); setHistoryItems([]); }}
+        title="Änderungsverlauf"
+      >
+        <View>
+          {historyEntry && (
+            <Text style={styles.historyEntryLabel}>
+              Eintrag vom {formatDate(historyEntry.entry_date)}
+            </Text>
+          )}
+          {historyLoading ? (
+            <View style={styles.historyLoadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : historyItems.length === 0 ? (
+            <View style={styles.historyEmptyContainer}>
+              <History size={32} color="#94a3b8" />
+              <Text style={styles.historyEmptyText}>Noch keine Änderungen aufgezeichnet.</Text>
+            </View>
+          ) : (
+            <View style={styles.historyList}>
+              {historyItems.map((item, index) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.historyItem,
+                    index === historyItems.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <Text style={styles.historyField}>{item.field_name}</Text>
+                  <View style={styles.historyChangeRow}>
+                    <Text style={styles.historyOldValue}>{item.old_value || '–'}</Text>
+                    <Text style={styles.historyArrow}>→</Text>
+                    <Text style={styles.historyNewValue}>{item.new_value || '–'}</Text>
+                  </View>
+                  <Text style={styles.historyMeta}>
+                    {item.changer_name} · {formatDateTime(item.changed_at)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </ModernModal>
     </>
   );
 }
@@ -1022,5 +1359,94 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: -8,
     marginBottom: 8,
+  },
+  // Icon buttons on entry cards
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  entryUpdated: {
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  // History modal
+  historyEntryLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  historyLoadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  historyEmptyContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    gap: 12,
+  },
+  historyEmptyText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
+  historyList: {
+    gap: 0,
+  },
+  historyItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  historyField: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  historyChangeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+    flexWrap: 'wrap',
+  },
+  historyOldValue: {
+    fontSize: 13,
+    color: '#ef4444',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    maxWidth: '40%',
+  },
+  historyArrow: {
+    fontSize: 14,
+    color: '#94a3b8',
+    alignSelf: 'center',
+  },
+  historyNewValue: {
+    fontSize: 13,
+    color: '#16a34a',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    maxWidth: '40%',
+  },
+  historyMeta: {
+    fontSize: 12,
+    color: '#94a3b8',
   },
 });

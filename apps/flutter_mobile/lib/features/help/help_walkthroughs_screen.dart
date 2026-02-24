@@ -3,6 +3,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 class HelpWalkthroughsScreen extends StatefulWidget {
   const HelpWalkthroughsScreen({super.key});
@@ -33,7 +34,7 @@ class _HelpWalkthroughsScreenState extends State<HelpWalkthroughsScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Erste Schritte')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : _walkthroughs.isEmpty
               ? const Center(
                   child: Column(

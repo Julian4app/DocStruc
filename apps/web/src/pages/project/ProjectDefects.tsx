@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -16,7 +18,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import DOMPurify from 'dompurify';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
-  Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2, Check
+  Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2, Check,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 interface Defect {
@@ -29,6 +32,12 @@ interface Defect {
   assigned_to: string | null;
   created_at: string;
   creator_id?: string;
+  creator?: {
+    id: string;
+    email: string;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
 }
 
 interface DefectImage {
@@ -118,6 +127,8 @@ export function ProjectDefects() {
   const createImageInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const [defectLightboxOpen, setDefectLightboxOpen] = useState(false);
+  const [defectLightboxIndex, setDefectLightboxIndex] = useState(0);
 
   useEffect(() => {
     loadDefects();
@@ -131,7 +142,7 @@ export function ProjectDefects() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('*')
+        .select('*, creator:creator_id(id, email, first_name, last_name)')
         .eq('project_id', id)
         .eq('task_type', 'defect')
         .order('created_at', { ascending: false })
@@ -483,6 +494,52 @@ export function ProjectDefects() {
     }
   };
 
+  const handleVoiceUpload = async (file: File) => {
+    if (!selectedDefect || !userId) return;
+    try {
+      const ext = file.name.split('.').pop() || 'm4a';
+      const filePath = `${id}/defects/${selectedDefect.id}/voice_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('task-images').upload(filePath, file);
+      if (upErr) throw upErr;
+      await supabase.from('task_documentation').insert({
+        task_id: selectedDefect.id,
+        project_id: id,
+        user_id: userId,
+        documentation_type: 'voice',
+        storage_path: filePath,
+        file_name: file.name,
+      });
+      showToast('Sprachdatei hochgeladen', 'success');
+      setDocFormData({ type: '', content: '' });
+      loadDefectDetails(selectedDefect.id);
+    } catch (e: any) {
+      showToast('Fehler: ' + e.message, 'error');
+    }
+  };
+
+  const handleVideoUpload = async (file: File) => {
+    if (!selectedDefect || !userId) return;
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const filePath = `${id}/defects/${selectedDefect.id}/video_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('task-images').upload(filePath, file);
+      if (upErr) throw upErr;
+      await supabase.from('task_documentation').insert({
+        task_id: selectedDefect.id,
+        project_id: id,
+        user_id: userId,
+        documentation_type: 'video',
+        storage_path: filePath,
+        file_name: file.name,
+      });
+      showToast('Video hochgeladen', 'success');
+      setDocFormData({ type: '', content: '' });
+      loadDefectDetails(selectedDefect.id);
+    } catch (e: any) {
+      showToast('Fehler: ' + e.message, 'error');
+    }
+  };
+
   const handleDeleteImage = async (imageId: string, storagePath: string) => {
     try {
       await supabase.storage.from('task-images').remove([storagePath]);
@@ -502,6 +559,16 @@ export function ProjectDefects() {
       return `${member.profiles.first_name} ${member.profiles.last_name}`;
     }
     return member?.profiles?.email || 'Unbekannt';
+  };
+
+  const getCreatorName = (defect: Defect): string => {
+    if (defect.creator) {
+      const c = defect.creator;
+      if (c.first_name && c.last_name) return `${c.first_name} ${c.last_name}`;
+      return c.email;
+    }
+    if (defect.creator_id) return getUserName(defect.creator_id);
+    return 'Unbekannt';
   };
 
   const formatDateTime = (dateString: string) => {
@@ -562,7 +629,7 @@ export function ProjectDefects() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -645,16 +712,13 @@ export function ProjectDefects() {
                   styles.defectCard,
                   { borderLeftColor: getPriorityColor(defect.priority), borderLeftWidth: 4 }
                 ]}
-                onPress={async () => {
+                onPress={() => {
                   setSelectedDefect(defect);
                   loadDefectDetails(defect.id);
-                  // Load current visibility for this defect
-                  try {
-                    const info = await getContentVisibility(defect.id);
-                    setEditVisibility(info.effective_visibility);
-                  } catch {
-                    setEditVisibility(defaultVisibility || 'all_participants');
-                  }
+                  // Load current visibility asynchronously (does not block popup open)
+                  getContentVisibility(defect.id)
+                    .then(info => setEditVisibility(info.effective_visibility))
+                    .catch(() => setEditVisibility(defaultVisibility || 'all_participants'));
                 }}
               >
                 <View style={styles.defectHeader}>
@@ -677,7 +741,7 @@ export function ProjectDefects() {
                     <VisibilityBadge visibility={defaultVisibility} size="small" />
                   )}
                   <Text style={styles.defectDate}>
-                    {new Date(defect.created_at).toLocaleDateString('de-DE')}
+                    {getCreatorName(defect)} · {new Date(defect.created_at).toLocaleDateString('de-DE')}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -1187,7 +1251,7 @@ export function ProjectDefects() {
 
                   {defectImages.length > 0 ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                      {defectImages.map((image) => {
+                      {defectImages.map((image, imgIdx) => {
                         const { data: { publicUrl } } = supabase.storage
                           .from('task-images')
                           .getPublicUrl(image.storage_path);
@@ -1197,11 +1261,13 @@ export function ProjectDefects() {
                             <img
                               src={publicUrl}
                               alt={image.file_name || 'Defect image'}
+                              onClick={() => { setDefectLightboxIndex(imgIdx); setDefectLightboxOpen(true); }}
                               style={{
                                 width: '100%',
                               height: 120,
                               objectFit: 'cover',
                               borderRadius: 8,
+                              cursor: 'zoom-in',
                             }}
                           />
                           {pCanDelete && (
@@ -1394,54 +1460,42 @@ export function ProjectDefects() {
                 )}
 
                 {docFormData.type === 'voice' && (
-                  <View style={{
-                    padding: 20,
-                    backgroundColor: '#F8FAFC',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E2E8F0',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}>
-                    <View style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: 32,
-                      backgroundColor: colors.primary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <Mic size={28} color="#ffffff" />
-                    </View>
-                    <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
-                      Sprachaufnahme wird bald verfügbar sein
-                    </Text>
+                  <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', gap: 12 }}>
+                    <input
+                      ref={audioFileInputRef}
+                      type="file"
+                      accept="audio/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVoiceUpload(f); e.target.value = ''; }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => audioFileInputRef.current?.click()}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, backgroundColor: colors.primary, borderRadius: 10 }}
+                    >
+                      <Upload size={18} color="#fff" />
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Audiodatei hochladen</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>Unterstützte Formate: MP3, M4A, WAV, OGG</Text>
                   </View>
                 )}
 
                 {docFormData.type === 'video' && (
-                  <View style={{
-                    padding: 20,
-                    backgroundColor: '#F8FAFC',
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#E2E8F0',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}>
-                    <View style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: 32,
-                      backgroundColor: colors.primary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <Video size={28} color="#ffffff" />
-                    </View>
-                    <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center' }}>
-                      Videoaufnahme wird bald verfügbar sein
-                    </Text>
+                  <View style={{ padding: 16, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', gap: 12 }}>
+                    <input
+                      ref={videoFileInputRef}
+                      type="file"
+                      accept="video/*"
+                      style={{ display: 'none' }}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoUpload(f); e.target.value = ''; }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => videoFileInputRef.current?.click()}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, backgroundColor: colors.primary, borderRadius: 10 }}
+                    >
+                      <Upload size={18} color="#fff" />
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Videodatei hochladen</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>Unterstützte Formate: MP4, MOV, AVI, WebM</Text>
                   </View>
                 )}
 
@@ -1498,6 +1552,36 @@ export function ProjectDefects() {
           </TouchableOpacity>
         </View>
       </ModernModal>
+      )}
+
+      {/* Defect image lightbox */}
+      {defectLightboxOpen && defectImages.length > 0 && (
+        <div
+          onClick={() => setDefectLightboxOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <button onClick={(e) => { e.stopPropagation(); setDefectLightboxOpen(false); }} style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 44, height: 44, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={22} color="#fff" />
+          </button>
+          {defectImages.length > 1 && (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setDefectLightboxIndex((defectLightboxIndex - 1 + defectImages.length) % defectImages.length); }} style={{ position: 'absolute', left: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ChevronLeft size={26} color="#fff" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setDefectLightboxIndex((defectLightboxIndex + 1) % defectImages.length); }} style={{ position: 'absolute', right: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ChevronRight size={26} color="#fff" />
+              </button>
+            </>
+          )}
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <img
+              src={supabase.storage.from('task-images').getPublicUrl(defectImages[defectLightboxIndex].storage_path).data.publicUrl}
+              alt=""
+              style={{ maxWidth: '90vw', maxHeight: '82vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
+            />
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{defectLightboxIndex + 1} / {defectImages.length}</div>
+          </div>
+        </div>
       )}
     </>
   );

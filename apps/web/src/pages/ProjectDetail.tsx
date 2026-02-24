@@ -3,10 +3,13 @@ import { useParams, useNavigate, Outlet } from 'react-router-dom';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { Project } from '@docstruc/logic';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../components/LottieLoader';
+
 import { useLayout } from '../layouts/LayoutContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { prefetchProjectChunks } from '../App';
+
 import { LayoutDashboard, Info, Calendar, Users as UsersIcon, CheckSquare, AlertCircle, Building2, FileText, FolderOpen, BookOpen, MessageSquare, BarChart3, Activity, Lock } from 'lucide-react';
 
 // Map route paths to permission module_keys
@@ -50,19 +53,26 @@ export function ProjectDetail() {
   const { setTitle, setSubtitle, setActions, setSidebarMenu } = useLayout();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { permissions, isLoading: permissionsLoading, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete } = usePermissions(id);
 
-  useEffect(() => {
-    if (id) {
-      loadProject(id);
-      // Prefetch all project sub-page JS chunks in the background
-      // so switching tabs within the project is instant (no lazy-load delay)
-      prefetchProjectChunks();
-    }
-  }, [id]);
+  // Ref to prevent concurrent loadProject calls from racing
+  const loadInFlightRef = React.useRef(false);
+  // Track whether we loaded at least once — after that, refetches are silent
+  const hasLoadedProjectRef = React.useRef(false);
+  // Ref mirrors project state so loadProject can read it without depending on it
+  const projectRef = React.useRef<Project | null>(null);
 
-  const loadProject = async (projectId: string) => {
-    setLoading(true);
+  const loadProject = React.useCallback(async (projectId: string) => {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+
+    // Only show spinner if we don't have project data yet (silent refetch otherwise)
+    if (!hasLoadedProjectRef.current) {
+      setLoading(true);
+    }
+    setLoadError(null);
+
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -70,14 +80,67 @@ export function ProjectDetail() {
         .eq('id', projectId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '42P17' || error.message?.includes('infinite recursion')) {
+          console.error('ProjectDetail: RLS recursion', error);
+          if (!hasLoadedProjectRef.current) setLoadError('Datenbankfehler. Bitte wenden Sie sich an den Administrator.');
+        } else if (error.code === 'PGRST116') {
+          if (!hasLoadedProjectRef.current) setLoadError('Projekt nicht gefunden oder kein Zugriff.');
+        } else {
+          console.error('ProjectDetail: error loading project:', error);
+          if (!hasLoadedProjectRef.current) {
+            setLoadError('Projekt konnte nicht geladen werden.');
+          }
+        }
+        return;
+      }
+      projectRef.current = data;
       setProject(data);
+      hasLoadedProjectRef.current = true;
     } catch (error: any) {
-      console.error('Error loading project:', error);
+      console.error('ProjectDetail: unexpected error:', error);
+      if (!hasLoadedProjectRef.current) {
+        setLoadError('Ein unerwarteter Fehler ist aufgetreten.');
+      }
     } finally {
       setLoading(false);
+      loadInFlightRef.current = false;
     }
-  };
+  // IMPORTANT: no state variables in dependency array — only stable values.
+  // This ensures the callback reference is stable and visibility handlers
+  // don't re-register on every data load.
+  }, []);
+
+  useEffect(() => {
+    if (id) {
+      // Reset refs when navigating to a different project
+      hasLoadedProjectRef.current = false;
+      projectRef.current = null;
+      loadInFlightRef.current = false;
+      loadProject(id);
+      prefetchProjectChunks();
+    }
+  }, [id, loadProject]);
+
+  // Refetch project data when the user returns to this tab after a long absence.
+  useEffect(() => {
+    if (!id) return;
+    const handleTabVisible = () => { loadProject(id); };
+    window.addEventListener('app:tabvisible', handleTabVisible);
+    return () => window.removeEventListener('app:tabvisible', handleTabVisible);
+  }, [id, loadProject]);
+
+  // ── Safety timeout: if loading is stuck for >12 seconds, force it off ──
+  useEffect(() => {
+    if (!loading) return;
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('ProjectDetail: safety timeout — forcing loading=false');
+        setLoading(false);
+      }
+    }, 12_000);
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
 
   useEffect(() => {
     if (project && !permissionsLoading) {
@@ -119,12 +182,25 @@ export function ProjectDetail() {
   if (loading && !project) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
 
-  if (!project) return null;
+  if (loadError || !project) {
+    return (
+      <View style={styles.loadingContainer}>
+        <AlertCircle size={48} color="#ef4444" />
+        <Text style={styles.errorText}>{loadError || 'Projekt nicht gefunden'}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => id && loadProject(id)}>
+          <Text style={styles.retryButtonText}>Erneut versuchen</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigate('/')}>
+          <Text style={styles.backButtonText}>← Zurück zum Dashboard</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return <Outlet context={{ permissions, isProjectOwner, isSuperuser, isTeamAdmin, canView, canCreate, canEdit, canDelete, permissionsLoading, project }} />;
 }
@@ -135,5 +211,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     height: '100%' as any,
+    gap: 16,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ef4444',
+    textAlign: 'center',
+    marginTop: 12,
+    maxWidth: 360,
+  },
+  retryButton: {
+    marginTop: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  backButton: {
+    marginTop: 4,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontSize: 14,
   },
 });

@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { ProjectCard, Button } from '@docstruc/ui';
 import { supabase } from '../lib/supabase';
 import { Project } from '@docstruc/logic';
 import { useAuth } from '../contexts/AuthContext';
+
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
@@ -28,22 +29,101 @@ export function Dashboard() {
   const { showToast } = useToast();
   const { userId, isSuperuser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [upcomingMilestones, setUpcomingMilestones] = useState<TimelineEvent[]>([]);
-  
+
+  // ── Deduplication: only one fetchProjects in flight at a time ─────────
+  // Without this, the visibility handler + useEffect can fire simultaneously,
+  // causing two fetches that race, and the loser may set projects=[] while
+  // the winner already set the real data.
+  const fetchInFlightRef = useRef(false);
+  // Track whether we already loaded projects at least once (prevents showing
+  // "Lade Projekte..." after the first successful load when a refetch errors)
+  const hasLoadedOnceRef = useRef(false);
+
   useEffect(() => {
     setTitle('Meine Projekte');
     setSubtitle('Übersicht aller Projekte und Aktivitäten');
   }, [setTitle]);
 
-  // Fetch projects whenever userId changes
+  const fetchProjects = useCallback(async () => {
+    if (!userId) return;
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
+
+    // Only show the loading indicator if we don't have data yet.
+    // On refetches (visibility, token refresh) we keep showing old data
+    // and update silently — this prevents the spinner flash.
+    if (!hasLoadedOnceRef.current) {
+      setProjectsLoading(true);
+    }
+
+    try {
+      const { data: projectIds, error: idsError } = await supabase
+        .rpc('get_my_project_ids');
+      if (idsError) {
+        console.error('fetchProjects rpc error', idsError);
+        // Only clear projects if we never loaded successfully before
+        if (!hasLoadedOnceRef.current) setProjects([]);
+        return;
+      }
+      if (!projectIds || projectIds.length === 0) {
+        setProjects([]);
+        hasLoadedOnceRef.current = true;
+        return;
+      }
+      const { data, error } = await supabase
+        .from('projects').select('*').in('id', projectIds).order('created_at', { ascending: false });
+      if (error) {
+        console.error('fetchProjects query error', error);
+        if (!hasLoadedOnceRef.current) setProjects([]);
+      } else {
+        setProjects(data || []);
+        hasLoadedOnceRef.current = true;
+      }
+    } catch (e: any) {
+      console.error('fetchProjects unexpected error', e);
+      // On refetch errors, keep showing old data — don't blank the screen
+    } finally {
+      setProjectsLoading(false);
+      fetchInFlightRef.current = false;
+    }
+  }, [userId]);
+
+  // Fetch projects whenever userId becomes available
   useEffect(() => {
     if (userId) {
       fetchProjects();
       fetchMilestones();
     }
-  }, [userId]);
+  }, [userId, fetchProjects]);
+
+  // Refetch data when the user returns to this tab after a long absence.
+  // The 'app:tabvisible' event is only fired by WebLayout when the tab was
+  // hidden for > 30 seconds — avoids spurious refetches on brief Alt-Tab.
+  useEffect(() => {
+    const handleTabVisible = () => {
+      fetchProjects();
+      fetchMilestones();
+    };
+    window.addEventListener('app:tabvisible', handleTabVisible);
+    return () => window.removeEventListener('app:tabvisible', handleTabVisible);
+  }, [fetchProjects]);
+
+  // ── Safety timeout: if projectsLoading is stuck for >12 seconds, force it off ──
+  useEffect(() => {
+    if (!projectsLoading) return;
+    const safetyTimer = setTimeout(() => {
+      if (projectsLoading) {
+        console.warn('Dashboard: safety timeout — forcing projectsLoading=false');
+        setProjectsLoading(false);
+        fetchInFlightRef.current = false;
+      }
+    }, 12_000);
+    return () => clearTimeout(safetyTimer);
+  }, [projectsLoading]);
 
   const handleCreateClick = useCallback(() => {
       if (!userId) {
@@ -65,100 +145,6 @@ export function Dashboard() {
     }
     return () => setActions(null);
   }, [isSuperuser, setActions, handleCreateClick]);
-
-  const fetchProjects = async () => {
-    if (!userId) {
-      console.log('❌ Dashboard: No userId, skipping project fetch');
-      return;
-    }
-    
-    console.log('🔍 Dashboard: Fetching projects for user:', userId);
-    
-    // Get projects user has access to via:
-    // 1. Owner
-    // 2. Project member
-    // 3. Team access (team_project_access)
-    
-    // Get user's team info
-    const { data: userProfile } = await supabase
-      .from('profiles')
-      .select('team_id, team_role')
-      .eq('id', userId)
-      .single();
-    
-    console.log('📊 Dashboard: User profile:', userProfile);
-    
-    let projectIds: string[] = [];
-    
-    // 1. Projects user owns
-    const { data: ownedProjects } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('owner_id', userId);
-    
-    console.log('📊 Dashboard: Owned projects:', ownedProjects?.length || 0);
-    
-    if (ownedProjects) {
-      projectIds.push(...ownedProjects.map(p => p.id));
-    }
-    
-    // 2. Projects user is a member of
-    const { data: memberProjects } = await supabase
-      .from('project_members')
-      .select('project_id')
-      .eq('user_id', userId);
-    
-    console.log('📊 Dashboard: Member of projects:', memberProjects?.length || 0);
-    
-    if (memberProjects) {
-      projectIds.push(...memberProjects.map(p => p.project_id));
-    }
-    
-    // 3. Projects user's team has access to (if user is team admin or team member)
-    if (userProfile?.team_id) {
-      console.log('📊 Dashboard: Checking team access for team:', userProfile.team_id);
-      
-      const { data: teamProjects, error: teamError } = await supabase
-        .from('team_project_access')
-        .select('project_id')
-        .eq('team_id', userProfile.team_id);
-      
-      console.log('📊 Dashboard: Team projects:', teamProjects?.length || 0, 'error:', teamError);
-      
-      if (teamProjects) {
-        projectIds.push(...teamProjects.map(p => p.project_id));
-      }
-    } else {
-      console.log('⚠️ Dashboard: User has no team_id');
-    }
-    
-    // Remove duplicates
-    projectIds = [...new Set(projectIds)];
-    
-    console.log('✅ Dashboard: Total unique project IDs:', projectIds.length, projectIds);
-    
-    if (projectIds.length === 0) {
-      setProjects([]);
-      return;
-    }
-    
-    // Fetch full project data
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .in('id', projectIds)
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('❌ Dashboard: Error fetching projects:', error);
-      if (error.code === '42P17' || error.message.includes('infinite recursion')) {
-          showToast('Datenbankfehler: Bitte FIX_DATABASE.sql im Supabase SQL Editor ausführen.', 'error');
-      }
-    } else {
-      console.log('✅ Dashboard: Projects loaded:', data?.length);
-      setProjects(data || []);
-    }
-  };
 
   const fetchMilestones = async () => {
     const today = new Date();
@@ -365,17 +351,17 @@ export function Dashboard() {
                 <View style={styles.emptyIconContainer}>
                     <AlertCircle size={32} color={colors.primary} />
                 </View>
-                <Text style={styles.emptyText}>Keine Projekte gefunden</Text>
-                {isSuperuser ? (
+                <Text style={styles.emptyText}>{projectsLoading ? 'Lade Projekte...' : 'Keine Projekte gefunden'}</Text>
+                {!projectsLoading && isSuperuser ? (
                     <>
                         <Text style={styles.emptySubText}>Starten Sie Ihr erstes Projekt, indem Sie oben rechts klicken.</Text>
                         <Button onClick={handleCreateClick} style={{ marginTop: 24 }}>
                             Erstes Projekt erstellen
                         </Button>
                     </>
-                ) : (
+                ) : !projectsLoading ? (
                     <Text style={styles.emptySubText}>Sie wurden noch keinem Projekt hinzugefügt.</Text>
-                )}
+                ) : null}
             </View>
         ) : (
             <View style={styles.grid}>

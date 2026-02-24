@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
+import { LottieLoader } from '../components/LottieLoader';
+
 import { LayoutContext } from '../layouts/LayoutContext';
 import { useNavigate } from 'react-router-dom';
 import { colors } from '@docstruc/theme';
@@ -338,7 +340,7 @@ export function Help() {
 
           {loading ? (
             <View style={{ alignItems: 'center', padding: 48 }}>
-              <ActivityIndicator size="large" color={colors.primary} />
+              <LottieLoader size={120} />
             </View>
           ) : (
             <>

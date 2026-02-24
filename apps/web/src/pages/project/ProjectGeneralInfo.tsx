@@ -1,6 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput as RNTextInput, Image } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors, spacing } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -9,7 +11,7 @@ import { RichTextEditor } from '../../components/RichTextEditor';
 import { MapDisplay } from '../../components/MapDisplay';
 import { VoiceRecorder, VoicePlayer } from '../../components/VoicePlayer';
 import { useToast } from '../../components/ToastProvider';
-import { Info, MapPin, Image as ImageIcon, Mic, Save, ExternalLink, Plus, Trash2, Edit2, Upload } from 'lucide-react';
+import { Info, MapPin, Image as ImageIcon, Mic, Save, ExternalLink, Plus, Trash2, Edit2, Upload, ChevronLeft, ChevronRight, X, ZoomIn } from 'lucide-react';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import DOMPurify from 'dompurify';
 
@@ -85,6 +87,11 @@ export function ProjectGeneralInfo() {
   const [selectedImage, setSelectedImage] = useState<ProjectInfoImage | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Carousel + lightbox states
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Voice recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -786,7 +793,7 @@ export function ProjectGeneralInfo() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -919,7 +926,7 @@ export function ProjectGeneralInfo() {
         )}
       </Card>
 
-      {/* Images Gallery - Erweiterte Bildbearbeitung */}
+      {/* Images Gallery - Carousel with lightbox */}
       <Card style={styles.card}>
         <View style={styles.cardHeader}>
           <ImageIcon size={20} color={colors.primary} />
@@ -975,58 +982,217 @@ export function ProjectGeneralInfo() {
             onDragOver={canEdit ? handleDragOver : undefined}
             onDragLeave={canEdit ? handleDragLeave : undefined}
             onDrop={canEdit ? handleDrop : undefined}
-            style={{
-              border: canEdit && isDragging ? `2px dashed ${colors.primary}` : 'none',
-              borderRadius: 12,
-              padding: isDragging ? 16 : 0,
-              backgroundColor: isDragging ? '#EFF6FF' : 'transparent',
-              transition: 'all 0.3s ease',
-            }}
           >
-            <View style={styles.imagesGrid}>
-              {images.map((img) => (
-                <View key={img.id} style={styles.imageItem}>
-                  <Image 
-                    source={{ uri: getImageUrl(img.storage_path) }}
-                    style={styles.galleryImage}
-                    resizeMode="cover"
+            {/* Fan-style 3-panel carousel */}
+            <div style={{ position: 'relative', background: '#f8fafc', borderRadius: 20, padding: '32px 16px 20px', overflow: 'hidden' }}>
+              {/* Cards row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, minHeight: 280, position: 'relative' }}>
+                {/* Left card (prev) */}
+                {images.length > 1 && (() => {
+                  const prevIdx = (carouselIndex - 1 + images.length) % images.length;
+                  return (
+                    <div
+                      onClick={() => setCarouselIndex(prevIdx)}
+                      style={{
+                        flex: '0 0 auto',
+                        width: '26%',
+                        height: 220,
+                        borderRadius: 20,
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+                        opacity: 0.65,
+                        transform: 'scale(0.88) translateX(40px)',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        zIndex: 1,
+                        flexShrink: 0,
+                        background: '#e2e8f0',
+                      }}
+                    >
+                      <img src={getImageUrl(images[prevIdx].storage_path)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  );
+                })()}
+
+                {/* Center card (active) */}
+                <div
+                  style={{
+                    flex: '0 0 auto',
+                    width: images.length === 1 ? '70%' : '44%',
+                    height: 260,
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+                    opacity: 1,
+                    transform: 'scale(1)',
+                    cursor: 'zoom-in',
+                    transition: 'all 0.3s ease',
+                    zIndex: 3,
+                    position: 'relative',
+                    flexShrink: 0,
+                    background: '#e2e8f0',
+                  }}
+                  onClick={() => { setLightboxIndex(carouselIndex); setLightboxOpen(true); }}
+                >
+                  <img
+                    src={getImageUrl(images[carouselIndex].storage_path)}
+                    alt={images[carouselIndex].caption || `Bild ${carouselIndex + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
+                  {/* Zoom hint */}
+                  <div style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.40)', borderRadius: 8, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 5, pointerEvents: 'none' }}>
+                    <ZoomIn size={13} color="#fff" />
+                    <span style={{ color: '#fff', fontSize: 11, fontWeight: 600 }}>Vergrößern</span>
+                  </div>
+                  {/* Caption */}
+                  {images[carouselIndex].caption && (
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,0,0,0.6))', padding: '20px 12px 10px', color: '#fff', fontSize: 12 }}>
+                      {images[carouselIndex].caption}
+                    </div>
+                  )}
+                  {/* Edit/Delete overlay */}
                   {(canEdit || canDelete) && (
-                    <View style={styles.imageActions}>
+                    <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
                       {canEdit && (
-                        <TouchableOpacity 
-                          onPress={() => {
-                            setSelectedImage(img);
-                            setImageEditModal(true);
-                          }}
-                          style={styles.imageActionButton}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedImage(images[carouselIndex]); setImageEditModal(true); }}
+                          style={{ background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontSize: 11, fontWeight: 600 }}
                         >
-                          <Edit2 size={14} color="#fff" />
-                        </TouchableOpacity>
+                          <Edit2 size={12} color="#fff" /> Bearbeiten
+                        </button>
                       )}
                       {canDelete && (
-                        <TouchableOpacity 
-                          onPress={() => {
-                            if (confirm('Bild wirklich löschen?')) {
-                              handleDeleteImage(img.id, img.storage_path);
-                            }
-                          }}
-                          style={[styles.imageActionButton, styles.deleteButton]}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (confirm('Bild wirklich löschen?')) { handleDeleteImage(images[carouselIndex].id, images[carouselIndex].storage_path); if (carouselIndex >= images.length - 1) setCarouselIndex(Math.max(0, images.length - 2)); } }}
+                          style={{ background: 'rgba(220,38,38,0.75)', border: 'none', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontSize: 11, fontWeight: 600 }}
                         >
-                          <Trash2 size={14} color="#fff" />
-                        </TouchableOpacity>
+                          <Trash2 size={12} color="#fff" /> Löschen
+                        </button>
                       )}
-                    </View>
+                    </div>
                   )}
-                  {img.caption && (
-                    <Text style={styles.imageCaption}>{img.caption}</Text>
-                  )}
-                </View>
-              ))}
-            </View>
+                </div>
+
+                {/* Right card (next) */}
+                {images.length > 1 && (() => {
+                  const nextIdx = (carouselIndex + 1) % images.length;
+                  return (
+                    <div
+                      onClick={() => setCarouselIndex(nextIdx)}
+                      style={{
+                        flex: '0 0 auto',
+                        width: '26%',
+                        height: 220,
+                        borderRadius: 20,
+                        overflow: 'hidden',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+                        opacity: 0.65,
+                        transform: 'scale(0.88) translateX(-40px)',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        zIndex: 1,
+                        flexShrink: 0,
+                        background: '#e2e8f0',
+                      }}
+                    >
+                      <img src={getImageUrl(images[nextIdx].storage_path)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Navigation arrows */}
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCarouselIndex((carouselIndex - 1 + images.length) % images.length); }}
+                    style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: '#ffffff', border: 'none', borderRadius: '50%', width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', zIndex: 10 }}
+                  >
+                    <ChevronLeft size={20} color="#334155" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCarouselIndex((carouselIndex + 1) % images.length); }}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: '#ffffff', border: 'none', borderRadius: '50%', width: 38, height: 38, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', zIndex: 10 }}
+                  >
+                    <ChevronRight size={20} color="#334155" />
+                  </button>
+                </>
+              )}
+
+              {/* Dot indicators */}
+              {images.length > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 16 }}>
+                  {images.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={(e) => { e.stopPropagation(); setCarouselIndex(i); }}
+                      style={{ width: i === carouselIndex ? 24 : 8, height: 8, borderRadius: 4, background: i === carouselIndex ? colors.primary : '#cbd5e1', border: 'none', cursor: 'pointer', transition: 'all 0.25s ease', padding: 0 }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Counter badge */}
+              <div style={{ position: 'absolute', top: 12, right: 16, background: 'rgba(15,23,42,0.55)', borderRadius: 20, padding: '3px 10px', color: '#fff', fontSize: 11, fontWeight: 600 }}>
+                {carouselIndex + 1} / {images.length}
+              </div>
+            </div>
           </div>
         )}
       </Card>
+
+      {/* Lightbox */}
+      {lightboxOpen && images.length > 0 && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }} style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 44, height: 44, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={22} color="#fff" />
+          </button>
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex - 1 + images.length) % images.length); }}
+                style={{ position: 'absolute', left: 20, background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronLeft size={26} color="#fff" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + 1) % images.length); }}
+                style={{ position: 'absolute', right: 20, background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChevronRight size={26} color="#fff" />
+              </button>
+            </>
+          )}
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <img
+              src={getImageUrl(images[lightboxIndex].storage_path)}
+              alt={images[lightboxIndex].caption || ''}
+              style={{ maxWidth: '90vw', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
+            />
+            {images[lightboxIndex].caption && (
+              <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center', maxWidth: 600 }}>{images[lightboxIndex].caption}</div>
+            )}
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{lightboxIndex + 1} / {images.length}</div>
+          </div>
+          {/* Thumbnail strip */}
+          {images.length > 1 && (
+            <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+              {images.map((img, i) => (
+                <div
+                  key={img.id}
+                  onClick={() => setLightboxIndex(i)}
+                  style={{ width: 56, height: 40, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', border: `2px solid ${i === lightboxIndex ? '#fff' : 'transparent'}`, opacity: i === lightboxIndex ? 1 : 0.5 }}
+                >
+                  <img src={getImageUrl(img.storage_path)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Voice Message - Sprachaufnahme mit Transkription */}
       <Card style={styles.card}>

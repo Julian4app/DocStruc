@@ -256,18 +256,20 @@ class SupabaseService {
       {String? taskType}) async {
     try {
       if (taskType == 'task') {
-        // Get tasks: exclude defects. RLS handles visibility.
+        // Get tasks: include task_type = 'task' OR null (older entries without explicit type).
+        // Do NOT use .neq('task_type', 'defect') — PostgreSQL NULL != 'defect' is NULL (falsy),
+        // which silently drops rows where task_type IS NULL. RLS handles visibility.
         final result = await client
             .from('tasks')
-            .select()
+            .select('*, creator:creator_id(id, email, first_name, last_name)')
             .eq('project_id', projectId)
-            .neq('task_type', 'defect')
+            .or('task_type.eq.task,task_type.is.null')
             .order('created_at', ascending: false);
         return (result as List).cast<Map<String, dynamic>>();
       } else if (taskType == 'defect') {
         final result = await client
             .from('tasks')
-            .select()
+            .select('*, creator:creator_id(id, email, first_name, last_name)')
             .eq('project_id', projectId)
             .eq('task_type', 'defect')
             .order('created_at', ascending: false);
@@ -275,7 +277,7 @@ class SupabaseService {
       } else {
         final result = await client
             .from('tasks')
-            .select()
+            .select('*, creator:creator_id(id, email, first_name, last_name)')
             .eq('project_id', projectId)
             .order('created_at', ascending: false);
         return (result as List).cast<Map<String, dynamic>>();
@@ -467,7 +469,7 @@ class SupabaseService {
       String projectId) async {
     return (await client
             .from('timeline_events')
-            .select()
+            .select('*, creator:user_id(id, email, first_name, last_name)')
             .eq('project_id', projectId)
             .order('start_date'))
         .cast<Map<String, dynamic>>();

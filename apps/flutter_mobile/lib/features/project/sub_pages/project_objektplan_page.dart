@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
 
@@ -1614,7 +1615,7 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : !hasContent
               ? _buildEmptyState()
               : RefreshIndicator(

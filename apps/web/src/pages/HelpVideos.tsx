@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { LottieLoader } from '../components/LottieLoader';
+
 import { LayoutContext } from '../layouts/LayoutContext';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
@@ -65,7 +67,7 @@ export function HelpVideos() {
 
         {loading ? (
           <View style={{ alignItems: 'center', padding: 48 }}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <LottieLoader size={120} />
           </View>
         ) : videos.length === 0 ? (
           <View style={styles.empty}>

@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─── Public entry point ──────────────────────────────────────────────────────
 
@@ -710,8 +711,7 @@ class _StepPickProject extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Padding(padding: EdgeInsets.all(40),
-        child: Center(child: CircularProgressIndicator()));
+    if (loading) return const LottieLoader();
     if (projects.isEmpty) return const Padding(padding: EdgeInsets.all(40),
         child: Center(child: Text('Keine Projekte vorhanden',
             style: TextStyle(color: AppColors.textSecondary))));
@@ -912,7 +912,7 @@ class _StepPickItemState extends State<_StepPickItem> {
         const SizedBox(height: 6),
       ])),
       Expanded(child: widget.loading
-          ? const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()))
+          ? const LottieLoader()
           : _filtered.isEmpty
               ? Padding(padding: const EdgeInsets.all(32), child: Center(
                   child: Text('Keine ${typeLabel}n gefunden',
@@ -1047,7 +1047,7 @@ class _StepPickFolder extends StatelessWidget {
         const SizedBox(height: 8),
       ])),
       if (loading)
-        const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+        const LottieLoader()
       else if (folders.isNotEmpty)
         Expanded(child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),

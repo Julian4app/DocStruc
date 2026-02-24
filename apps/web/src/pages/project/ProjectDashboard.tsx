@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { CheckCircle, Clock, AlertTriangle, TrendingUp, AlertCircle, Calendar, Flag, ArrowRight } from 'lucide-react';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useAuth } from '../../contexts/AuthContext';
+import { LottieLoader } from '../../components/LottieLoader';
 
 interface DashboardStats {
   totalTasks: number;
@@ -92,12 +93,29 @@ export function ProjectDashboard() {
   const [teamStats, setTeamStats] = useState({ totalTasks: 0, completedTasks: 0 });
 
   useEffect(() => {
-    loadDashboardData();
+    if (id) {
+      loadDashboardData();
+    } else {
+      setLoading(false);
+    }
   }, [id, userId, profile?.team_id]);
+
+  // ── Safety timeout: if loading is stuck for >12 seconds, force it off ──
+  useEffect(() => {
+    if (!loading) return;
+    const safetyTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('ProjectDashboard: safety timeout — forcing loading=false');
+        setLoading(false);
+      }
+    }, 12_000);
+    return () => clearTimeout(safetyTimer);
+  }, [loading]);
 
   const loadDashboardData = async () => {
     if (!id) return;
-    setLoading(true);
+    // Only show spinner on initial load — not on refetches
+    // (loading starts true from useState, so first call shows spinner)
 
     try {
       const now = new Date();
@@ -206,12 +224,7 @@ export function ProjectDashboard() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: 300 }}>
-        <div style={{
-          width: 40, height: 40, border: '4px solid #E2E8F0',
-          borderTopColor: PRIMARY, borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <LottieLoader size={150} />
       </div>
     );
   }
@@ -256,15 +269,7 @@ export function ProjectDashboard() {
   if (permissionsLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 64 }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: '50%',
-            border: '4px solid #E2E8F0', borderTopColor: '#0E2A47',
-            animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
-          }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          <p style={{ color: '#64748b', fontSize: 14 }}>Lade Dashboard…</p>
-        </div>
+        <LottieLoader size={150} label="Lade Dashboard…" />
       </div>
     );
   }

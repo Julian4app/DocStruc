@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 class HelpVideosScreen extends StatefulWidget {
   const HelpVideosScreen({super.key});
@@ -33,7 +34,7 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Video-Tutorials')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : _videos.isEmpty
               ? const Center(
                   child: Column(

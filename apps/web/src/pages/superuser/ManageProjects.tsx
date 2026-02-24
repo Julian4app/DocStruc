@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
@@ -87,7 +89,7 @@ export function ManageProjects() {
 
             {loading ? (
                 <View style={{ padding: 40, alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color={colors.primary} />
+                    <LottieLoader size={120} />
                 </View>
             ) : (
                 <View style={styles.grid}>

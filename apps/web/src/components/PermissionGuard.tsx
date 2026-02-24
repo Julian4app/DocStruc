@@ -1,9 +1,10 @@
 import React from 'react';
 import { useOutletContext, useParams, useLocation } from 'react-router-dom';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Lock } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 import { ROUTE_MODULE_MAP } from '../pages/ProjectDetail';
+import { LottieLoader } from './LottieLoader';
 
 interface ProjectOutletContext {
   permissions: any;
@@ -40,9 +41,11 @@ export function PermissionGuard({ moduleKey, children }: PermissionGuardProps) {
 
   // If no context or still loading permissions, show a spinner instead of blank
   if (!context || context.permissionsLoading) {
+    console.log(`[PermGuard] RENDER → spinner (context=${!!context}, permissionsLoading=${context?.permissionsLoading})`);
+    (window as any).__debugPush?.(`[PermGuard] spinner ctx=${!!context} permLoading=${context?.permissionsLoading}`);
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }

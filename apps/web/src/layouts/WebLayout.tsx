@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,50 @@ export function WebLayout() {
   const [actions, setActions] = useState<React.ReactNode>(null);
   const [sidebarMenu, setSidebarMenu] = useState<{ label: string; path: string; icon?: any }[] | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // ── Layout recovery: force layout recalculation when tab becomes visible ──
+  // Some browsers collapse layout dimensions for hidden tabs.
+  // react-native-web's flexbox layout may not recover automatically.
+  const [, forceRender] = useState(0);
+  const shellRef = useRef<any>(null);
+
+  useEffect(() => {
+    let hiddenAt: number | null = null;
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+        return;
+      }
+
+      // Tab became visible again
+      const hiddenMs = hiddenAt != null ? Date.now() - hiddenAt : 0;
+      hiddenAt = null;
+
+      // Force a re-render so React recalculates the layout tree.
+      forceRender(c => c + 1);
+
+      // Force browser reflow — react-native-web may cache 0-dimensions for
+      // elements in hidden tabs.
+      requestAnimationFrame(() => {
+        const rootEl = document.getElementById('root');
+        if (rootEl) {
+          rootEl.style.minHeight = '100.01%';
+          void rootEl.offsetHeight; // synchronous reflow
+          rootEl.style.minHeight = '100%';
+        }
+      });
+
+      // Fire a custom event so any mounted page can refetch its data.
+      // Only trigger a data-refetch if the tab was hidden for > 30 seconds.
+      if (hiddenMs > 30_000) {
+        window.dispatchEvent(new CustomEvent('app:tabvisible', { detail: { hiddenMs } }));
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
   const [notifications, setNotifications] = useState<any[]>([]);
   const notificationRef = React.useRef<any>(null);
 

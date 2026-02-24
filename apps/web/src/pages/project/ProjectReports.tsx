@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -740,7 +742,9 @@ export function ProjectReports() {
   };
 
   if (loading) {
-    return (<View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>);
+    return (<View style={styles.loadingContainer}>
+        <LottieLoader size={120} />
+      </View>);
   }
 
   return (

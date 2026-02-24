@@ -345,6 +345,8 @@ export const TaskDetailModal: React.FC<{
   onDelete: () => void;
   onStatusChange: (status: string) => void;
   onImageUpload: (event: any) => void;
+  onVoiceUpload?: (file: File) => void;
+  onVideoUpload?: (file: File) => void;
   onChangeDocFormData: (field: string, value: string) => void;
   onSaveDocumentation: () => void;
   onCancelDocumentation: () => void;
@@ -371,6 +373,8 @@ export const TaskDetailModal: React.FC<{
   onDelete,
   onStatusChange,
   onImageUpload,
+  onVoiceUpload,
+  onVideoUpload,
   onChangeDocFormData,
   onSaveDocumentation,
   onCancelDocumentation,
@@ -380,6 +384,8 @@ export const TaskDetailModal: React.FC<{
 }) => {
   const [activeTab, setActiveTab] = React.useState<'info' | 'docs'>('info');
   const [isDragging, setIsDragging] = React.useState(false);
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
+  const [lightboxIndex, setLightboxIndex] = React.useState(0);
   const audioFileInputRef = React.useRef<HTMLInputElement>(null);
   const videoFileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -770,12 +776,13 @@ export const TaskDetailModal: React.FC<{
                     ) : (
                       <View>
                         <View style={styles.imageGrid}>
-                          {taskImages.map((image) => (
+                          {taskImages.map((image, imgIdx) => (
                             <View key={image.id} style={styles.imageItem}>
                               <img
                                 src={`${supabase.storage.from('task-attachments').getPublicUrl(image.storage_path).data.publicUrl}`}
                                 alt={image.file_name || ''}
-                                style={styles.imageItemImage}
+                                style={{ ...styles.imageItemImage, cursor: 'zoom-in' }}
+                                onClick={() => { setLightboxIndex(imgIdx); setLightboxOpen(true); }}
                               />
                             </View>
                           ))}
@@ -1029,9 +1036,7 @@ export const TaskDetailModal: React.FC<{
                             accept="audio/*"
                             onChange={(e) => {
                               const file = e.target.files?.[0];
-                              if (file) {
-                                console.log('Audio file selected:', file.name);
-                              }
+                              if (file && onVoiceUpload) { onVoiceUpload(file); e.target.value = ''; }
                             }}
                             style={{ display: 'none' }}
                           />
@@ -1095,9 +1100,7 @@ export const TaskDetailModal: React.FC<{
                           accept="video/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file) {
-                              console.log('Video file selected:', file.name);
-                            }
+                            if (file && onVideoUpload) { onVideoUpload(file); e.target.value = ''; }
                           }}
                           style={{
                             width: '100%',
@@ -1138,6 +1141,37 @@ export const TaskDetailModal: React.FC<{
             )}
           </ScrollView>
           
+          {/* Task Image Lightbox */}
+          {lightboxOpen && taskImages.length > 0 && (
+            <div
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onClick={() => setLightboxOpen(false)}
+            >
+              <button onClick={(e) => { e.stopPropagation(); setLightboxOpen(false); }} style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 44, height: 44, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', lineHeight: 1 }}>✕</span>
+              </button>
+              {taskImages.length > 1 && (
+                <>
+                  <button onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex - 1 + taskImages.length) % taskImages.length); }} style={{ position: 'absolute', left: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ color: '#fff', fontSize: 24 }}>‹</span>
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + 1) % taskImages.length); }} style={{ position: 'absolute', right: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 48, height: 48, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ color: '#fff', fontSize: 24 }}>›</span>
+                  </button>
+                </>
+              )}
+              <img
+                src={`${supabase.storage.from('task-attachments').getPublicUrl(taskImages[lightboxIndex].storage_path).data.publicUrl}`}
+                alt={taskImages[lightboxIndex].file_name || ''}
+                style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+                {lightboxIndex + 1} / {taskImages.length}
+              </div>
+            </div>
+          )}
+
           {/* Footer with Save Button for Edit Mode */}
           {isEditMode && (
             <View style={styles.detailFooter}>

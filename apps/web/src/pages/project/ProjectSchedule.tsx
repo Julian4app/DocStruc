@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -23,6 +25,13 @@ interface TimelineEvent {
   event_type: string;
   status: string;
   created_at: string;
+  created_by?: string | null;
+  creator?: {
+    id: string;
+    email: string;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
 }
 
 interface Task {
@@ -140,7 +149,7 @@ export function ProjectSchedule() {
       // Load milestones/timeline events
       const { data: timelineData, error: timelineError } = await supabase
         .from('timeline_events')
-        .select('*')
+        .select('*, creator:created_by(id, email, first_name, last_name)')
         .eq('project_id', id)
         .order('start_date', { ascending: true });
 
@@ -675,6 +684,15 @@ export function ProjectSchedule() {
     }
   };
 
+  const getMilestoneCreatorName = (milestone: any): string => {
+    if (milestone.creator) {
+      const c = milestone.creator;
+      if (c.first_name && c.last_name) return `${c.first_name} ${c.last_name}`;
+      if (c.email) return c.email;
+    }
+    return 'Unbekannt';
+  };
+
   const getEventTypeColor = (type: string) => {
     switch (type) {
       case 'milestone': return '#3B82F6';
@@ -910,6 +928,9 @@ export function ProjectSchedule() {
                          `📅 in ${daysUntil} Tag(en)`}
                       </Text>
                     )}
+                    <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      Erstellt von {getMilestoneCreatorName(milestone)} · {new Date(milestone.created_at).toLocaleDateString('de-DE')}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               );
@@ -1364,7 +1385,7 @@ export function ProjectSchedule() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }

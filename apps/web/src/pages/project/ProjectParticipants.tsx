@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button, Input } from '@docstruc/ui';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { colors } from '@docstruc/theme';
@@ -800,7 +802,7 @@ export function ProjectParticipants() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -1023,15 +1025,15 @@ export function ProjectParticipants() {
                           <>
                             <View 
                               style={{
-                                position: 'fixed',
+                                position: 'fixed' as any,
                                 top: 0,
                                 left: 0,
                                 right: 0,
                                 bottom: 0,
                                 zIndex: 998,
-                              }}
+                              } as any}
                               onTouchEnd={() => setActionMenuMemberId(null)}
-                              onClick={() => setActionMenuMemberId(null)}
+                              {...{ onClick: () => setActionMenuMemberId(null) } as any}
                             />
                             <View style={[styles.actionMenu, { zIndex: 999 }]}>
                               <TouchableOpacity style={styles.actionMenuItem} onPress={() => {

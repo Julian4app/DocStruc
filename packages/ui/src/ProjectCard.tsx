@@ -38,14 +38,34 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
       ? (project as any).images[0]
       : ((project as any).picture_url ?? null);
 
-  // Geocode address via Nominatim to show a real OSM iframe map when there's no project image
+  // Toggle: show photo or map in card header.
+  // Default: show photo if available, else map. User can override per project via localStorage.
+  const storageKey = `proj_view_${project.id}`;
+  const [showMode, setShowMode] = React.useState<'photo' | 'map'>(() => {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved === 'photo' || saved === 'map') return saved;
+    } catch (_) {}
+    return projectImage ? 'photo' : 'map';
+  });
+
+  const toggleMode = React.useCallback((e: any) => {
+    e.stopPropagation();
+    setShowMode((prev) => {
+      const next = prev === 'photo' ? 'map' : 'photo';
+      try { window.localStorage.setItem(storageKey, next); } catch (_) {}
+      return next;
+    });
+  }, [storageKey]);
+
+  // Geocode address via Nominatim to show a real OSM iframe map when needed
   const [mapCoords, setMapCoords] = React.useState<MapCoords | null>(null);
 
   React.useEffect(() => {
-    if (projectImage || !project.address) {
-      setMapCoords(null);
+    if (showMode !== 'map' || !project.address) {
       return;
     }
+    if (mapCoords) return; // already loaded
     let cancelled = false;
     fetch(
       'https://nominatim.openstreetmap.org/search?format=json&q=' +
@@ -63,7 +83,7 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [project.address, projectImage]);
+  }, [project.address, showMode]);
 
   // Build the same OSM embed URL that MapDisplay.tsx uses
   const getOsmEmbedUrl = (lat: number, lon: number): string => {
@@ -72,14 +92,18 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
     return 'https://www.openstreetmap.org/export/embed.html?bbox=' + bbox + '&layer=mapnik&marker=' + lat + ',' + lon;
   };
 
-  const showMap = !projectImage && mapCoords !== null;
+  const canShowPhoto = !!projectImage;
+  const canShowMap = !!project.address;
+  const showPhoto = showMode === 'photo' && canShowPhoto;
+  const showMap = showMode === 'map' && mapCoords !== null;
+  const showMedia = showPhoto || showMap;
 
   return (
     <Card onPress={onPress} style={styles.cardOverride}>
       {/* Image / Map Header */}
-      {(projectImage || showMap) && (
+      {(canShowPhoto || canShowMap) && (
         <View style={styles.mediaContainer}>
-          {projectImage ? (
+          {showPhoto ? (
             <View style={styles.imageWrapper}>
               {/* @ts-ignore */}
               <View style={[styles.imageBox, { backgroundImage: 'url(' + projectImage + ')' } as any]} />
@@ -103,7 +127,39 @@ export function ProjectCard({ project, onPress }: ProjectCardProps) {
                 <Text style={styles.mapLabel}>🗺️ Standort</Text>
               </View>
             </View>
-          ) : null}
+          ) : (
+            // Loading state for map
+            <View style={[styles.imageWrapper, { alignItems: 'center', justifyContent: 'center' } as any]}>
+              <Text style={{ fontSize: 13, color: '#94a3b8' }}>Karte wird geladen…</Text>
+            </View>
+          )}
+          {/* Toggle button — shown only when both photo and address exist */}
+          {canShowPhoto && canShowMap && (
+            // @ts-ignore – use native DOM div so onClick + stopPropagation work on web
+            <div
+              onClick={(e: any) => { e.stopPropagation(); e.preventDefault(); toggleMode(e); }}
+              style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                backgroundColor: 'rgba(255,255,255,0.92)',
+                borderRadius: 20,
+                width: 36,
+                height: 36,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.18)',
+                userSelect: 'none',
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: '20px' }}>
+                {showMode === 'photo' ? '🗺️' : '📷'}
+              </span>
+            </div>
+          )}
         </View>
       )}
       
@@ -216,6 +272,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
     letterSpacing: 0.3,
+  },
+  toggleBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    cursor: 'pointer',
+  },
+  toggleBtnText: {
+    fontSize: 16,
+    lineHeight: 20,
   },
   contentWrapper: {
       padding: 24,

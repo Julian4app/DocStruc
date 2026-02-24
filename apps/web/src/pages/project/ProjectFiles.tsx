@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { LottieLoader } from '../../components/LottieLoader';
+
 import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
@@ -9,6 +11,7 @@ import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { ModernModal } from '../../components/ModernModal';
 import { Select } from '../../components/Select';
+import { SearchableSelect } from '../../components/SearchableSelect';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   FolderOpen, Upload, File, FileText, Image, Video, Folder, Download, 
@@ -956,7 +959,7 @@ export function ProjectFiles() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LottieLoader size={120} />
       </View>
     );
   }
@@ -1566,26 +1569,14 @@ export function ProjectFiles() {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.formLabel}>Zielordner auswählen</Text>
-            <select
-              value={selectedFolderForLink || ''}
-              onChange={(e) => setSelectedFolderForLink(e.target.value)}
-              style={{
-                padding: 12,
-                fontSize: 14,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: '#E2E8F0',
-                backgroundColor: '#ffffff'
-              }}
-            >
-              <option value="">-- Ordner auswählen --</option>
-              {folders.map(folder => (
-                <option key={folder.id} value={folder.id}>
-                  {folder.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              label="Zielordner auswählen"
+              options={folders.map(folder => ({ label: folder.name, value: folder.id }))}
+              values={selectedFolderForLink ? [selectedFolderForLink] : []}
+              onChange={(vals) => setSelectedFolderForLink(vals[0] || null)}
+              placeholder="Ordner auswählen..."
+              multi={false}
+            />
           </View>
 
           <View style={{ backgroundColor: '#EFF6FF', padding: 12, borderRadius: 8, marginBottom: 16 }}>

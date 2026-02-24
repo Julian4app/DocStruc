@@ -10,6 +10,7 @@ import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -583,15 +584,16 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                FloatingActionButton(
+                FloatingActionButton.extended(
                   heroTag: 'fab_folder',
                   onPressed: () => _createOrUpdateFolder(),
                   backgroundColor: AppColors.surface,
                   foregroundColor: AppColors.primary,
                   elevation: 4,
-                  mini: true,
                   tooltip: 'Neuer Ordner',
-                  child: const Icon(LucideIcons.folderPlus),
+                  icon: const Icon(LucideIcons.folderPlus, size: 18),
+                  label: const Text('Folder',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
                 const SizedBox(height: 12),
                 FloatingActionButton.extended(
@@ -630,7 +632,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
               ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LottieLoader()
           : RefreshIndicator(
               onRefresh: _load,
               child: TabBarView(
@@ -1558,11 +1560,7 @@ class _VersionsSheetState extends State<_VersionsSheet> {
     return _BottomSheet(
       title: 'Versionen: ${file['name'] ?? ''}',
       child: _loading
-          ? const Center(
-              child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: CircularProgressIndicator(),
-            ))
+          ? const LottieLoader()
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1799,11 +1797,7 @@ class _ShareSheetState extends State<_ShareSheet> {
     return _BottomSheet(
       title: 'Teilen: ${widget.file['name'] ?? ''}',
       child: _loading
-          ? const Center(
-              child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: CircularProgressIndicator(),
-            ))
+          ? const LottieLoader()
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

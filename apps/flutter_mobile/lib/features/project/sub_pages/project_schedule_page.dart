@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -197,7 +198,7 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
         backgroundColor: AppColors.primary,
         child: const Icon(LucideIcons.plus, color: Colors.white),
       ),
-      body: _loading ? const Center(child: CircularProgressIndicator())
+      body: _loading ? const LottieLoader()
         : TabBarView(controller: _tabs, children: [
           _listTab(),
           _timelineTab(),
@@ -827,6 +828,20 @@ class _MilestoneListCard extends StatelessWidget {
 
         ]),
         if(daysText.isNotEmpty)...[const SizedBox(height:6),Text(daysText,style:TextStyle(fontSize:11,color:daysText.contains('überfällig')?AppColors.danger:AppColors.textSecondary))],
+        Builder(builder:(_){
+          final creator=m['creator'] as Map<String,dynamic>?;
+          final fn=(((creator?['first_name'] as String?) ?? '')).trim();
+          final ln=(((creator?['last_name'] as String?) ?? '')).trim();
+          final full='$fn $ln'.trim();
+          final name=full.isNotEmpty?full:(creator?['email'] as String?);
+          final createdAt=m['created_at'] as String?;
+          if(name==null&&createdAt==null) return const SizedBox.shrink();
+          return Padding(padding:const EdgeInsets.only(top:4),child:Row(children:[
+            const Icon(LucideIcons.userCheck,size:11,color:AppColors.textTertiary),
+            const SizedBox(width:4),
+            Expanded(child:Text([if(name!=null&&name.isNotEmpty)name,if(createdAt!=null)_fmt(createdAt)].join(' · '),style:const TextStyle(fontSize:10,color:AppColors.textTertiary),overflow:TextOverflow.ellipsis)),
+          ]));
+        }),
         if(linkedItems.isNotEmpty)...[
           const SizedBox(height:10),
           Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[
@@ -878,6 +893,20 @@ class _TimelineCard extends StatelessWidget {
             Container(padding:const EdgeInsets.symmetric(horizontal:6,vertical:2),decoration:BoxDecoration(color:tc.withValues(alpha:0.1),borderRadius:BorderRadius.circular(4)),child:Text(_typeLabel(m['event_type'] as String?),style:TextStyle(fontSize:10,fontWeight:FontWeight.w600,color:tc))),
           ]),
           if(desc!=null&&desc.isNotEmpty)...[const SizedBox(height:8),Text(desc,style:const TextStyle(fontSize:13,color:AppColors.textSecondary),maxLines:2,overflow:TextOverflow.ellipsis)],
+          Builder(builder:(_){
+            final creator=m['creator'] as Map<String,dynamic>?;
+            final fn=(((creator?['first_name'] as String?) ?? '')).trim();
+            final ln=(((creator?['last_name'] as String?) ?? '')).trim();
+            final full='$fn $ln'.trim();
+            final name=full.isNotEmpty?full:(creator?['email'] as String?);
+            final createdAt=m['created_at'] as String?;
+            if(name==null&&createdAt==null) return const SizedBox.shrink();
+            return Padding(padding:const EdgeInsets.only(top:6),child:Row(children:[
+              const Icon(LucideIcons.userCheck,size:11,color:AppColors.textTertiary),
+              const SizedBox(width:4),
+              Expanded(child:Text([if(name!=null&&name.isNotEmpty)name,if(createdAt!=null)_fmt(createdAt)].join(' · '),style:const TextStyle(fontSize:10,color:AppColors.textTertiary),overflow:TextOverflow.ellipsis)),
+            ]));
+          }),
           if(linkedItems.isNotEmpty)...[
             const SizedBox(height:10),
             Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[Text('${linkedItems.length} verknüpfte Elemente',style:const TextStyle(fontSize:11,color:AppColors.textTertiary)),Text('$pct%',style:TextStyle(fontSize:11,fontWeight:FontWeight.w600,color:_progressColor(pct)))]),

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { LottieLoader } from '../components/LottieLoader';
+
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -69,7 +71,7 @@ export const AcceptInvitation: React.FC = () => {
     return (
       <View style={styles.container}>
         <View style={styles.card}>
-          <ActivityIndicator size="large" color="#3B82F6" />
+          <LottieLoader size={120} />
           <Text style={styles.loadingText}>Einladung wird verarbeitet...</Text>
         </View>
       </View>
@@ -89,10 +91,9 @@ export const AcceptInvitation: React.FC = () => {
             Sie werden in Kürze zum Projekt weitergeleitet...
           </Text>
           <Button
-            title="Jetzt zum Projekt"
-            onPress={() => navigate(`/projects/${projectId}`)}
+            onClick={() => navigate(`/projects/${projectId}`)}
             style={styles.button}
-          />
+          >Jetzt zum Projekt</Button>
         </View>
       </View>
     );
@@ -107,16 +108,14 @@ export const AcceptInvitation: React.FC = () => {
           <Text style={styles.errorMessage}>{error}</Text>
           <View style={styles.errorActions}>
             <Button
-              title="Zur Startseite"
-              onPress={() => navigate('/')}
+              onClick={() => navigate('/')}
               style={styles.button}
-            />
+            >Zur Startseite</Button>
             <Button
-              title="Anmelden"
-              onPress={() => navigate('/login')}
+              onClick={() => navigate('/login')}
               variant="outline"
               style={styles.button}
-            />
+            >Anmelden</Button>
           </View>
         </View>
       </View>

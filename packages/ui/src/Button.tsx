@@ -12,14 +12,71 @@ export interface ButtonProps {
   disabled?: boolean;
 }
 
+/**
+ * Render button children correctly:
+ * - Plain strings/numbers → wrapped in styled <Text>
+ * - Icons and other elements → rendered as-is (flex row layout from TouchableOpacity)
+ * This fixes icon+text misalignment caused by wrapping SVGs inside <Text>.
+ */
+/**
+ * Clone an icon element and inject the button's text color if the icon
+ * doesn't already have an explicit color prop set.
+ */
+function colorizeIcon(node: React.ReactElement, textColor: string): React.ReactElement {
+  const props = node.props as any;
+  if (props.color) return node; // caller already set a color — respect it
+  return React.cloneElement(node, { color: textColor } as any);
+}
+
+function renderChildren(
+  children: React.ReactNode,
+  textColor: string,
+  textStyle?: StyleProp<TextStyle>,
+  size?: 'small' | 'medium' | 'large'
+) {
+  const fontSize = size === 'large' ? 15 : size === 'small' ? 13 : 14;
+  const textSty = [styles.text, { color: textColor, fontSize }, textStyle];
+
+  if (typeof children === 'string' || typeof children === 'number') {
+    return <Text style={textSty}>{children}</Text>;
+  }
+
+  const nodes = React.Children.toArray(children);
+
+  if (nodes.length === 1) {
+    const node = nodes[0];
+    if (typeof node === 'string' || typeof node === 'number') {
+      return <Text style={textSty}>{node}</Text>;
+    }
+    if (React.isValidElement(node)) {
+      return <>{colorizeIcon(node, textColor)}</>;
+    }
+    return <>{node}</>;
+  }
+
+  return (
+    <>
+      {nodes.map((child, i) => {
+        if (typeof child === 'string' || typeof child === 'number') {
+          return <Text key={i} style={textSty}>{child}</Text>;
+        }
+        if (React.isValidElement(child)) {
+          return <React.Fragment key={i}>{colorizeIcon(child, textColor)}</React.Fragment>;
+        }
+        return <React.Fragment key={i}>{child}</React.Fragment>;
+      })}
+    </>
+  );
+}
+
 export function Button({ children, onClick, variant = 'primary', style, textStyle, size = 'medium', disabled }: ButtonProps) {
   const getBackgroundColor = () => {
-    if (disabled && variant !== 'outline' && variant !== 'ghost') return '#e2e8f0'; 
+    if (disabled && variant !== 'outline' && variant !== 'ghost') return '#e2e8f0';
     switch (variant) {
-      case 'secondary': return colors.secondary; // #2E3238
+      case 'secondary': return colors.secondary;
       case 'outline': return 'transparent';
       case 'ghost': return 'transparent';
-      default: return colors.primary; // #0E2A47
+      default: return colors.primary;
     }
   };
 
@@ -41,10 +98,10 @@ export function Button({ children, onClick, variant = 'primary', style, textStyl
         size === 'small' && styles.buttonSmall,
         { backgroundColor: getBackgroundColor() },
         variant === 'outline' && styles.buttonOutline,
-        style
+        style,
       ]}
     >
-      <Text style={[styles.text, { color: getTextColor() }, textStyle]}>{children}</Text>
+      {renderChildren(children, getTextColor(), textStyle, size)}
     </TouchableOpacity>
   );
 }
@@ -77,5 +134,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0,
+    lineHeight: 20,
   }
 });
