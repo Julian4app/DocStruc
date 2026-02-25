@@ -8,16 +8,18 @@ import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
+import { ReportAutomationModal } from '../../components/ReportAutomationModal';
 import { DatePicker } from '../../components/DatePicker';
 import { useToast } from '../../components/ToastProvider';
-import { FileText, Download, BarChart3, FileSpreadsheet, Mail, Calendar } from 'lucide-react';
+import { FileText, Download, BarChart3, FileSpreadsheet, Mail, Calendar, Table2 } from 'lucide-react';
+import { buildXlsx, downloadXlsx } from '../../lib/xlsxBuilder';
 
 interface ReportTemplate {
   id: string;
   title: string;
   description: string;
   icon: any;
-  formats: ('pdf' | 'csv')[];
+  formats: ('pdf' | 'csv' | 'xlsx')[];
 }
 
 interface ProjectStats {
@@ -34,8 +36,9 @@ export function ProjectReports() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isAutomationModalOpen, setIsAutomationModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ReportTemplate | null>(null);
-  const [exportFormat, setExportFormat] = useState<'pdf' | 'csv'>('pdf');
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'csv' | 'xlsx'>('pdf');
   const [exportTimeframe, setExportTimeframe] = useState<'all' | 'custom'>('all');
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
@@ -43,14 +46,14 @@ export function ProjectReports() {
   const [projectData, setProjectData] = useState<any>(null);
 
   const reportTemplates: ReportTemplate[] = [
-    { id: 'status',        title: 'Projektstatus-Report',    description: 'Gesamtübersicht über den Projektstatus', icon: BarChart3,      formats: ['pdf', 'csv'] },
-    { id: 'tasks',         title: 'Aufgaben-Report',         description: 'Detaillierte Liste aller Aufgaben',       icon: FileText,       formats: ['pdf', 'csv'] },
-    { id: 'defects',       title: 'Mängel-Report',           description: 'Übersicht aller Mängel',                  icon: FileText,       formats: ['pdf', 'csv'] },
-    { id: 'diary',         title: 'Bautagebuch-Export',      description: 'Komplettes Bautagebuch',                   icon: Calendar,       formats: ['pdf', 'csv'] },
-    { id: 'documentation', title: 'Projekt-Dokumentation',   description: 'Alle Notizen und Dokumente',               icon: FileText,       formats: ['pdf', 'csv'] },
-    { id: 'participants',  title: 'Teilnehmer-Liste',        description: 'Alle Projektbeteiligten',                  icon: FileSpreadsheet,formats: ['pdf', 'csv'] },
-    { id: 'timeline',      title: 'Zeitplan & Meilensteine', description: 'Terminübersicht',                          icon: Calendar,       formats: ['pdf', 'csv'] },
-    { id: 'complete',      title: 'Kompletter Projektbericht',description: 'Alle Daten zusammengefasst',              icon: FileText,       formats: ['pdf', 'csv'] },
+    { id: 'status',        title: 'Projektstatus-Report',    description: 'Gesamtübersicht über den Projektstatus', icon: BarChart3,      formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'tasks',         title: 'Aufgaben-Report',         description: 'Detaillierte Liste aller Aufgaben',       icon: FileText,       formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'defects',       title: 'Mängel-Report',           description: 'Übersicht aller Mängel',                  icon: FileText,       formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'diary',         title: 'Bautagebuch-Export',      description: 'Komplettes Bautagebuch',                   icon: Calendar,       formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'documentation', title: 'Projekt-Dokumentation',   description: 'Alle Notizen und Dokumente',               icon: FileText,       formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'participants',  title: 'Teilnehmer-Liste',        description: 'Alle Projektbeteiligten',                  icon: FileSpreadsheet,formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'timeline',      title: 'Zeitplan & Meilensteine', description: 'Terminübersicht',                          icon: Calendar,       formats: ['pdf', 'csv', 'xlsx'] },
+    { id: 'complete',      title: 'Kompletter Projektbericht',description: 'Alle Daten zusammengefasst',              icon: FileText,       formats: ['pdf', 'csv', 'xlsx'] },
   ];
 
   // Reports that support timeframe filtering (date-based data)
@@ -101,11 +104,20 @@ export function ProjectReports() {
     setExporting(true);
     try {
       const data = await fetchReportData(selectedReport.id);
+      const dateStr = new Date().toISOString().split('T')[0];
       if (exportFormat === 'pdf') {
         await generatePDF(selectedReport, data);
+      } else if (exportFormat === 'xlsx') {
+        const blob = await buildXlsx(
+          selectedReport.id,
+          data,
+          selectedReport.title,
+          ((data as any).project || projectData)?.name || 'Projekt',
+        );
+        downloadXlsx(blob, `${selectedReport.title.replace(/\s+/g, '_')}_${dateStr}.xlsx`);
       } else {
         const csv = generateCSVReport(selectedReport.id, data);
-        downloadCSV(csv, `${selectedReport.title}_${new Date().toISOString().split('T')[0]}.csv`);
+        downloadCSV(csv, `${selectedReport.title}_${dateStr}.csv`);
       }
       showToast('Export erfolgreich!', 'success');
       setIsExportModalOpen(false);
@@ -595,7 +607,7 @@ export function ProjectReports() {
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const handleScheduleReport = () => { showToast('Automatische Report-Versendung folgt', 'info'); };
+  const handleScheduleReport = () => setIsAutomationModalOpen(true);
 
   if (loading) {
     return (<View style={styles.loadingContainer}><LottieLoader size={120} /></View>);
@@ -651,8 +663,9 @@ export function ProjectReports() {
                   <View style={styles.reportHeader}>
                     <View style={styles.reportIconContainer}><IconComponent size={24} color={colors.primary} /></View>
                     <View style={styles.formatBadges}>
-                      {report.formats.includes('pdf') && <View style={[styles.formatBadge, { backgroundColor: '#DC2626' }]}><Text style={styles.formatBadgeText}>PDF</Text></View>}
-                      {report.formats.includes('csv') && <View style={[styles.formatBadge, { backgroundColor: '#3B82F6' }]}><Text style={styles.formatBadgeText}>CSV</Text></View>}
+                      {report.formats.includes('pdf')  && <View style={[styles.formatBadge, { backgroundColor: '#DC2626' }]}><Text style={styles.formatBadgeText}>PDF</Text></View>}
+                      {report.formats.includes('csv')  && <View style={[styles.formatBadge, { backgroundColor: '#3B82F6' }]}><Text style={styles.formatBadgeText}>CSV</Text></View>}
+                      {report.formats.includes('xlsx') && <View style={[styles.formatBadge, { backgroundColor: '#059669' }]}><Text style={styles.formatBadgeText}>XLSX</Text></View>}
                     </View>
                   </View>
                   <Text style={styles.reportTitle}>{report.title}</Text>
@@ -695,6 +708,16 @@ export function ProjectReports() {
               <Text style={[styles.formatOptionText, exportFormat === 'csv' && styles.formatOptionTextActive]}>CSV</Text>
               <Text style={styles.formatOptionDesc}>Daten für Excel</Text>
             </TouchableOpacity>
+            {selectedReport?.formats.includes('xlsx') && (
+              <TouchableOpacity
+                style={[styles.formatOption, exportFormat === 'xlsx' && styles.formatOptionActive]}
+                onPress={() => setExportFormat('xlsx')}
+              >
+                <Table2 size={22} color={exportFormat === 'xlsx' ? '#059669' : '#64748b'} />
+                <Text style={[styles.formatOptionText, exportFormat === 'xlsx' && { color: '#059669' }]}>XLSX</Text>
+                <Text style={styles.formatOptionDesc}>Excel-Tabelle</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Timeframe (only for date-based reports) */}
@@ -731,6 +754,14 @@ export function ProjectReports() {
           </View>
         </View>
       </ModernModal>
+
+      {/* Automation Modal */}
+      <ReportAutomationModal
+        visible={isAutomationModalOpen}
+        onClose={() => setIsAutomationModalOpen(false)}
+        projectId={id!}
+        reportTemplates={reportTemplates.map(r => ({ id: r.id, title: r.title }))}
+      />
     </View>
   );
 }

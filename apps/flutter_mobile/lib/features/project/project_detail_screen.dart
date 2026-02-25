@@ -19,6 +19,7 @@ import 'sub_pages/project_participants_page.dart';
 import 'sub_pages/project_documentation_page.dart';
 import 'sub_pages/project_activity_page.dart';
 import 'sub_pages/project_objektplan_page.dart';
+import 'sub_pages/project_reports_page.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // Maps drawer route keys → permission module keys
@@ -34,6 +35,7 @@ const _routeToModule = {
   'objektplan':     'documentation',
   'participants':   'participants',
   'activity':       'activity',
+  'reports':        'reports',
   // 'dashboard' — always visible, no module guard
 };
 
@@ -88,6 +90,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       case 'documentation':    return ProjectDocumentationPage(projectId: widget.projectId);
       case 'objektplan':       return ProjectObjektplanPage(projectId: widget.projectId);
       case 'activity':         return ProjectActivityPage(projectId: widget.projectId);
+      case 'reports':          return ProjectReportsPage(projectId: widget.projectId);
       default:                 return ProjectDashboardPage(projectId: widget.projectId);
     }
   }
@@ -344,6 +347,8 @@ class _ProjectSidebarContent extends StatelessWidget {
                       _CollapsedItem(LucideIcons.users,          'participants',  activeRoute, accent, muted, onSelectRoute),
                     if (perms.canView('activity'))
                       _CollapsedItem(LucideIcons.activity,       'activity',      activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('reports'))
+                      _CollapsedItem(LucideIcons.fileBarChart,   'reports',       activeRoute, accent, muted, onSelectRoute),
                   ],
                 ),
               ),
@@ -476,11 +481,14 @@ class _ProjectSidebarContent extends StatelessWidget {
                     _DSec('TEAM', muted),
                     _DItem(LucideIcons.users,           'Beteiligte',      'participants',   activeRoute, accent, txt, muted, onSelectRoute),
                   ],
-                  if (perms.canView('activity')) ...[
+                  if (perms.canView('activity') || perms.canView('reports')) ...[
                     const SizedBox(height: 8),
                     _DSec('WEITERE', muted),
-                    _DItem(LucideIcons.activity,        'Aktivitäten',     'activity',       activeRoute, accent, txt, muted, onSelectRoute),
                   ],
+                  if (perms.canView('activity'))
+                    _DItem(LucideIcons.activity,        'Aktivitäten',     'activity',       activeRoute, accent, txt, muted, onSelectRoute),
+                  if (perms.canView('reports'))
+                    _DItem(LucideIcons.fileBarChart,    'Berichte',        'reports',        activeRoute, accent, txt, muted, onSelectRoute),
                 ],
               ),
             ),

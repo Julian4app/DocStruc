@@ -47,6 +47,13 @@ dependencies:
   just_audio: ^0.9.42
   lottie: ^3.3.1
 
+  # PDF generation & printing
+  pdf: ^3.11.1
+  printing: ^5.13.1
+
+  # Archive / ZIP (used for XLSX generation)
+  archive: ^4.0.0
+
   # Storage
   shared_preferences: ^2.3.5
   flutter_secure_storage: ^9.2.4
