@@ -1,0 +1,12 @@
+# key.properties — Android release keystore configuration
+# Copy this file to android/key.properties and fill in your values.
+# NEVER commit key.properties to version control.
+#
+# Generate a keystore with:
+#   keytool -genkey -v -keystore docstruc-release.keystore \
+#     -alias docstruc -keyalg RSA -keysize 2048 -validity 10000
+#
+storeFile=../docstruc-release.keystore
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=docstruc
+keyPassword=YOUR_KEY_PASSWORD

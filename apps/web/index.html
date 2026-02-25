@@ -6,35 +6,30 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="X-Frame-Options" content="DENY" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="description" content="DocStruc – Digitale Baudokumentation für Bauprojekte. Aufgaben, Mängel, Bautagebuch und Team-Kommunikation in einer App." />
+    <meta name="keywords" content="Baudokumentation, Bauprojekt, Mängelmanagement, Bautagebuch, Projektmanagement" />
+    <meta name="theme-color" content="#0E2A47" />
+    <!-- Open Graph -->
+    <meta property="og:title" content="DocStruc – Baudokumentation" />
+    <meta property="og:description" content="Digitale Baudokumentation für Bauprojekte. Aufgaben, Mängel, Bautagebuch und Team-Kommunikation." />
+    <meta property="og:image" content="/DocStruc_Logo.png" />
+    <meta property="og:type" content="website" />
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
     <title>DocStruc - Baudokumentation</title>
     <link rel="icon" type="image/png" href="/DocStruc Favicon.png" />
     <link rel="apple-touch-icon" href="/DocStruc Favicon.png" />
     <script>
-      window.onerror = function(message, source, lineno, colno, error) {
-        var div = document.createElement('div');
-        div.style.color = 'red';
-        div.style.backgroundColor = '#ffe6e6';
-        div.style.padding = '20px';
-        div.style.border = '2px solid red';
-        div.style.margin = '20px';
-        div.style.fontFamily = 'monospace';
-        div.style.zIndex = '9999';
-        div.style.position = 'fixed';
-        div.style.top = '0';
-        div.style.left = '0';
-        div.style.width = '100%';
-        var h3 = document.createElement('h3');
-        h3.textContent = 'Global Runtime Error';
-        var p1 = document.createElement('p');
-        p1.textContent = String(message);
-        var p2 = document.createElement('p');
-        p2.textContent = 'Source: ' + String(source) + ':' + String(lineno);
-        div.appendChild(h3);
-        div.appendChild(p1);
-        div.appendChild(p2);
-        document.body.appendChild(div);
-        console.error('Captured by global handler:', error);
-      };
+      // Only show a visible error overlay in development
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        window.onerror = function(message, source, lineno, colno, error) {
+          var div = document.createElement('div');
+          div.style.cssText = 'color:red;background:#ffe6e6;padding:20px;border:2px solid red;margin:20px;font-family:monospace;z-index:9999;position:fixed;top:0;left:0;width:100%;box-sizing:border-box';
+          div.innerHTML = '<h3>Runtime Error</h3><p>' + String(message) + '</p><p>Source: ' + String(source) + ':' + String(lineno) + '</p>';
+          document.body.appendChild(div);
+          console.error('Captured by global handler:', error);
+        };
+      }
     </script>
     <style>
       #root { display: flex; flex: 1; height: 100vh; }

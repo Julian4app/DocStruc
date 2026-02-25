@@ -1,11 +1,11 @@
 /**
  * xlsxBuilder.ts
- * Builds styled .xlsx reports for DocStruc using ExcelJS.
+ * Builds styled .xlsx reports for DocStruc using ExcelJS (dynamically imported).
  * Mirrors the Flutter XLSX design: navy cover rows, logo, column widths,
  * navy header row, alternating data rows, borders, frozen pane.
  */
 
-import ExcelJS from 'exceljs';
+import type ExcelJSType from 'exceljs';
 
 // ─── Design constants ────────────────────────────────────────────────────────
 const NAVY        = { argb: 'FF0E2A47' };
@@ -15,8 +15,8 @@ const ALT_ROW     = { argb: 'FFF1F5F9' };
 const BORDER_CLR  = { argb: 'FFCBD5E1' };
 const TEXT_COLOR  = { argb: 'FF0F172A' };
 
-const THIN_BORDER: Partial<ExcelJS.Border> = { style: 'thin', color: BORDER_CLR };
-const ALL_BORDERS: Partial<ExcelJS.Borders> = {
+const THIN_BORDER = { style: 'thin' as const, color: BORDER_CLR };
+const ALL_BORDERS = {
   top: THIN_BORDER, bottom: THIN_BORDER, left: THIN_BORDER, right: THIN_BORDER,
 };
 
@@ -185,14 +185,14 @@ function buildRows(reportId: string, data: any): string[][] {
 }
 
 // ─── Style helpers ────────────────────────────────────────────────────────────
-function applyNavyHeaderStyle(cell: ExcelJS.Cell): void {
+function applyNavyHeaderStyle(cell: ExcelJSType.Cell): void {
   cell.font   = { bold: true, color: WHITE, size: 11 };
   cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: NAVY };
   cell.border = ALL_BORDERS;
   cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
 }
 
-function applyDataStyle(cell: ExcelJS.Cell, altRow: boolean): void {
+function applyDataStyle(cell: ExcelJSType.Cell, altRow: boolean): void {
   cell.font   = { color: TEXT_COLOR, size: 10 };
   cell.fill   = altRow
     ? { type: 'pattern', pattern: 'solid', fgColor: ALT_ROW }
@@ -208,6 +208,8 @@ export async function buildXlsx(
   reportTitle: string,
   projectName: string,
 ): Promise<Blob> {
+  // Dynamic import so ExcelJS is only loaded when the user actually exports XLSX
+  const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
   workbook.creator  = 'DocStruc';
   workbook.created  = new Date();

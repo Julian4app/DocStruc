@@ -26,11 +26,23 @@ Future<void> main() async {
     ),
   );
 
-  // Preferred orientations
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Preferred orientations — portrait on phone, all orientations on tablet
+  final view = WidgetsBinding.instance.platformDispatcher.views.first;
+  final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
+  final isTablet = shortestSide >= 600;
+  if (isTablet) {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  } else {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -42,7 +54,7 @@ Future<void> main() async {
   // Initialize local notifications
   await NotificationService.initialize();
 
-  // Preload Google Fonts
+  // Google Fonts — allow runtime fetching (fonts are cached after first load)
   GoogleFonts.config.allowRuntimeFetching = true;
 
   runApp(const ProviderScope(child: DocStrucApp()));

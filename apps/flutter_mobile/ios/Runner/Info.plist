@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Docstruc Mobile</string>
+	<string>DocStruc</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>docstruc_mobile</string>
+	<string>DocStruc</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -51,5 +51,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>DocStruc benötigt Zugriff auf Dateien, um Dokumente hochzuladen und zu teilen.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DocStruc kann Ihren Standort für Baustellen-Karten verwenden.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>DocStruc verwendet Face ID für eine sichere Anmeldung.</string>
 </dict>
 </plist>

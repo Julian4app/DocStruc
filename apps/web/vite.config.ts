@@ -21,7 +21,7 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -52,6 +52,10 @@ export default defineConfig({
           // PDF generation (very large — only loaded on reports page)
           if (id.includes('node_modules/jspdf') || id.includes('node_modules/html2canvas')) {
             return 'vendor-pdf';
+          }
+          // ExcelJS (large — only loaded on reports page)
+          if (id.includes('node_modules/exceljs') || id.includes('node_modules/jszip') || id.includes('node_modules/archiver')) {
+            return 'vendor-xlsx';
           }
         },
       },

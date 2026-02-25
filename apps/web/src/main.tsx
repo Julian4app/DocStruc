@@ -10,7 +10,7 @@ if (typeof window !== 'undefined') {
     (window as any).global = window;
   }
   if (!(window as any).process) {
-     (window as any).process = { env: { NODE_ENV: 'development' } };
+    (window as any).process = { env: { NODE_ENV: import.meta.env.MODE } };
   }
 }
 

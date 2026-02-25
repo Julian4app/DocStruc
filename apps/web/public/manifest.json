@@ -1,0 +1,24 @@
+{
+  "name": "DocStruc – Baudokumentation",
+  "short_name": "DocStruc",
+  "description": "Digitale Baudokumentation für Bauprojekte",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0E2A47",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/DocStruc Favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/DocStruc_Logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
