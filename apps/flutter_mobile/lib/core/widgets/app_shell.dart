@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
+import '../utils/tablet_utils.dart';
 import '../../features/quick_add/quick_add_sheet.dart';
 
 // ─── Shell ───────────────────────────────────────────────────────────────────
@@ -20,11 +21,140 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context)) {
+      return _TabletShell(child: widget.child);
+    }
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
       body: widget.child,
       bottomNavigationBar: const _BottomNav(),
+    );
+  }
+}
+
+// ─── Tablet shell: polished NavigationRail on the left ───────────────────────
+
+class _TabletShell extends StatelessWidget {
+  final Widget child;
+  const _TabletShell({required this.child});
+
+  static const _tabs = [
+    _Tab(icon: LucideIcons.layoutGrid,  label: 'Projekte',       path: '/'),
+    _Tab(icon: LucideIcons.helpCircle,  label: 'Hilfe',          path: '/help'),
+    _Tab(icon: LucideIcons.bell,        label: 'Benachrichtigungen', path: '/notifications'),
+    _Tab(icon: LucideIcons.user,        label: 'Profil',         path: '/profile'),
+    _Tab(icon: LucideIcons.settings,    label: 'Einstellungen',  path: '/settings'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final location      = GoRouterState.of(context).matchedLocation;
+    final isDark        = Theme.of(context).brightness == Brightness.dark;
+    final railBg        = isDark ? const Color(0xFF0F172A) : const Color(0xFF0E2A47);
+    final activeColor   = Colors.white;
+    final inactiveColor = Colors.white.withValues(alpha: 0.40);
+
+    int selectedIdx = _tabs.indexWhere((t) =>
+        t.path == '/' ? location == '/' : location.startsWith(t.path));
+    if (selectedIdx < 0) selectedIdx = 0;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Row(
+        children: [
+          // ── Left navigation rail ──────────────────────────────────────
+          Container(
+            width: 68,
+            color: railBg,
+            child: SafeArea(
+              child: Column(
+                children: [
+                  const SizedBox(height: 18),
+                  // ── Logo mark ──
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(LucideIcons.building2, size: 18, color: Colors.white),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 16), color: Colors.white.withValues(alpha: 0.12)),
+                  const SizedBox(height: 12),
+                  // ── Nav items ──
+                  ...List.generate(_tabs.length, (i) {
+                    final tab    = _tabs[i];
+                    final active = i == selectedIdx;
+                    return Tooltip(
+                      message: tab.label,
+                      preferBelow: false,
+                      waitDuration: const Duration(milliseconds: 400),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          context.go(tab.path);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          height: 52,
+                          margin: const EdgeInsets.symmetric(vertical: 1),
+                          decoration: BoxDecoration(
+                            color: active
+                                ? Colors.white.withValues(alpha: 0.10)
+                                : Colors.transparent,
+                            border: active
+                                ? const Border(
+                                    left: BorderSide(color: Colors.white, width: 3),
+                                  )
+                                : null,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              tab.icon,
+                              size: 22,
+                              color: active ? activeColor : inactiveColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const Spacer(),
+                  Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 16), color: Colors.white.withValues(alpha: 0.12)),
+                  const SizedBox(height: 12),
+                  // ── FAB ──
+                  Tooltip(
+                    message: 'Neu erstellen',
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.mediumImpact();
+                        showQuickAddSheet(context);
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+                        ),
+                        child: const Icon(LucideIcons.plus, size: 20, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+          // ── Main content ──────────────────────────────────────────────
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -512,24 +513,24 @@ class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
     DateTime? dueDate;
     List<({String name, Uint8List bytes})> pendingImages = [];
 
-    showModalBottomSheet(
-      context: ctx,
+    showAdaptiveSheet(
+      ctx,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, ss) => Container(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.92),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: isTablet(context) ? BorderRadius.circular(20) : const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
+              if (!isTablet(context)) Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
               ),
+              if (isTablet(context)) const SizedBox(height: 16),
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
@@ -578,6 +579,7 @@ class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
                         final result = await _showMemberPickerSheet(context, assignedTo);
                         if (result != null) ss(() => assignedTo = result == '__none__' ? null : result);
                       },
+                      onDropdownChanged: (v) => ss(() => assignedTo = v == '__none__' ? null : v),
                     ),
                     const SizedBox(height: 18),
                     const Text('Fälligkeitsdatum', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
@@ -618,6 +620,7 @@ class _ProjectDefectsPageState extends ConsumerState<ProjectDefectsPage> {
                         final result = await _showVisibilityPickerSheet(context, visibility);
                         if (result != null) ss(() => visibility = result);
                       },
+                      onDropdownChanged: (v) => ss(() => visibility = v),
                     ),
                     const SizedBox(height: 18),
 
@@ -1544,10 +1547,43 @@ class _DefMemberPickerTile extends StatelessWidget {
   final String? selectedId;
   final List<Map<String, dynamic>> members;
   final VoidCallback onTap;
-  const _DefMemberPickerTile({required this.selectedId, required this.members, required this.onTap});
+  final ValueChanged<String>? onDropdownChanged;
+  const _DefMemberPickerTile({required this.selectedId, required this.members, required this.onTap, this.onDropdownChanged});
+
+  static String _nameFor(Map<String, dynamic> m) {
+    final p = m['profiles'] as Map<String, dynamic>?;
+    final dn = p?['display_name'] as String?;
+    final fn = p?['first_name'] as String? ?? '';
+    final ln = p?['last_name'] as String? ?? '';
+    final em = p?['email'] as String? ?? '';
+    return (dn?.isNotEmpty ?? false) ? dn! : ('$fn $ln'.trim().isNotEmpty ? '$fn $ln'.trim() : em);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context) && onDropdownChanged != null) {
+      final items = <DropdownMenuItem<String>>[
+        const DropdownMenuItem(value: '__none__', child: Text('Nicht zugewiesen', style: TextStyle(fontSize: 14, color: AppColors.textSecondary))),
+        ...members.map((m) {
+          final uid = (m['profiles'] as Map<String, dynamic>?)?['id'] as String? ?? '';
+          return DropdownMenuItem<String>(value: uid, child: Text(_nameFor(m), style: const TextStyle(fontSize: 14, color: AppColors.text), overflow: TextOverflow.ellipsis));
+        }),
+      ];
+      return DropdownButtonFormField<String>(
+        value: selectedId ?? '__none__',
+        items: items,
+        onChanged: (v) { if (v != null) onDropdownChanged!(v); },
+        decoration: InputDecoration(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          filled: true, fillColor: AppColors.background,
+        ),
+        isExpanded: true,
+        dropdownColor: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      );
+    }
     Map<String, dynamic>? profile;
     if (selectedId != null) {
       for (final m in members) {
@@ -1561,18 +1597,17 @@ class _DefMemberPickerTile extends StatelessWidget {
     final email       = profile?['email']        as String? ?? '';
     final name = (displayName?.isNotEmpty ?? false) ? displayName! : ('$firstName $lastName'.trim().isNotEmpty ? '$firstName $lastName'.trim() : email);
     final initials = name.isNotEmpty ? name.trim().split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0].toUpperCase()).join() : '?';
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
         child: Row(children: [
-          if (selectedId != null && profile != null) ...[
+          if (selectedId != null && profile != null) ...[  
             Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), shape: BoxShape.circle), child: Center(child: Text(initials, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)))),
             const SizedBox(width: 10),
             Expanded(child: Text(name, style: const TextStyle(fontSize: 14, color: AppColors.text, fontWeight: FontWeight.w500))),
-          ] else ...[
+          ] else ...[  
             Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.border, shape: BoxShape.circle), child: const Icon(LucideIcons.userX, size: 14, color: AppColors.textSecondary)),
             const SizedBox(width: 10),
             const Expanded(child: Text('Nicht zugewiesen', style: TextStyle(fontSize: 14, color: AppColors.textSecondary))),
@@ -1582,15 +1617,39 @@ class _DefMemberPickerTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DefVisibilityPickerTile extends StatelessWidget {
+}class _DefVisibilityPickerTile extends StatelessWidget {
   final String value;
   final VoidCallback onTap;
-  const _DefVisibilityPickerTile({required this.value, required this.onTap});
+  final ValueChanged<String>? onDropdownChanged;
+  const _DefVisibilityPickerTile({required this.value, required this.onTap, this.onDropdownChanged});
+
+  static const _opts = [
+    {'value': 'all_participants', 'label': 'Alle Teilnehmer'},
+    {'value': 'team_only',        'label': 'Nur mein Team'},
+    {'value': 'owner_only',       'label': 'Nur ich'},
+  ];
 
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context) && onDropdownChanged != null) {
+      return DropdownButtonFormField<String>(
+        value: value,
+        items: _opts.map((o) => DropdownMenuItem<String>(
+          value: o['value']!,
+          child: Text(o['label']!, style: const TextStyle(fontSize: 14, color: AppColors.text)),
+        )).toList(),
+        onChanged: (v) { if (v != null) onDropdownChanged!(v); },
+        decoration: InputDecoration(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          filled: true, fillColor: AppColors.background,
+        ),
+        isExpanded: true,
+        dropdownColor: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      );
+    }
     return GestureDetector(
       onTap: onTap,
       child: Container(

@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/providers/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/tablet_utils.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -160,9 +161,110 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context)) return _buildTabletLayout();
+    return _buildPhoneLayout();
+  }
+
+  // ── TABLET: two-column split ──────────────────────────────────────────────
+  Widget _buildTabletLayout() {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background
+          Image.asset('assets/images/SplashScreen_ohneLogo.png', fit: BoxFit.cover),
+          // Semi-transparent overlay on right half
+          Row(
+            children: [
+              // Left: branding panel
+              Expanded(
+                flex: 5,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/DocStruc_Logo_plain.png',
+                      width: 220,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'DocStruc',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
+                        shadows: [Shadow(color: Color(0x55000000), blurRadius: 8, offset: Offset(0, 2))],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Baudokumentation einfach gemacht',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Right: form panel
+              Expanded(
+                flex: 4,
+                child: Container(
+                  color: Colors.white.withValues(alpha: 0.97),
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 28),
+                        // Tab toggle
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 32),
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(children: [
+                            _tabBtn('Log In', 0),
+                            _tabBtn('Sign Up', 1),
+                          ]),
+                        ),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            transitionBuilder: (child, anim) =>
+                                FadeTransition(opacity: anim, child: child),
+                            child: KeyedSubtree(
+                              key: ValueKey(_tabIndex),
+                              child: _tabIndex == 0
+                                  ? _buildLoginTab(bottom)
+                                  : _buildRegisterTab(bottom),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── PHONE: original bottom-sheet layout ────────────────────────────────
+  Widget _buildPhoneLayout() {
     final size   = MediaQuery.of(context).size;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final topPad = MediaQuery.of(context).padding.top;
@@ -222,7 +324,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ]),
           ),
 
-          // ── White card panel ──────────────────────────────────────────────
+        // ── White card panel ────────────────────────────────────────────────────
           Positioned(
             bottom: 0, left: 0, right: 0,
             height: size.height * 0.67,

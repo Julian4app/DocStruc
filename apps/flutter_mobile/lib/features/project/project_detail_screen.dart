@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/providers/permissions_provider.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/tablet_utils.dart';
 import 'sub_pages/project_dashboard_page.dart';
 import 'sub_pages/project_general_info_page.dart';
 import 'sub_pages/project_tasks_page.dart';
@@ -54,6 +55,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Map<String, dynamic>? _project;
   bool _loading = true;
   String _activeRoute = 'dashboard';
+  bool _sidebarCollapsed = false;
 
   @override
   void initState() {
@@ -104,6 +106,46 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     final permsAsync = ref.watch(permissionsProvider(widget.projectId));
     final perms = permsAsync.valueOrNull ?? ProjectPermissions.none;
 
+    // ── Tablet: collapsible permanent sidebar ────────────────────────────
+    if (isTablet(context)) {
+      return Scaffold(
+        body: BurgerMenuScope(
+          openDrawer: null,
+          navigateTo: (route) => setState(() => _activeRoute = route),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeInOut,
+                width: _sidebarCollapsed ? 64 : 264,
+                child: _ProjectSidebarContent(
+                  projectName: name,
+                  status: status,
+                  color: color,
+                  activeRoute: _activeRoute,
+                  perms: perms,
+                  showCloseButton: false,
+                  collapsed: _sidebarCollapsed,
+                  onToggleCollapse: () =>
+                      setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+                  onSelectRoute: (route) => setState(() => _activeRoute = route),
+                  onCloseProject: () => context.go('/'),
+                ),
+              ),
+              Expanded(
+                child: ClipRect(
+                  child: permsAsync.isLoading
+                      ? const LottieLoader()
+                      : _buildSubPage(perms),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Phone: overlay drawer ─────────────────────────────────────────────
     return Scaffold(
       key: _scaffoldKey,
       drawer: _ProjectDrawer(
@@ -209,36 +251,150 @@ class _ProjectDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const bg      = Color(0xFF1E293B);
-    const headerBg = Color(0xFF0F172A);
-    const txt     = Color(0xFFE2E8F0);
-    const muted   = Color(0xFF94A3B8);
-    const accent  = Color(0xFF38BDF8);
-
     return Drawer(
-      backgroundColor: bg,
+      backgroundColor: const Color(0xFF1E293B),
       shape: const RoundedRectangleBorder(),
+      child: _ProjectSidebarContent(
+        projectName: projectName,
+        status: status,
+        color: color,
+        activeRoute: activeRoute,
+        perms: perms,
+        showCloseButton: true,
+        onSelectRoute: onSelectRoute,
+        onCloseProject: onCloseProject,
+      ),
+    );
+  }
+}
+
+/// The actual sidebar column — used both inside a Drawer (phone)
+/// and as a plain fixed-width panel (tablet).
+class _ProjectSidebarContent extends StatelessWidget {
+  final String projectName;
+  final String status;
+  final Color color;
+  final String activeRoute;
+  final ProjectPermissions perms;
+  final bool showCloseButton;
+  final bool collapsed;
+  final VoidCallback? onToggleCollapse;
+  final ValueChanged<String> onSelectRoute;
+  final VoidCallback onCloseProject;
+
+  const _ProjectSidebarContent({
+    required this.projectName,
+    required this.status,
+    required this.color,
+    required this.activeRoute,
+    required this.perms,
+    required this.showCloseButton,
+    this.collapsed = false,
+    this.onToggleCollapse,
+    required this.onSelectRoute,
+    required this.onCloseProject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const bg       = Color(0xFF1E293B);
+    const headerBg = Color(0xFF0F172A);
+    const txt      = Color(0xFFE2E8F0);
+    const muted    = Color(0xFF94A3B8);
+    const accent   = Color(0xFF38BDF8);
+
+    // ── Collapsed: icon-only rail ─────────────────────────────────────
+    if (collapsed) {
+      return Container(
+        color: bg,
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              // Toggle button
+              _iconBtn(LucideIcons.panelLeftOpen, muted, onToggleCollapse!),
+              const SizedBox(height: 8),
+              const Divider(color: Color(0xFF334155), height: 1),
+              const SizedBox(height: 8),
+              // All nav items as icon-only
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  children: [
+                    _CollapsedItem(LucideIcons.layoutDashboard, 'dashboard', activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('general_info'))
+                      _CollapsedItem(LucideIcons.info,           'general-info',  activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('tasks'))
+                      _CollapsedItem(LucideIcons.checkSquare,    'tasks',         activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('defects'))
+                      _CollapsedItem(LucideIcons.alertTriangle,  'defects',       activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('schedule'))
+                      _CollapsedItem(LucideIcons.calendar,       'schedule',      activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('files'))
+                      _CollapsedItem(LucideIcons.folderOpen,     'files',         activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('documentation')) ...[
+                      _CollapsedItem(LucideIcons.fileText,       'documentation', activeRoute, accent, muted, onSelectRoute),
+                      _CollapsedItem(LucideIcons.building2,      'objektplan',    activeRoute, accent, muted, onSelectRoute),
+                    ],
+                    if (perms.canView('diary'))
+                      _CollapsedItem(LucideIcons.bookOpen,       'diary',         activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('communication'))
+                      _CollapsedItem(LucideIcons.messageCircle,  'communication', activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('participants'))
+                      _CollapsedItem(LucideIcons.users,          'participants',  activeRoute, accent, muted, onSelectRoute),
+                    if (perms.canView('activity'))
+                      _CollapsedItem(LucideIcons.activity,       'activity',      activeRoute, accent, muted, onSelectRoute),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0xFF334155), height: 1),
+              _iconBtn(LucideIcons.arrowLeft, muted, onCloseProject),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── Expanded: full sidebar ────────────────────────────────────────
+    return Container(
+      color: bg,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Close ─────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => Navigator.of(context).pop(),
-                child: const Row(
+            // ── Close (phone) / Collapse (tablet) ────────────────────
+            if (showCloseButton) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Row(
+                    children: [
+                      Icon(LucideIcons.x, size: 18, color: muted),
+                      SizedBox(width: 8),
+                      Text('Menü schließen',
+                          style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ] else if (onToggleCollapse != null) ...[
+              // Tablet collapse button
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Icon(LucideIcons.x, size: 18, color: muted),
-                    SizedBox(width: 8),
-                    Text('Menü schließen',
-                        style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
+                    _iconBtn(LucideIcons.panelLeftClose, muted, onToggleCollapse!),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 8),
+            ] else
+              const SizedBox(height: 8),
 
             // ── Project Card ──────────────────────────────────────────
             Container(
@@ -281,7 +437,6 @@ class _ProjectDrawer extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: [
-                  // Always visible
                   _DItem(LucideIcons.layoutDashboard, 'Übersicht',       'dashboard',      activeRoute, accent, txt, muted, onSelectRoute),
                   if (perms.canView('general_info'))
                     _DItem(LucideIcons.info,            'Allgemeine Info', 'general-info',   activeRoute, accent, txt, muted, onSelectRoute),
@@ -316,7 +471,6 @@ class _ProjectDrawer extends StatelessWidget {
                     _DItem(LucideIcons.bookOpen,        'Bautagebuch',     'diary',          activeRoute, accent, txt, muted, onSelectRoute),
                   if (perms.canView('communication'))
                     _DItem(LucideIcons.messageCircle,   'Kommunikation',   'communication',  activeRoute, accent, txt, muted, onSelectRoute),
-                  // Participants and Activity are also module-gated
                   if (perms.canView('participants')) ...[
                     const SizedBox(height: 8),
                     _DSec('TEAM', muted),
@@ -353,6 +507,20 @@ class _ProjectDrawer extends StatelessWidget {
     );
   }
 
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, size: 20, color: color),
+        ),
+      ),
+    );
+  }
+
   String _statusLabel(String s) {
     const known = {'Angefragt','In Planung','Genehmigt','In Ausführung','Abgeschlossen','Pausiert','Abgebrochen','Nachbesserung'};
     if (known.contains(s)) return s;
@@ -363,6 +531,45 @@ class _ProjectDrawer extends StatelessWidget {
       case 'archived':  return 'Archiviert';
       default: return s;
     }
+  }
+}
+
+class _CollapsedItem extends StatelessWidget {
+  final IconData icon;
+  final String route;
+  final String activeRoute;
+  final Color accent;
+  final Color muted;
+  final ValueChanged<String> onTap;
+
+  const _CollapsedItem(this.icon, this.route, this.activeRoute, this.accent, this.muted, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    final active = route == activeRoute;
+    return Tooltip(
+      message: route,
+      preferBelow: false,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onTap(route),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            height: 44,
+            decoration: BoxDecoration(
+              color: active ? accent.withValues(alpha: 0.14) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Center(
+              child: Icon(icon, size: 20, color: active ? accent : muted),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

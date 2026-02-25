@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -139,10 +140,9 @@ class _ProjectDiaryPageState extends ConsumerState<ProjectDiaryPage> {
   Future<void> _refresh() => _loadInitial();
 
   void _showCreateSheet() {
-    showModalBottomSheet(
-      context: context,
+    showAdaptiveSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _CreateEntrySheet(
         projectId: widget.projectId,
         members: _members,
@@ -152,10 +152,9 @@ class _ProjectDiaryPageState extends ConsumerState<ProjectDiaryPage> {
   }
 
   void _showExportSheet() {
-    showModalBottomSheet(
-      context: context,
+    showAdaptiveSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _ExportSheet(entries: _entries),
     );
   }
@@ -405,10 +404,9 @@ class _DiaryCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => showModalBottomSheet(
-          context: context,
+        onTap: () => showAdaptiveSheet(
+          context,
           isScrollControlled: true,
-          backgroundColor: Colors.transparent,
           builder: (_) => _EntryDetailSheet(entry: entry, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete),
         ),
         child: Padding(
@@ -493,10 +491,9 @@ class _DiaryCard extends StatelessWidget {
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => showModalBottomSheet(
-                    context: context,
+                  onTap: () => showAdaptiveSheet(
+                    context,
                     isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
                     builder: (_) => _DiaryHistorySheet(entryId: entry['id'] as String),
                   ),
                   child: Container(
@@ -709,10 +706,9 @@ class _EntryDetailSheet extends StatelessWidget {
                 OutlinedButton.icon(
                   icon: const Icon(LucideIcons.history, size: 15, color: AppColors.primary),
                   label: const Text('Änderungsverlauf', style: TextStyle(color: AppColors.primary)),
-                  onPressed: () => showModalBottomSheet(
-                    context: context,
+                  onPressed: () => showAdaptiveSheet(
+                    context,
                     isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
                     builder: (_) => _DiaryHistorySheet(entryId: entry['id'] as String),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -730,10 +726,9 @@ class _EntryDetailSheet extends StatelessWidget {
                           style: TextStyle(color: AppColors.primary)),
                       onPressed: () {
                         Navigator.pop(context);
-                        showModalBottomSheet(
-                          context: context,
+                        showAdaptiveSheet(
+                          context,
                           isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
                           builder: (_) => _EditEntrySheet(
                               entry: entry, onSaved: onRefresh, canEdit: canEdit),
                         );

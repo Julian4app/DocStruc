@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -559,16 +560,16 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
     String visibility = 'all_participants';
     List<({String name, Uint8List bytes})> pendingImages = [];
 
-    showModalBottomSheet(
-      context: ctx,
+    showAdaptiveSheet(
+      ctx,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, ss) => Container(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetCtx).size.height * 0.95),
-          decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          decoration: BoxDecoration(color: AppColors.surface, borderRadius: isTablet(sheetCtx) ? BorderRadius.circular(20) : const BorderRadius.vertical(top: Radius.circular(20))),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Padding(padding: const EdgeInsets.only(top: 12), child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            if (!isTablet(sheetCtx)) Padding(padding: const EdgeInsets.only(top: 12), child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            if (isTablet(sheetCtx)) const SizedBox(height: 16),
             Flexible(child: ListView(shrinkWrap: true,
               padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
               children: [
@@ -593,10 +594,15 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
                 const SizedBox(height: 18),
                 const Text('Zuweisen an', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
                 const SizedBox(height: 8),
-                _MemberPickerTile(selectedId: assignedTo, members: _members, onTap: () async {
-                  final r = await _showMemberPickerSheet(sheetCtx, assignedTo);
-                  if (r != null) ss(() => assignedTo = r == '__none__' ? null : r);
-                }),
+                _MemberPickerTile(
+                  selectedId: assignedTo,
+                  members: _members,
+                  onTap: () async {
+                    final r = await _showMemberPickerSheet(sheetCtx, assignedTo);
+                    if (r != null) ss(() => assignedTo = r == '__none__' ? null : r);
+                  },
+                  onDropdownChanged: (v) => ss(() => assignedTo = v == '__none__' ? null : v),
+                ),
                 const SizedBox(height: 18),
                 const Text('F\u00e4lligkeitsdatum', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
                 const SizedBox(height: 8),
@@ -627,10 +633,14 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     const Text('Sichtbarkeit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
                     const SizedBox(height: 8),
-                    _VisibilityPickerTile(value: visibility, onTap: () async {
-                      final r = await _showVisibilityPickerSheet(sheetCtx, visibility);
-                      if (r != null) ss(() => visibility = r);
-                    }),
+                    _VisibilityPickerTile(
+                      value: visibility,
+                      onTap: () async {
+                        final r = await _showVisibilityPickerSheet(sheetCtx, visibility);
+                        if (r != null) ss(() => visibility = r);
+                      },
+                      onDropdownChanged: (v) => ss(() => visibility = v),
+                    ),
                   ])),
                 ]),
                 const SizedBox(height: 18),
@@ -1310,6 +1320,13 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
             widget.onRefresh();
           }
         },
+        onDropdownChanged: (v) async {
+          final newVal = v == '__none__' ? null : v;
+          setState(() => _assignedTo = newVal);
+          await SupabaseService.updateTask(_task['id'], {'assigned_to': newVal});
+          setState(() => _task = {..._task, 'assigned_to': newVal});
+          widget.onRefresh();
+        },
       )),
       const SizedBox(height: 12),
 
@@ -1361,10 +1378,15 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
       const SizedBox(height: 18),
       const Text('Zuweisen an', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
       const SizedBox(height: 8),
-      _MemberPickerTile(selectedId: _assignedTo, members: widget.members, onTap: () async {
-        final r = await _showDetailMemberPicker(context, _assignedTo, widget.members);
-        if (r != null) setState(() => _assignedTo = r == '__none__' ? null : r);
-      }),
+      _MemberPickerTile(
+        selectedId: _assignedTo,
+        members: widget.members,
+        onTap: () async {
+          final r = await _showDetailMemberPicker(context, _assignedTo, widget.members);
+          if (r != null) setState(() => _assignedTo = r == '__none__' ? null : r);
+        },
+        onDropdownChanged: (v) => setState(() => _assignedTo = v == '__none__' ? null : v),
+      ),
       const SizedBox(height: 18),
       const Text('F\u00e4lligkeitsdatum', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
       const SizedBox(height: 8),
@@ -1391,10 +1413,14 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
       const SizedBox(height: 18),
       const Text('Sichtbarkeit', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
       const SizedBox(height: 8),
-      _VisibilityPickerTile(value: _visibility, onTap: () async {
-        final r = await _showVisibilityPickerSheetStatic(context, _visibility);
-        if (r != null) setState(() => _visibility = r);
-      }),
+      _VisibilityPickerTile(
+        value: _visibility,
+        onTap: () async {
+          final r = await _showVisibilityPickerSheetStatic(context, _visibility);
+          if (r != null) setState(() => _visibility = r);
+        },
+        onDropdownChanged: (v) => setState(() => _visibility = v),
+      ),
       const SizedBox(height: 24),
       ElevatedButton(onPressed: _save, child: const Text('Speichern')),
       const SizedBox(height: 12),
@@ -1808,14 +1834,60 @@ class _ToolbarBtn extends StatelessWidget {
 // ═════════════════════════════════════════════════════════════════════════════
 // REUSABLE WIDGETS
 // ═════════════════════════════════════════════════════════════════════════════
+// ── Member picker: dropdown on tablet, tap-tile on phone ────────────────────
 class _MemberPickerTile extends StatelessWidget {
   final String? selectedId;
   final List<Map<String, dynamic>> members;
   final VoidCallback onTap;
-  const _MemberPickerTile({required this.selectedId, required this.members, required this.onTap});
+  /// Called with a uid (or '__none__') when a dropdown selection is made on tablet.
+  final ValueChanged<String>? onDropdownChanged;
+  const _MemberPickerTile({
+    required this.selectedId,
+    required this.members,
+    required this.onTap,
+    this.onDropdownChanged,
+  });
+
+  static String _nameForMember(Map<String, dynamic> m) {
+    final p = m['profiles'] as Map<String, dynamic>?;
+    final dn = p?['display_name'] as String?;
+    final fn = p?['first_name'] as String? ?? '';
+    final ln = p?['last_name'] as String? ?? '';
+    final em = p?['email'] as String? ?? '';
+    return (dn?.isNotEmpty ?? false) ? dn! : ('$fn $ln'.trim().isNotEmpty ? '$fn $ln'.trim() : em);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context) && onDropdownChanged != null) {
+      // Build items list: none + each member
+      final items = <DropdownMenuItem<String>>[
+        const DropdownMenuItem(value: '__none__', child: Text('Nicht zugewiesen', style: TextStyle(fontSize: 14, color: AppColors.textSecondary))),
+        ...members.map((m) {
+          final p = m['profiles'] as Map<String, dynamic>?;
+          final uid = p?['id'] as String? ?? '';
+          final name = _nameForMember(m);
+          return DropdownMenuItem<String>(value: uid, child: Text(name, style: const TextStyle(fontSize: 14, color: AppColors.text), overflow: TextOverflow.ellipsis));
+        }),
+      ];
+      return DropdownButtonFormField<String>(
+        value: selectedId ?? '__none__',
+        items: items,
+        onChanged: (v) { if (v != null) onDropdownChanged!(v); },
+        decoration: InputDecoration(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          filled: true,
+          fillColor: AppColors.background,
+        ),
+        style: const TextStyle(fontSize: 14, color: AppColors.text),
+        isExpanded: true,
+        dropdownColor: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      );
+    }
+    // ── Phone: tap-to-open bottom sheet ──────────────────────────────────────
     Map<String, dynamic>? profile;
     if (selectedId != null) {
       for (final m in members) {
@@ -1834,11 +1906,11 @@ class _MemberPickerTile extends StatelessWidget {
       child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
         child: Row(children: [
-          if (selectedId != null && profile != null) ...[
+          if (selectedId != null && profile != null) ...[  
             Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), shape: BoxShape.circle), child: Center(child: Text(initials, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)))),
             const SizedBox(width: 10),
             Expanded(child: Text(name, style: const TextStyle(fontSize: 14, color: AppColors.text, fontWeight: FontWeight.w500))),
-          ] else ...[
+          ] else ...[  
             Container(width: 28, height: 28, decoration: BoxDecoration(color: AppColors.border, shape: BoxShape.circle), child: const Icon(LucideIcons.userX, size: 14, color: AppColors.textSecondary)),
             const SizedBox(width: 10),
             const Expanded(child: Text('Nicht zugewiesen', style: TextStyle(fontSize: 14, color: AppColors.textSecondary))),
@@ -1848,14 +1920,42 @@ class _MemberPickerTile extends StatelessWidget {
       ),
     );
   }
-}
-
+}// ── Visibility picker: dropdown on tablet, tap-tile on phone ────────────────
 class _VisibilityPickerTile extends StatelessWidget {
   final String value;
   final VoidCallback onTap;
-  const _VisibilityPickerTile({required this.value, required this.onTap});
+  final ValueChanged<String>? onDropdownChanged;
+  const _VisibilityPickerTile({required this.value, required this.onTap, this.onDropdownChanged});
+
+  static const _opts = [
+    {'value': 'all_participants', 'label': 'Alle Teilnehmer'},
+    {'value': 'team_only',        'label': 'Nur mein Team'},
+    {'value': 'owner_only',       'label': 'Nur ich'},
+  ];
+
   @override
   Widget build(BuildContext context) {
+    if (isTablet(context) && onDropdownChanged != null) {
+      return DropdownButtonFormField<String>(
+        value: value,
+        items: _opts.map((o) => DropdownMenuItem<String>(
+          value: o['value']!,
+          child: Text(o['label']!, style: const TextStyle(fontSize: 14, color: AppColors.text)),
+        )).toList(),
+        onChanged: (v) { if (v != null) onDropdownChanged!(v); },
+        decoration: InputDecoration(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+          filled: true,
+          fillColor: AppColors.background,
+        ),
+        style: const TextStyle(fontSize: 14, color: AppColors.text),
+        isExpanded: true,
+        dropdownColor: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+      );
+    }
     final label = value == 'owner_only' ? 'Nur ich' : value == 'team_only' ? 'Nur mein Team' : 'Alle Teilnehmer';
     final icon  = value == 'owner_only' ? LucideIcons.lock : value == 'team_only' ? LucideIcons.userCheck : LucideIcons.users;
     return GestureDetector(

@@ -18,6 +18,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -950,10 +951,9 @@ class _ProjectGeneralInfoPageState extends State<ProjectGeneralInfoPage> {
   Future<void> _showVoiceRecorder() async {
     if (_projectInfo == null) return;
     final infoId = _projectInfo!['id'] as String;
-    await showModalBottomSheet(
-      context: context,
+    await showAdaptiveSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _VoiceRecorderSheet(
         onSave: (filePath) async {
           try {

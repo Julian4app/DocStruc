@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../project_detail_screen.dart';
+import '../../../core/utils/tablet_utils.dart';
 
 import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
@@ -219,6 +220,52 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
 
   // ── Stats Grid ─────────────────────────────────────────────────────────────
   Widget _buildStatsGrid() {
+    final cards = [
+      _StatCard(
+        icon: LucideIcons.checkCircle,
+        label: 'Abgeschlossen',
+        value: '$_completedTasks',
+        bgColor: const Color(0xFFEFF6FF),
+        iconColor: AppColors.primary,
+      ),
+      _StatCard(
+        icon: LucideIcons.clock,
+        label: 'In Bearbeitung',
+        value: '$_activeTasks',
+        bgColor: const Color(0xFFFEF3C7),
+        iconColor: const Color(0xFFF59E0B),
+      ),
+      _StatCard(
+        icon: LucideIcons.alertTriangle,
+        label: 'Blockiert',
+        value: '$_blockedTasks',
+        bgColor: const Color(0xFFFEE2E2),
+        iconColor: const Color(0xFFEF4444),
+      ),
+      _StatCard(
+        icon: LucideIcons.listTodo,
+        label: 'Gesamt',
+        value: '$_totalTasks',
+        bgColor: const Color(0xFFF3E8FF),
+        iconColor: const Color(0xFFA855F7),
+      ),
+    ];
+
+    if (isTablet(context)) {
+      return Row(
+        children: cards
+            .map((c) => Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: c == cards.last ? 0 : 12,
+                    ),
+                    child: c,
+                  ),
+                ))
+            .toList(),
+      );
+    }
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -226,36 +273,7 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
       childAspectRatio: 1.55,
-      children: [
-        _StatCard(
-          icon: LucideIcons.checkCircle,
-          label: 'Abgeschlossen',
-          value: '$_completedTasks',
-          bgColor: const Color(0xFFEFF6FF),
-          iconColor: AppColors.primary,
-        ),
-        _StatCard(
-          icon: LucideIcons.clock,
-          label: 'In Bearbeitung',
-          value: '$_activeTasks',
-          bgColor: const Color(0xFFFEF3C7),
-          iconColor: const Color(0xFFF59E0B),
-        ),
-        _StatCard(
-          icon: LucideIcons.alertTriangle,
-          label: 'Blockiert',
-          value: '$_blockedTasks',
-          bgColor: const Color(0xFFFEE2E2),
-          iconColor: const Color(0xFFEF4444),
-        ),
-        _StatCard(
-          icon: LucideIcons.listTodo,
-          label: 'Gesamt',
-          value: '$_totalTasks',
-          bgColor: const Color(0xFFF3E8FF),
-          iconColor: const Color(0xFFA855F7),
-        ),
-      ],
+      children: cards,
     );
   }
 
@@ -677,45 +695,80 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = isTablet(context);
     return Container(
-      padding: const EdgeInsets.all(14),
+      height: tablet ? 72 : null,
+      padding: EdgeInsets.all(tablet ? 12 : 14),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        mainAxisSize: MainAxisSize.max,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(8),
+      child: tablet
+          ? Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 18, color: iconColor),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(value,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.text)),
+                      Text(label,
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 16, color: iconColor),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(value,
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.text)),
+                    Text(label,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ],
             ),
-            child: Icon(icon, size: 16, color: iconColor),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.text)),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

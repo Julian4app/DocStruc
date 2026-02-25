@@ -1056,11 +1056,32 @@ export function ProjectObjektplan() {
     try { await supabase.from('building_apartments').delete().eq('id', apt.id); showToast('Wohnung gelöscht', 'success'); if (selectedApartment?.id === apt.id) { setSelectedApartment(null); setPlanMode(null); } loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
   };
 
+  /** Convert a color value that might be a Flutter ARGB integer to a CSS hex string. */
+  const normalizeColor = (c: any): string => {
+    if (!c) return '#1e293b';
+    if (typeof c === 'string') return c; // already CSS hex
+    if (typeof c === 'number') {
+      // Flutter stores as ARGB int, e.g. 0xFF1e293b
+      const hex = (c >>> 0).toString(16).padStart(8, '0');
+      // drop alpha byte if fully opaque (FF), return #rrggbb
+      return hex.startsWith('ff') ? `#${hex.slice(2)}` : `#${hex}`;
+    }
+    return '#1e293b';
+  };
+
+  const normalizeElement = (el: any): CanvasElement => ({
+    ...el,
+    // Normalize type: Flutter may write 'terraceDoor', web canonical is 'patio_door'
+    type: el.type === 'terraceDoor' ? 'patio_door' : el.type,
+    color: normalizeColor(el.color),
+    fill: el.fill != null ? normalizeColor(el.fill) : undefined,
+  });
+
   const parseElements = (raw: any): CanvasElement[] => {
     try {
       if (!raw) return [];
       const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data) ? data.map(normalizeElement) : [];
     } catch {
       return [];
     }

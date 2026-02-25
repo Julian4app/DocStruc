@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
@@ -12,10 +16,65 @@ import '../../core/providers/notifications_provider.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/utils/tablet_utils.dart';
 import '../../core/widgets/shimmer_loading.dart';
 import '../../core/widgets/status_pill.dart';
 import '../../core/widgets/empty_state.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
+
+/// Shows a bottom sheet on phones; a centered constrained dialog on tablets.
+/// Tablet dialog includes a close (×) button.
+Future<T?> _showAdaptiveSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) {
+  if (isTablet(context)) {
+    return showDialog<T>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogCtx) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 780),
+          child: Material(
+            color: Colors.transparent,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: builder(dialogCtx),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(dialogCtx).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: const Icon(Icons.close, size: 17, color: Color(0xFF64748B)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: builder,
+  );
+}
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -95,10 +154,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _pendingMembers = [];
     _editingProjectId = project['id'] as String;
 
-    showModalBottomSheet(
+    _showAdaptiveSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => _CreateProjectSheet(
         nameCtrl:       _newNameCtrl,
         subtitleCtrl:   _newSubtitleCtrl,
@@ -499,35 +556,67 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
     }
 
+    final tablet = isTablet(context);
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final itemPadding = EdgeInsets.fromLTRB(
+      AppSpacing.screenH,
+      AppSpacing.m,
+      AppSpacing.screenH,
+      bottomPad + 100,
+    );
+
     return RefreshIndicator(
       onRefresh: _loadProjects,
       color: AppColors.primary,
-      child: ListView.builder(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.screenH,
-          AppSpacing.m,
-          AppSpacing.screenH,
-          MediaQuery.of(context).padding.bottom + 100, // extra space for FAB + nav bar
-        ),
-        itemCount: projects.length,
-        itemBuilder: (context, index) {
-          final p = projects[index];
-          final pid = p['id'] as String;
-          return _ProjectCard(
-            project: p,
-            color: _projectColor(p),
-            dateFormat: _dateFormat,
-            imageUrl: _projectImageUrls[pid],
-            showPhoto: _showPhoto[pid] ?? false,
-            onToggleView: (val) => setState(() => _showPhoto[pid] = val),
-            onTap: () => context.go('/project/${p['id']}'),
-            onLongPress: () => _showEditSheet(p),
-          ).animate().fadeIn(
-                duration: 300.ms,
-                delay: (50 * index).ms,
-              );
-        },
-      ),
+      child: tablet
+          ? GridView.builder(
+              padding: itemPadding,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: MediaQuery.of(context).size.width >= 900 ? 3 : 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                mainAxisExtent: 300,
+              ),
+              itemCount: projects.length,
+              itemBuilder: (context, index) {
+                final p = projects[index];
+                final pid = p['id'] as String;
+                return _ProjectCard(
+                  project: p,
+                  color: _projectColor(p),
+                  dateFormat: _dateFormat,
+                  imageUrl: _projectImageUrls[pid],
+                  showPhoto: _showPhoto[pid] ?? false,
+                  onToggleView: (val) => setState(() => _showPhoto[pid] = val),
+                  onTap: () => context.go('/project/${p['id']}'),
+                  onLongPress: () => _showEditSheet(p),
+                ).animate().fadeIn(
+                      duration: 300.ms,
+                      delay: (50 * index).ms,
+                    );
+              },
+            )
+          : ListView.builder(
+              padding: itemPadding,
+              itemCount: projects.length,
+              itemBuilder: (context, index) {
+                final p = projects[index];
+                final pid = p['id'] as String;
+                return _ProjectCard(
+                  project: p,
+                  color: _projectColor(p),
+                  dateFormat: _dateFormat,
+                  imageUrl: _projectImageUrls[pid],
+                  showPhoto: _showPhoto[pid] ?? false,
+                  onToggleView: (val) => setState(() => _showPhoto[pid] = val),
+                  onTap: () => context.go('/project/${p['id']}'),
+                  onLongPress: () => _showEditSheet(p),
+                ).animate().fadeIn(
+                      duration: 300.ms,
+                      delay: (50 * index).ms,
+                    );
+              },
+            ),
     );
   }
 
@@ -544,10 +633,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _pendingImages = [];
     _pendingMembers = [];
 
-    showModalBottomSheet(
+    _showAdaptiveSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => _CreateProjectSheet(
         nameCtrl:       _newNameCtrl,
         subtitleCtrl:   _newSubtitleCtrl,
@@ -869,13 +956,18 @@ class _ProjectCard extends StatelessWidget {
   }
 
   Widget _mapPlaceholder(String? address) {
+    if (address == null || address.isEmpty) return _fallbackMapWidget(null);
+    return _GeoMapTile(address: address);
+  }
+
+  Widget _fallbackMapWidget(String? address) {
     return Container(
       color: const Color(0xFFe2e8f0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(LucideIcons.map, size: 32, color: Color(0xFF94a3b8)),
-          if (address != null && address.isNotEmpty) ...[
+          if (address != null && address.isNotEmpty) ...[  
             const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -891,9 +983,7 @@ class _ProjectCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String _statusLabel(String raw) {
+  }  static String _statusLabel(String raw) {
     // Real German DB values pass through as-is
     const knownGerman = {
       'Angefragt', 'In Planung', 'Genehmigt', 'In Ausführung',
@@ -1215,21 +1305,25 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final country = _countries.firstWhere((c) => c.$1 == _country, orElse: () => _countries.first);
+    final onTablet = isTablet(context);
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: onTablet
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset + safeBottom),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + (onTablet ? 0 : bottomInset + safeBottom)),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Handle
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
+            // Handle — only on phone
+            if (!onTablet)
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            if (!onTablet) const SizedBox(height: 16),
             // Title row with X button
             Row(
               children: [
@@ -1686,6 +1780,129 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
                 },
               )),
       ]),
+    );
+  }
+}
+
+// ── _GeoMapTile: geocodes an address and shows a real FlutterMap ─────────────
+
+class _GeoMapTile extends StatefulWidget {
+  final String address;
+  const _GeoMapTile({required this.address});
+
+  @override
+  State<_GeoMapTile> createState() => _GeoMapTileState();
+}
+
+class _GeoMapTileState extends State<_GeoMapTile> {
+  double? _lat;
+  double? _lng;
+  bool _loading = true;
+  bool _failed = false;
+
+  // Simple in-process cache so the same address is only geocoded once per run
+  static final Map<String, (double, double)?> _cache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _geocode();
+  }
+
+  Future<void> _geocode() async {
+    final key = widget.address.trim().toLowerCase();
+    if (_cache.containsKey(key)) {
+      final cached = _cache[key];
+      if (mounted) {
+        setState(() {
+          _lat = cached?.$1;
+          _lng = cached?.$2;
+          _loading = false;
+          _failed = cached == null;
+        });
+      }
+      return;
+    }
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': widget.address,
+        'format': 'json',
+        'limit': '1',
+      });
+      final client = HttpClient();
+      client.userAgent = 'DocStruc/1.0 (contact@docstruc.app)';
+      final req = await client.getUrl(uri);
+      req.headers.set('Accept', 'application/json');
+      final res = await req.close().timeout(const Duration(seconds: 8));
+      final body = await res.transform(const Utf8Decoder()).join();
+      client.close();
+      final List<dynamic> results = json.decode(body) as List<dynamic>;
+      if (results.isNotEmpty) {
+        final lat = double.tryParse(results[0]['lat']?.toString() ?? '');
+        final lng = double.tryParse(results[0]['lon']?.toString() ?? '');
+        _cache[key] = (lat != null && lng != null) ? (lat, lng) : null;
+        if (mounted) setState(() { _lat = lat; _lng = lng; _loading = false; _failed = lat == null; });
+      } else {
+        _cache[key] = null;
+        if (mounted) setState(() { _loading = false; _failed = true; });
+      }
+    } catch (_) {
+      _cache[widget.address.trim().toLowerCase()] = null;
+      if (mounted) setState(() { _loading = false; _failed = true; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        color: const Color(0xFFe2e8f0),
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF94a3b8))),
+      );
+    }
+    if (_failed || _lat == null || _lng == null) {
+      return Container(
+        color: const Color(0xFFe2e8f0),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(LucideIcons.map, size: 28, color: Color(0xFF94a3b8)),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(widget.address,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748b)),
+                maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+          ),
+        ]),
+      );
+    }
+    final center = LatLng(_lat!, _lng!);
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: center,
+        initialZoom: 14,
+        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.docstruc.mobile',
+        ),
+        MarkerLayer(markers: [
+          Marker(
+            point: center,
+            width: 36,
+            height: 36,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0E2A47),
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: const Color(0xFF0E2A47).withValues(alpha: 0.4), blurRadius: 6, offset: const Offset(0, 2))],
+              ),
+              child: const Icon(LucideIcons.mapPin, size: 18, color: Colors.white),
+            ),
+          ),
+        ]),
+      ],
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/utils/tablet_utils.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -81,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
                 child: Image.asset(
                   'assets/images/DocStruc_Logo_plain.png',
-                  width: size.width * 0.55,
+                  width: isTablet(context) ? size.width * 0.28 : size.width * 0.55,
                   fit: BoxFit.contain,
                 ),
               ),

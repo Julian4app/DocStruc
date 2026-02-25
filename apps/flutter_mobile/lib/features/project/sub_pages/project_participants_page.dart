@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/permissions_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -1137,10 +1138,9 @@ class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPag
 
   // Edit Permissions Modal — shown as overlay on Scaffold
   void _showEditPermModal() {
-    showModalBottomSheet(
-      context: context,
+    showAdaptiveSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _EditPermissionsSheet(
         member: _editingMember!,
         availableRoles: _availableRoles,
@@ -1201,10 +1201,9 @@ class _ProjectParticipantsPageState extends ConsumerState<ProjectParticipantsPag
 
   // Add Team Members Modal
   void _showAddTeamModal() {
-    showModalBottomSheet(
-      context: context,
+    showAdaptiveSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setLocal) => _AddTeamSheet(
           teamMembers: _teamMembers,

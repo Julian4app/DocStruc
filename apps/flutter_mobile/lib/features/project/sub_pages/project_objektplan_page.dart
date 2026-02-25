@@ -66,13 +66,20 @@ class _Apartment {
         name: m['name'] as String,
         floorId: m['floor_id'] as String?,
         projectId: m['project_id'] as String?,
-        floorPlanData: m['floor_plan_data'] != null ? jsonEncode(m['floor_plan_data']) : null,
-        technicalPlanData: m['technical_plan_data'] != null ? jsonEncode(m['technical_plan_data']) : null,
+        floorPlanData: _encodeJsonField(m['floor_plan_data']),
+        technicalPlanData: _encodeJsonField(m['technical_plan_data']),
         attachments: ((m['building_attachments'] ?? []) as List)
             .map((a) => _Attachment.fromMap(a as Map<String, dynamic>))
             .toList()
           ..sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt)),
       );
+
+  /// Converts a Supabase JSONB field (may be List/Map or already a String) to a JSON string.
+  static String? _encodeJsonField(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value; // already a JSON string
+    return jsonEncode(value); // List or Map from Supabase JSONB
+  }
 }
 
 class _Attachment {
@@ -95,8 +102,8 @@ class _Attachment {
 
 // ─── Canvas Drawing Models ────────────────────────────────────────────────────
 
-enum _ElementType { freehand, line, rect, circle, wall, door, window, text, dimension }
-enum _DrawTool { select, pan, freehand, line, rect, circle, wall, door, window, text, dimension, eraser }
+enum _ElementType { freehand, line, rect, circle, wall, door, window, terraceDoor, terrace, text, dimension }
+enum _DrawTool { select, pan, freehand, line, rect, circle, wall, door, window, terraceDoor, terrace, text, dimension, eraser }
 enum _PlanMode { free, technical }
 
 class _CanvasElement {
@@ -133,9 +140,48 @@ class _CanvasElement {
     this.wallThickness,
   });
 
+  /// Serialize color to a hex CSS string (#rrggbb or #aarrggbb) — readable by both Flutter and web.
+  static String _colorToHex(Color c) {
+    final v = c.toARGB32();
+    // If fully opaque, write 6-char hex; otherwise 8-char
+    if ((v >> 24 & 0xFF) == 0xFF) {
+      return '#${(v & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+    }
+    return '#${v.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  /// Parse a color that may be a CSS hex string (web) OR an ARGB int (older Flutter saves).
+  static Color _parseColor(dynamic raw, Color fallback) {
+    if (raw == null) return fallback;
+    if (raw is int) return Color(raw);
+    if (raw is String) {
+      final s = raw.startsWith('#') ? raw.substring(1) : raw;
+      final v = int.tryParse(s, radix: 16);
+      if (v == null) return fallback;
+      // 6-char hex = opaque RGB
+      return s.length == 6 ? Color(0xFF000000 | v) : Color(v);
+    }
+    return fallback;
+  }
+
+  /// Web uses 'patio_door', Flutter uses 'terraceDoor' — normalise on read.
+  static _ElementType _parseType(String? raw) {
+    if (raw == 'patio_door') return _ElementType.terraceDoor;
+    return _ElementType.values.firstWhere(
+      (e) => e.name == raw,
+      orElse: () => _ElementType.line,
+    );
+  }
+
+  /// On save always write 'patio_door' so the web app can read it too.
+  static String _typeName(_ElementType t) {
+    if (t == _ElementType.terraceDoor) return 'patio_door';
+    return t.name;
+  }
+
   Map<String, dynamic> toMap() => {
         'id': id,
-        'type': type.name,
+        'type': _typeName(type),
         'x': x, 'y': y,
         if (x2 != null) 'x2': x2,
         if (y2 != null) 'y2': y2,
@@ -144,33 +190,38 @@ class _CanvasElement {
         if (points != null) 'points': points!.map((p) => {'x': p.dx, 'y': p.dy}).toList(),
         if (text != null) 'text': text,
         'fontSize': fontSize,
-        'color': color.toARGB32(),
+        'color': _colorToHex(color),
         'strokeWidth': strokeWidth,
-        if (fill != null) 'fill': fill!.toARGB32(),
+        if (fill != null) 'fill': _colorToHex(fill!),
         if (length != null) 'length': length,
         if (wallThickness != null) 'wallThickness': wallThickness,
       };
 
   factory _CanvasElement.fromMap(Map<String, dynamic> m) {
     return _CanvasElement(
-      id: m['id'] as String,
-      type: _ElementType.values.firstWhere((e) => e.name == m['type'], orElse: () => _ElementType.line),
-      x: (m['x'] as num).toDouble(),
-      y: (m['y'] as num).toDouble(),
+      id: m['id'] as String? ?? _CanvasElement._fallbackId(),
+      type: _parseType(m['type'] as String?),
+      x: (m['x'] as num?)?.toDouble() ?? 0,
+      y: (m['y'] as num?)?.toDouble() ?? 0,
       x2: (m['x2'] as num?)?.toDouble(),
       y2: (m['y2'] as num?)?.toDouble(),
       width: (m['width'] as num?)?.toDouble(),
       height: (m['height'] as num?)?.toDouble(),
-      points: (m['points'] as List?)?.map((p) => Offset((p['x'] as num).toDouble(), (p['y'] as num).toDouble())).toList(),
+      points: (m['points'] as List?)?.map((p) => Offset(
+        (p['x'] as num?)?.toDouble() ?? 0,
+        (p['y'] as num?)?.toDouble() ?? 0,
+      )).toList(),
       text: m['text'] as String?,
       fontSize: (m['fontSize'] as num?)?.toDouble() ?? 20,
-      color: Color((m['color'] as int?) ?? 0xFF1e293b),
+      color: _parseColor(m['color'], const Color(0xFF1e293b)),
       strokeWidth: (m['strokeWidth'] as num?)?.toDouble() ?? 2,
-      fill: m['fill'] != null ? Color(m['fill'] as int) : null,
+      fill: m['fill'] != null ? _parseColor(m['fill'], const Color(0xFF000000)) : null,
       length: (m['length'] as num?)?.toDouble(),
       wallThickness: (m['wallThickness'] as num?)?.toDouble(),
     );
   }
+
+  static String _fallbackId() => DateTime.now().microsecondsSinceEpoch.toRadixString(16);
 
   _CanvasElement copyWith({
     double? x, double? y, double? x2, double? y2,
@@ -182,7 +233,7 @@ class _CanvasElement {
         x: x ?? this.x, y: y ?? this.y,
         x2: x2 ?? this.x2, y2: y2 ?? this.y2,
         width: width ?? this.width, height: height ?? this.height,
-        points: points ?? this.points,
+        points: points ?? (this.points != null ? List<Offset>.from(this.points!) : null),
         text: text ?? this.text, fontSize: fontSize ?? this.fontSize,
         color: color ?? this.color, strokeWidth: strokeWidth ?? this.strokeWidth,
         fill: fill ?? this.fill, length: length ?? this.length,
@@ -346,6 +397,12 @@ class _FloorPlanPainter extends CustomPainter {
         tp.paint(canvas, Offset(el.x, el.y));
         break;
 
+      case _ElementType.terraceDoor:
+        _drawTerraceDoor(canvas, el);
+        break;
+      case _ElementType.terrace:
+        _drawTerrace(canvas, el);
+        break;
       case _ElementType.dimension:
         _drawDimensionLine(canvas, el);
         break;
@@ -405,6 +462,41 @@ class _FloorPlanPainter extends CustomPainter {
     }
   }
 
+  void _drawTerraceDoor(Canvas canvas, _CanvasElement el) {
+    // Terrace door: double door (two arcs)
+    final dw = (el.width ?? 80) / 2;
+    final paint = Paint()..color = const Color(0xFF10B981)..strokeWidth = 2 / scale..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(el.x, el.y), Offset(el.x + dw * 2, el.y), paint);
+    final arc1 = Rect.fromCircle(center: Offset(el.x, el.y), radius: dw);
+    final arc2 = Rect.fromCircle(center: Offset(el.x + dw * 2, el.y), radius: dw);
+    canvas.drawArc(arc1, 0, -math.pi / 2, false, paint);
+    canvas.drawArc(arc2, math.pi, math.pi / 2, false, paint);
+    if (el.length != null) {
+      _drawDimensionLabel(canvas, Offset(el.x + dw, el.y - 25 / scale), _formatLength(el.length!), const Color(0xFF10B981));
+    }
+  }
+
+  void _drawTerrace(Canvas canvas, _CanvasElement el) {
+    // Terrace: dashed/hatched rectangle
+    final w = el.width ?? 120, h = el.height ?? 80;
+    final fillPaint = Paint()..color = const Color(0xFF6366F1).withValues(alpha: 0.15)..style = PaintingStyle.fill;
+    final borderPaint = Paint()..color = const Color(0xFF6366F1)..strokeWidth = 2 / scale..style = PaintingStyle.stroke;
+    canvas.drawRect(Rect.fromLTWH(el.x, el.y, w, h), fillPaint);
+    canvas.drawRect(Rect.fromLTWH(el.x, el.y, w, h), borderPaint);
+    // Hatch lines
+    final hatchPaint = Paint()..color = const Color(0xFF6366F1).withValues(alpha: 0.4)..strokeWidth = 1 / scale..style = PaintingStyle.stroke;
+    for (var d = 10.0; d < w + h; d += 15) {
+      final x1 = el.x + math.max(0, d - h);
+      final y1 = el.y + math.min(d, h);
+      final x2 = el.x + math.min(d, w);
+      final y2 = el.y + math.max(0, d - w);
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), hatchPaint);
+    }
+    if (el.length != null) {
+      _drawDimensionLabel(canvas, Offset(el.x + w / 2, el.y + h / 2), _formatLength(el.length!), const Color(0xFF6366F1));
+    }
+  }
+
   void _drawDimensionLine(Canvas canvas, _CanvasElement el) {
     final paint = Paint()..color = const Color(0xFFEF4444)..strokeWidth = 1.5 / scale..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(el.x, el.y), Offset(el.x2 ?? el.x, el.y2 ?? el.y), paint);
@@ -454,6 +546,14 @@ class _FloorPlanPainter extends CustomPainter {
       case _DrawTool.window:
         canvas.drawLine(start, Offset(start.dx + 80, start.dy), paint);
         break;
+      case _DrawTool.terraceDoor:
+        canvas.drawLine(start, Offset(start.dx + 80, start.dy), paint);
+        canvas.drawArc(Rect.fromCircle(center: start, radius: 40), 0, -math.pi / 2, false, paint);
+        canvas.drawArc(Rect.fromCircle(center: Offset(start.dx + 80, start.dy), radius: 40), math.pi, math.pi / 2, false, paint);
+        break;
+      case _DrawTool.terrace:
+        canvas.drawRect(Rect.fromPoints(start, current), paint);
+        break;
       case _DrawTool.dimension:
         canvas.drawLine(start, current, paint);
         break;
@@ -476,10 +576,10 @@ class _FloorPlanPainter extends CustomPainter {
     if (el.type == _ElementType.line || el.type == _ElementType.wall || el.type == _ElementType.dimension) {
       drawHandle(Offset(el.x, el.y));
       drawHandle(Offset(el.x2 ?? el.x, el.y2 ?? el.y));
-    } else if (el.type == _ElementType.rect || el.type == _ElementType.circle) {
+    } else if (el.type == _ElementType.rect || el.type == _ElementType.circle || el.type == _ElementType.terrace) {
       drawHandle(Offset(el.x, el.y));
       drawHandle(Offset(el.x + (el.width ?? 0), el.y + (el.height ?? 0)));
-    } else if (el.type == _ElementType.door || el.type == _ElementType.window) {
+    } else if (el.type == _ElementType.door || el.type == _ElementType.window || el.type == _ElementType.terraceDoor) {
       drawHandle(Offset(el.x, el.y));
       drawHandle(Offset(el.x + (el.width ?? 60), el.y));
     }
@@ -527,12 +627,18 @@ class _CanvasEditorPage extends StatefulWidget {
 
 class _CanvasEditorPageState extends State<_CanvasEditorPage> {
   late _PlanMode _mode;
-  late List<_CanvasElement> _elements;
+  // Separate element lists per mode so switching doesn't lose data
+  late List<_CanvasElement> _freeElements;
+  late List<_CanvasElement> _techElements;
+  List<_CanvasElement> get _elements => _mode == _PlanMode.free ? _freeElements : _techElements;
+  set _elements(List<_CanvasElement> v) { if (_mode == _PlanMode.free) { _freeElements = v; } else { _techElements = v; } }
   final List<List<_CanvasElement>> _undoStack = [];
   final List<List<_CanvasElement>> _redoStack = [];
 
   _DrawTool _tool = _DrawTool.freehand;
   bool _showGrid = true;
+  bool _snapToGrid = false;
+  double _fontSize = 20.0;
   double _scale = 1.0;
   Offset _offset = Offset.zero;
   Offset? _panStart;
@@ -549,21 +655,20 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
   final _textCtrl = TextEditingController();
   Offset? _textInsertPos;
 
+  List<_CanvasElement> _parseElements(String? raw) {
+    if (raw == null) return [];
+    try {
+      return (jsonDecode(raw) as List).map((e) => _CanvasElement.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (_) { return []; }
+  }
+
   @override
   void initState() {
     super.initState();
     _mode = widget.mode;
-    if (_mode == _PlanMode.technical) _tool = _DrawTool.wall;
-    final raw = _mode == _PlanMode.free ? widget.apartment.floorPlanData : widget.apartment.technicalPlanData;
-    if (raw != null) {
-      try {
-        _elements = (jsonDecode(raw) as List).map((e) => _CanvasElement.fromMap(e as Map<String, dynamic>)).toList();
-      } catch (_) {
-        _elements = [];
-      }
-    } else {
-      _elements = [];
-    }
+    _tool = _mode == _PlanMode.technical ? _DrawTool.wall : _DrawTool.freehand;
+    _freeElements = _parseElements(widget.apartment.floorPlanData);
+    _techElements = _parseElements(widget.apartment.technicalPlanData);
   }
 
   @override
@@ -593,7 +698,15 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
     });
   }
 
-  Offset _toCanvas(Offset local) => (local - _offset) / _scale;
+  Offset _toCanvas(Offset local) {
+    final raw = (local - _offset) / _scale;
+    if (!_snapToGrid) return raw;
+    final gridSize = _mode == _PlanMode.technical ? 20.0 : 40.0;
+    return Offset(
+      (raw.dx / gridSize).round() * gridSize,
+      (raw.dy / gridSize).round() * gridSize,
+    );
+  }
 
   String _genId() => math.Random().nextInt(0xFFFFFFFF).toRadixString(16);
 
@@ -627,6 +740,12 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
         break;
       case _DrawTool.window:
         _elements.add(_CanvasElement(id: id, type: _ElementType.window, x: start.dx, y: start.dy, width: 80, color: const Color(0xFF3B82F6), strokeWidth: 3, length: 80 * 2));
+        break;
+      case _DrawTool.terraceDoor:
+        _elements.add(_CanvasElement(id: id, type: _ElementType.terraceDoor, x: start.dx, y: start.dy, width: 80, color: const Color(0xFF10B981), strokeWidth: 2, length: 80 * 2));
+        break;
+      case _DrawTool.terrace:
+        _elements.add(_CanvasElement(id: id, type: _ElementType.terrace, x: math.min(start.dx, end.dx), y: math.min(start.dy, end.dy), width: (end.dx - start.dx).abs(), height: (end.dy - start.dy).abs(), color: const Color(0xFF6366F1), strokeWidth: 2, length: len));
         break;
       case _DrawTool.dimension:
         _elements.add(_CanvasElement(id: id, type: _ElementType.dimension, x: start.dx, y: start.dy, x2: end.dx, y2: end.dy, color: const Color(0xFFEF4444), strokeWidth: 1.5, length: len));
@@ -732,7 +851,10 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
         return Rect.fromLTWH(el.x, el.y, el.width ?? 0, el.height ?? 0).inflate(tol).contains(pos);
       case _ElementType.door:
       case _ElementType.window:
+      case _ElementType.terraceDoor:
         return _distPointToSegment(pos, Offset(el.x, el.y), Offset(el.x + (el.width ?? 60), el.y)) < tol;
+      case _ElementType.terrace:
+        return Rect.fromLTWH(el.x, el.y, el.width ?? 120, el.height ?? 80).inflate(tol).contains(pos);
       case _ElementType.text:
         return (pos - Offset(el.x, el.y)).distance < 40;
     }
@@ -758,6 +880,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
+    // Save current mode's elements
     await widget.onSave(_elements);
     setState(() => _isSaving = false);
   }
@@ -781,49 +904,95 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
     );
   }
 
+  void _switchMode(_PlanMode newMode) {
+    if (newMode == _mode) return;
+    setState(() {
+      _mode = newMode;
+      _undoStack.clear();
+      _redoStack.clear();
+      _selectedId = null;
+      _isDrawing = false;
+      _drawStart = null;
+      _drawCurrent = null;
+      _currentPoints = [];
+      _tool = newMode == _PlanMode.technical ? _DrawTool.wall : _DrawTool.freehand;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(icon: const Icon(LucideIcons.arrowLeft, size: 20), onPressed: widget.onClose),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.apartment.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF0f172a))),
-            Text(_mode == _PlanMode.free ? 'Freies Zeichnen' : 'Technischer Grundriss', style: const TextStyle(fontSize: 11, color: Color(0xFF64748b), fontWeight: FontWeight.w400)),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () => setState(() { _mode = _mode == _PlanMode.free ? _PlanMode.technical : _PlanMode.free; }),
-            icon: Icon(_mode == _PlanMode.free ? LucideIcons.ruler : LucideIcons.pencil, size: 14),
-            label: Text(_mode == _PlanMode.free ? 'Technisch' : 'Frei', style: const TextStyle(fontSize: 12)),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFF334155)),
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      child: Column(
+        children: [
+        // ── Header bar ────────────────────────────────────────────────────
+        Container(
+          height: 56,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Color(0xFFe2e8f0))),
           ),
-          TextButton.icon(
-            onPressed: _isSaving ? null : _save,
-            icon: _isSaving ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.save, size: 14),
-            label: const Text('Speichern', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(LucideIcons.arrowLeft, size: 20, color: Color(0xFF334155)),
+                onPressed: widget.onClose,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(widget.apartment.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0f172a))),
+                    Text(_mode == _PlanMode.free ? 'Freies Zeichnen' : 'Technischer Grundriss', style: const TextStyle(fontSize: 11, color: Color(0xFF64748b))),
+                  ],
+                ),
+              ),
+              // Mode toggle
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _modeTab('Frei', _PlanMode.free, LucideIcons.pencil),
+                    _modeTab('Technisch', _PlanMode.technical, LucideIcons.ruler),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _isSaving ? null : _save,
+                icon: _isSaving
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(LucideIcons.save, size: 14),
+                label: const Text('Speichern', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
-          const SizedBox(width: 8),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: _buildToolbar(),
         ),
-      ),
-      body: Stack(
+        // ── Toolbar ───────────────────────────────────────────────────────
+        _buildToolbar(),
+        // ── Canvas area ───────────────────────────────────────────────────
+        Expanded(
+          child: ClipRect(
+            child: ColoredBox(
+              color: const Color(0xFFF8FAFC),
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
         children: [
           GestureDetector(
             onTapDown: _handleTapDown,
             onPanStart: _tool == _DrawTool.pan ? (d) { _panStart = d.localPosition; } : _handlePanStart,
             onPanUpdate: _handlePanUpdate,
             onPanEnd: _handlePanEnd,
-            child: CustomPaint(
+            child: LayoutBuilder(
+              builder: (context, constraints) => CustomPaint(
               painter: _FloorPlanPainter(
                 elements: _elements,
                 currentPoints: _currentPoints,
@@ -840,7 +1009,8 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                 strokeWidth: _strokeWidth,
                 wallThickness: _wallThickness,
               ),
-              size: Size.infinite,
+              size: Size(constraints.maxWidth, constraints.maxHeight),
+              ),
             ),
           ),
           // Zoom controls
@@ -916,7 +1086,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                           onSubmitted: (val) {
                             if (val.isNotEmpty && _textInsertPos != null) {
                               _pushUndo();
-                              _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: 20));
+                              _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: _fontSize));
                             }
                             setState(() { _showTextInput = false; _textCtrl.clear(); });
                           },
@@ -928,7 +1098,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                           final val = _textCtrl.text;
                           if (val.isNotEmpty && _textInsertPos != null) {
                             _pushUndo();
-                            _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: 20));
+                            _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: _fontSize));
                           }
                           setState(() { _showTextInput = false; _textCtrl.clear(); });
                         },
@@ -944,65 +1114,129 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                 ),
               ),
             ),
-        ],
+          ],
+        ),
+          ),
+        ),
+        ),
+      ],
+    ),
+    );
+  }
+
+  Widget _modeTab(String label, _PlanMode mode, IconData icon) {
+    final isActive = _mode == mode;
+    return GestureDetector(
+      onTap: () => _switchMode(mode),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4)] : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: isActive ? AppColors.primary : const Color(0xFF64748b)),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isActive ? AppColors.primary : const Color(0xFF64748b))),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildToolbar() {
+    final sep = Container(width: 1, height: 28, color: const Color(0xFFe2e8f0));
     return Container(
-      height: 52,
-      decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Color(0xFFe2e8f0)))),
+      decoration: const BoxDecoration(color: Colors.white, border: Border(
+        top: BorderSide(color: Color(0xFFe2e8f0)),
+        bottom: BorderSide(color: Color(0xFFe2e8f0)),
+      )),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(
           children: [
+            // ── Navigation tools ─────────────────────────────────────────
             _toolButton(_DrawTool.select, LucideIcons.mousePointer2, 'Auswählen'),
             const SizedBox(width: 4),
             _toolButton(_DrawTool.pan, LucideIcons.hand, 'Verschieben'),
-            const SizedBox(width: 8),
-            Container(width: 1, height: 28, color: const Color(0xFFe2e8f0)),
-            const SizedBox(width: 8),
-            if (_mode == _PlanMode.free) ...[
-              _toolButton(_DrawTool.freehand, LucideIcons.pencil, 'Freihand'),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.line, LucideIcons.minus, 'Linie'),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.rect, LucideIcons.square, 'Rechteck'),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.circle, LucideIcons.circle, 'Ellipse'),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.text, LucideIcons.type, 'Text'),
-            ] else ...[
-              _toolButton(_DrawTool.wall, LucideIcons.minus, 'Wand', color: const Color(0xFF334155)),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.door, LucideIcons.doorOpen, 'Tür', color: const Color(0xFFF59E0B)),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.window, LucideIcons.layoutGrid, 'Fenster', color: const Color(0xFF3B82F6)),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.dimension, LucideIcons.ruler, 'Maßlinie', color: const Color(0xFFEF4444)),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.text, LucideIcons.type, 'Text'),
-              const SizedBox(width: 4),
-              _toolButton(_DrawTool.line, LucideIcons.minus, 'Linie'),
-            ],
-            const SizedBox(width: 8),
-            Container(width: 1, height: 28, color: const Color(0xFFe2e8f0)),
-            const SizedBox(width: 8),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Drawing tools ─────────────────────────────────────────────
+            _toolButton(_DrawTool.freehand, LucideIcons.pencil, 'Freihand'),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.line, LucideIcons.minus, 'Linie'),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.rect, LucideIcons.square, 'Rechteck'),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.circle, LucideIcons.circle, 'Ellipse'),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.text, LucideIcons.type, 'Text'),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Architecture tools ────────────────────────────────────────
+            _toolButton(_DrawTool.wall, LucideIcons.minus, 'Wand', color: const Color(0xFF334155)),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.door, LucideIcons.doorOpen, 'Tür', color: const Color(0xFFF59E0B)),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.window, LucideIcons.layoutGrid, 'Fenster', color: const Color(0xFF3B82F6)),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.terraceDoor, LucideIcons.slidersHorizontal, 'Terrassentür', color: const Color(0xFF10B981)),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.terrace, LucideIcons.maximize2, 'Terrasse', color: const Color(0xFF6366F1)),
+            const SizedBox(width: 4),
+            _toolButton(_DrawTool.dimension, LucideIcons.ruler, 'Maßlinie', color: const Color(0xFFEF4444)),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Eraser ───────────────────────────────────────────────────
             _toolButton(_DrawTool.eraser, LucideIcons.eraser, 'Löschen', color: const Color(0xFFEF4444)),
-            const SizedBox(width: 8),
-            Container(width: 1, height: 28, color: const Color(0xFFe2e8f0)),
-            const SizedBox(width: 8),
-            // Undo/Redo
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Undo / Redo ──────────────────────────────────────────────
             _iconBtn(LucideIcons.undo2, _undoStack.isEmpty ? null : _undo, 'Rückgängig'),
             const SizedBox(width: 4),
             _iconBtn(LucideIcons.redo2, _redoStack.isEmpty ? null : _redo, 'Wiederherstellen'),
-            const SizedBox(width: 8),
-            // Grid toggle
-            _toggleBtn(LucideIcons.layoutGrid, _showGrid, () => setState(() => _showGrid = !_showGrid), 'Raster'),
-            const SizedBox(width: 8),
-            // Color picker (simplified)
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Grid + Snap ──────────────────────────────────────────────
+            _toggleBtn(LucideIcons.grid, _showGrid, () => setState(() => _showGrid = !_showGrid), 'Raster'),
+            const SizedBox(width: 4),
+            _toggleBtn(LucideIcons.magnet, _snapToGrid, () => setState(() => _snapToGrid = !_snapToGrid), 'Einrasten'),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Center view ─────────────────────────────────────────────
+            _iconBtn(LucideIcons.crosshair, () => setState(() { _scale = 1.0; _offset = Offset.zero; }), 'Zentrieren'),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Text size ────────────────────────────────────────────────
+            Tooltip(
+              message: 'Textgröße',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _fontSize = (_fontSize - 2).clamp(8, 72)),
+                    child: Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFe2e8f0))),
+                      child: const Icon(LucideIcons.minus, size: 12, color: Color(0xFF334155)),
+                    ),
+                  ),
+                  Container(
+                    width: 36, height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: const Color(0xFFF8FAFC), border: Border.symmetric(horizontal: BorderSide(color: const Color(0xFFe2e8f0)))),
+                    child: Text('${_fontSize.round()}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() => _fontSize = (_fontSize + 2).clamp(8, 72)),
+                    child: Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFe2e8f0))),
+                      child: const Icon(LucideIcons.plus, size: 12, color: Color(0xFF334155)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8), sep, const SizedBox(width: 8),
+            // ── Color picker ─────────────────────────────────────────────
             GestureDetector(
               onTap: _showColorPicker,
               child: Tooltip(
@@ -1017,9 +1251,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
         ),
       ),
     );
-  }
-
-  Widget _iconBtn(IconData icon, VoidCallback? onTap, String tooltip) {
+  }  Widget _iconBtn(IconData icon, VoidCallback? onTap, String tooltip) {
     return Tooltip(
       message: tooltip,
       child: GestureDetector(
@@ -1226,7 +1458,9 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
 
   Future<void> _savePlan(_Apartment apt, _PlanMode mode, List<_CanvasElement> elements) async {
     final field = mode == _PlanMode.free ? 'floor_plan_data' : 'technical_plan_data';
-    await _client.from('building_apartments').update({field: elements.map((e) => e.toMap()).toList()}).eq('id', apt.id);
+    // Save as a raw list so Supabase stores it as JSONB (same as web app)
+    final data = elements.map((e) => e.toMap()).toList();
+    await _client.from('building_apartments').update({field: data}).eq('id', apt.id);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plan gespeichert'), backgroundColor: Color(0xFF22c55e)));
     }

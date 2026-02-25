@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
@@ -518,7 +519,7 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
   // ── Milestone Detail Sheet ─────────────────────────────────────────────────
   void _showDetail(BuildContext ctx, Map<String,dynamic> m) {
     // Use StatefulBuilder so isCompleted reflects live _milestones state
-    showModalBottomSheet(context:ctx, isScrollControlled:true, backgroundColor:Colors.transparent,
+    showAdaptiveSheet(ctx, isScrollControlled:true,
       builder:(sheetCtx)=>StatefulBuilder(
         builder:(sheetCtx, ss) {
           // Always look up the latest data from _milestones
@@ -529,9 +530,10 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
 
           return Container(
             constraints:BoxConstraints(maxHeight:MediaQuery.of(ctx).size.height*0.88),
-            decoration:const BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.vertical(top:Radius.circular(20))),
+            decoration:BoxDecoration(color:AppColors.surface,borderRadius:isTablet(sheetCtx)?BorderRadius.circular(20):const BorderRadius.vertical(top:Radius.circular(20))),
             child:Column(mainAxisSize:MainAxisSize.min,children:[
-              Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
+              if(!isTablet(sheetCtx)) Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
+              if(isTablet(sheetCtx)) const SizedBox(height:8),
               Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,24),children:[
                 Row(children:[
                   Container(width:14,height:14,decoration:BoxDecoration(color:tc,shape:BoxShape.circle)),
@@ -722,12 +724,13 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
     for(final li in preLinked) { final id=li['id'] as String?; if(id!=null) linkedTaskIds.add(id); }
 
     final presetColors = ['#3B82F6','#EF4444','#10B981','#F97316','#8B5CF6','#64748B'];
-    showModalBottomSheet(context:ctx,isScrollControlled:true,backgroundColor:Colors.transparent,
+    showAdaptiveSheet(ctx,isScrollControlled:true,
       builder:(ctx2)=>StatefulBuilder(builder:(ctx2,ss)=>Container(
         constraints:BoxConstraints(maxHeight:MediaQuery.of(ctx2).size.height*0.95),
-        decoration:const BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.vertical(top:Radius.circular(20))),
+        decoration:BoxDecoration(color:AppColors.surface,borderRadius:isTablet(ctx2)?BorderRadius.circular(20):const BorderRadius.vertical(top:Radius.circular(20))),
         child:Column(mainAxisSize:MainAxisSize.min,children:[
-          Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
+          if(!isTablet(ctx2)) Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
+          if(isTablet(ctx2)) const SizedBox(height:8),
           Expanded(child:ListView(padding:EdgeInsets.fromLTRB(20,16,20,MediaQuery.of(ctx2).viewInsets.bottom+24),children:[
             Text(isEdit?'Meilenstein bearbeiten':'Neuer Meilenstein',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w700,color:AppColors.text)),
             const SizedBox(height:20),
