@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:intl/intl.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -924,6 +931,16 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
   final _docCtrl = TextEditingController();
   String _docType = 'text';
   bool _docExpanded = false;
+  // Voice recording
+  AudioRecorder? _recorder;
+  bool _isRecording = false;
+  bool _isPaused = false;
+  String? _recordPath;
+  int _recordSeconds = 0;
+  Timer? _recordTimer;
+  AudioPlayer? _player;
+  bool _isPlaying = false;
+  String? _playingDocId;
 
   @override
   void initState() {
@@ -1072,6 +1089,229 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
       }
     }
     return uid;
+  }
+
+  Future<Uint8List> _readFileBytes(String filePath) async {
+    try { return await File(filePath).readAsBytes(); } catch (_) { return Uint8List(0); }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      _recorder ??= AudioRecorder();
+      final hasPermission = await _recorder!.hasPermission();
+      if (!hasPermission) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mikrofonzugriff erforderlich')));
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      _recordPath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder!.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: _recordPath!);
+      setState(() { _isRecording = true; _isPaused = false; _recordSeconds = 0; });
+      _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && _isRecording && !_isPaused) setState(() => _recordSeconds++);
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aufnahme-Fehler: $e')));
+    }
+  }
+
+  Future<void> _pauseResumeRecording() async {
+    if (_recorder == null) return;
+    if (_isPaused) {
+      await _recorder!.resume();
+      setState(() => _isPaused = false);
+    } else {
+      await _recorder!.pause();
+      setState(() => _isPaused = true);
+    }
+  }
+
+  Future<void> _stopRecordingAndSave() async {
+    if (_recorder == null) return;
+    _recordTimer?.cancel();
+    _recordTimer = null;
+    await _recorder!.stop();
+    setState(() { _isRecording = false; _isPaused = false; _recordSeconds = 0; });
+    final path = _recordPath;
+    if (path == null) return;
+    try {
+      final bytes = await _readFileBytes(path);
+      final now = DateTime.now();
+      final ts = now.millisecondsSinceEpoch;
+      final autoName = 'Sprachaufnahme_${DateFormat('yyyyMMdd_HHmmss').format(now)}.m4a';
+      final storagePath = '${widget.projectId}/defects/${_defect['id']}/voice_$ts.m4a';
+      await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'audio/m4a');
+      await SupabaseService.addTaskDoc(_defect['id'], widget.projectId, {
+        'documentation_type': 'voice',
+        'content': '',
+        'storage_path': storagePath,
+        'file_name': autoName,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sprachaufnahme gespeichert')));
+      _loadDet();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload-Fehler: $e')));
+    }
+  }
+
+  Future<void> _uploadVoiceFile() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio, withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    Uint8List? bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (file.path != null) bytes = await _readFileBytes(file.path!);
+    }
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden')));
+      return;
+    }
+    try {
+      final ext = file.extension ?? 'm4a';
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/defects/${_defect['id']}/voice_$ts.$ext';
+      await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'audio/$ext');
+      await SupabaseService.addTaskDoc(_defect['id'], widget.projectId, {
+        'documentation_type': 'voice',
+        'content': '',
+        'storage_path': storagePath,
+        'file_name': file.name,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Audiodatei hochgeladen')));
+      _loadDet();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload-Fehler: $e')));
+    }
+  }
+
+  Future<void> _playVoice(Map<String, dynamic> doc) async {
+    final docId = doc['id'] as String;
+    final storagePath = doc['storage_path'] as String?;
+    if (storagePath == null) return;
+    if (_isPlaying && _playingDocId == docId) {
+      await _player?.stop();
+      setState(() { _isPlaying = false; _playingDocId = null; });
+      return;
+    }
+    try {
+      final url = SupabaseService.getTaskImageUrl(storagePath);
+      _player ??= AudioPlayer();
+      await _player!.setUrl(url);
+      _player!.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed) {
+          if (mounted) setState(() { _isPlaying = false; _playingDocId = null; });
+        }
+      });
+      await _player!.play();
+      setState(() { _isPlaying = true; _playingDocId = docId; });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Wiedergabe-Fehler: $e')));
+    }
+  }
+
+  Future<void> _recordVideo() async {
+    final picker = ImagePicker();
+    final video = await picker.pickVideo(source: ImageSource.camera);
+    if (video == null) return;
+    final now = DateTime.now();
+    final autoName = 'Video_${DateFormat('yyyyMMdd_HHmmss').format(now)}.${video.name.split('.').last.toLowerCase()}';
+    String? customName;
+    if (mounted) {
+      final ctrl = TextEditingController();
+      customName = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Video benennen'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: InputDecoration(hintText: autoName, labelText: 'Dateiname (optional)'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Überspringen')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty ? ctrl.text.trim() : null),
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      );
+    }
+    final fileName = (customName != null && customName.isNotEmpty)
+        ? (customName.contains('.') ? customName : '$customName.${video.name.split('.').last.toLowerCase()}')
+        : autoName;
+    try {
+      final bytes = await video.readAsBytes();
+      final ext = video.name.split('.').last.toLowerCase();
+      final ts = now.millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/defects/${_defect['id']}/video_$ts.$ext';
+      await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'video/$ext');
+      await SupabaseService.addTaskDoc(_defect['id'], widget.projectId, {
+        'documentation_type': 'video',
+        'content': '',
+        'storage_path': storagePath,
+        'file_name': fileName,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video gespeichert')));
+      _loadDet();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    }
+  }
+
+  Future<void> _uploadVideoFile() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    Uint8List? bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (file.path != null) bytes = await _readFileBytes(file.path!);
+    }
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden')));
+      return;
+    }
+    String? customName;
+    if (mounted) {
+      final ctrl = TextEditingController(text: file.name);
+      customName = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Video benennen'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Dateiname'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Überspringen')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty ? ctrl.text.trim() : null),
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      );
+    }
+    final now = DateTime.now();
+    final ext = file.extension ?? 'mp4';
+    final autoName = 'Video_${DateFormat('yyyyMMdd_HHmmss').format(now)}.$ext';
+    final fileName = (customName != null && customName.isNotEmpty) ? customName : autoName;
+    try {
+      final ts = now.millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/defects/${_defect['id']}/video_$ts.$ext';
+      await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'video/$ext');
+      await SupabaseService.addTaskDoc(_defect['id'], widget.projectId, {
+        'documentation_type': 'video',
+        'content': '',
+        'storage_path': storagePath,
+        'file_name': fileName,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video hochgeladen')));
+      _loadDet();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload-Fehler: $e')));
+    }
   }
 
   Future<String?> _showMemberPicker(BuildContext ctx) {
@@ -1454,14 +1694,9 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
                               icon: _savingDoc ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.plus, size: 16),
                               label: const Text('Hinzuf\u00fcgen'), onPressed: _savingDoc ? null : _addDoc)),
                           ])
-                        : Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
-                            child: Column(children: [
-                              Icon(_docType == 'voice' ? LucideIcons.mic : LucideIcons.video, size: 32, color: AppColors.textTertiary),
-                              const SizedBox(height: 8),
-                              Text(_docType == 'voice' ? 'Sprachaufnahme \u2013 folgt' : 'Video-Upload \u2013 folgt', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), textAlign: TextAlign.center),
-                            ])),
+                        : _docType == 'voice'
+                            ? _voiceInput()
+                            : _videoInput(),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -1477,37 +1712,192 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
         itemCount: _docs.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final doc = _docs[i]; final type = doc['documentation_type'] ?? 'text'; final content = doc['content'] as String?;
-          IconData typeIcon; String typeLabel; Color typeColor;
-          switch (type) {
-            case 'voice': typeIcon = LucideIcons.mic;      typeLabel = 'Sprachdokumentation'; typeColor = const Color(0xFFF59E0B); break;
-            case 'video': typeIcon = LucideIcons.video;    typeLabel = 'Videodokumentation';  typeColor = const Color(0xFF8B5CF6); break;
-            case 'image': typeIcon = LucideIcons.image;    typeLabel = 'Bilddokumentation';   typeColor = const Color(0xFF10B981); break;
-            default:      typeIcon = LucideIcons.fileText; typeLabel = 'Textdokumentation';   typeColor = AppColors.primary;
-          }
-          return Container(
-            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-            child: Column(children: [
-              Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(color: AppColors.background, borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), border: Border(bottom: BorderSide(color: AppColors.border))),
-                child: Row(children: [
-                  Container(width: 32, height: 32, decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(typeIcon, size: 16, color: typeColor)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(typeLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text)),
-                    Text(_fmtDateTime(doc['created_at'] as String?), style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                  ])),
-                  GestureDetector(onTap: () => SupabaseService.deleteTaskDoc(doc['id'] as String).then((_) => _loadDet()),
-                    child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.trash2, size: 14, color: AppColors.danger))),
-                ])),
-              if (content != null && content.isNotEmpty)
-                Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft, child: Text(content, style: const TextStyle(fontSize: 14, color: AppColors.text)))),
-            ]),
-          );
-        },
+        itemBuilder: (_, i) => _defDocEntry(_docs[i]),
       )),
     ]);
+  }
+
+  Widget _voiceInput() {
+    final mm = (_recordSeconds ~/ 60).toString().padLeft(2, '0');
+    final ss = (_recordSeconds % 60).toString().padLeft(2, '0');
+    return Column(children: [
+      Row(children: [
+        Expanded(child: ElevatedButton.icon(
+          icon: Icon(_isRecording ? LucideIcons.stopCircle : LucideIcons.mic, size: 18, color: Colors.white),
+          label: Text(_isRecording ? 'Aufnahme stoppen & Speichern' : 'Aufnahme starten'),
+          style: ElevatedButton.styleFrom(backgroundColor: _isRecording ? AppColors.danger : const Color(0xFFF59E0B)),
+          onPressed: _isRecording ? _stopRecordingAndSave : _startRecording,
+        )),
+      ]),
+      if (_isRecording) ...[
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(width: 9, height: 9, decoration: BoxDecoration(
+              color: _isPaused ? AppColors.textTertiary : AppColors.danger, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(_isPaused ? 'Pausiert' : 'Aufnahme l\u00e4uft\u2026',
+              style: TextStyle(fontSize: 13, color: _isPaused ? AppColors.textSecondary : AppColors.danger, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('$mm:$ss', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: _pauseResumeRecording,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(6), border: Border.all(color: AppColors.border)),
+                child: Icon(_isPaused ? LucideIcons.play : LucideIcons.pause, size: 16, color: AppColors.primary),
+              ),
+            ),
+          ]),
+        ),
+      ],
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        icon: const Icon(LucideIcons.upload, size: 16),
+        label: const Text('Audiodatei hochladen'),
+        onPressed: _uploadVoiceFile,
+      ),
+    ]);
+  }
+
+  Widget _videoInput() {
+    return Column(children: [
+      Row(children: [
+        Expanded(child: ElevatedButton.icon(
+          icon: const Icon(LucideIcons.video, size: 18),
+          label: const Text('Video aufnehmen'),
+          onPressed: _recordVideo,
+        )),
+      ]),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        icon: const Icon(LucideIcons.upload, size: 16),
+        label: const Text('Video hochladen'),
+        onPressed: _uploadVideoFile,
+      ),
+    ]);
+  }
+
+  Widget _defDocEntry(Map<String, dynamic> doc) {
+    final type        = doc['documentation_type'] ?? 'text';
+    final content     = doc['content'] as String? ?? '';
+    final storagePath = doc['storage_path'] as String?;
+    final docId       = doc['id'] as String;
+    final isPlayingThis = _isPlaying && _playingDocId == docId;
+
+    IconData typeIcon; String typeLabel; Color typeColor;
+    switch (type) {
+      case 'voice': typeIcon = LucideIcons.mic;      typeLabel = 'Sprachdokumentation'; typeColor = const Color(0xFFF59E0B); break;
+      case 'video': typeIcon = LucideIcons.video;    typeLabel = 'Videodokumentation';  typeColor = const Color(0xFF8B5CF6); break;
+      case 'image': typeIcon = LucideIcons.image;    typeLabel = 'Bilddokumentation';   typeColor = const Color(0xFF10B981); break;
+      default:      typeIcon = LucideIcons.fileText; typeLabel = 'Textdokumentation';   typeColor = AppColors.primary;
+    }
+
+    return Container(
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), border: Border(bottom: BorderSide(color: AppColors.border))),
+          child: Row(children: [
+            Container(width: 32, height: 32, decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(typeIcon, size: 16, color: typeColor)),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(typeLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text)),
+              Text(_fmtDateTime(doc['created_at'] as String?), style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+            ])),
+            if (type == 'voice' && storagePath != null)
+              GestureDetector(
+                onTap: () => _playVoice(doc),
+                child: Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(color: isPlayingThis ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : AppColors.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: isPlayingThis ? const Color(0xFFF59E0B) : AppColors.border)),
+                  child: Icon(isPlayingThis ? LucideIcons.pause : LucideIcons.play, size: 16, color: isPlayingThis ? const Color(0xFFF59E0B) : AppColors.primary),
+                ),
+              ),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => SupabaseService.deleteTaskDoc(docId).then((_) => _loadDet()),
+              child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.trash2, size: 14, color: AppColors.danger)),
+            ),
+          ]),
+        ),
+        if (content.isNotEmpty)
+          Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft,
+            child: Text(content, style: const TextStyle(fontSize: 14, color: AppColors.text)))),
+        if (type == 'voice' && storagePath != null && isPlayingThis && _player != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: StreamBuilder<Duration>(
+              stream: _player!.positionStream,
+              builder: (context, posSnap) {
+                return StreamBuilder<Duration?>(
+                  stream: _player!.durationStream,
+                  builder: (context, durSnap) {
+                    final pos = posSnap.data ?? Duration.zero;
+                    final dur = durSnap.data ?? Duration.zero;
+                    final progress = dur.inMilliseconds > 0 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0) : 0.0;
+                    String fmtD(Duration d) => '${d.inMinutes.toString().padLeft(2,'0')}:${(d.inSeconds % 60).toString().padLeft(2,'0')}';
+                    return Column(children: [
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
+                        child: Slider(
+                          value: progress,
+                          onChanged: (v) {
+                            if (dur.inMilliseconds > 0) _player!.seek(Duration(milliseconds: (v * dur.inMilliseconds).round()));
+                          },
+                          activeColor: const Color(0xFFF59E0B),
+                          inactiveColor: AppColors.border,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          Text(fmtD(pos), style: const TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+                          Text(fmtD(dur), style: const TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+                        ]),
+                      ),
+                    ]);
+                  },
+                );
+              },
+            ),
+          ),
+        if (type == 'video' && storagePath != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+            child: GestureDetector(
+              onTap: () async {
+                try {
+                  final url = await SupabaseService.getSignedUrl('task-images', storagePath);
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3))),
+                child: Row(children: [
+                  const Icon(LucideIcons.playCircle, size: 22, color: Color(0xFF8B5CF6)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(doc['file_name'] as String? ?? 'Video', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text), overflow: TextOverflow.ellipsis),
+                    const Text('Tippen zum Abspielen', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  ])),
+                  const Icon(LucideIcons.externalLink, size: 14, color: Color(0xFF8B5CF6)),
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
   }
 
   Widget _docTypeBtn(String type, String label, IconData icon) {
@@ -1533,7 +1923,15 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
   );
 
   @override
-  void dispose() { _tabs.dispose(); _titleCtrl.dispose(); _descCtrl.dispose(); _locCtrl.dispose(); _docCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _tabs.dispose();
+    _titleCtrl.dispose(); _descCtrl.dispose(); _locCtrl.dispose(); _docCtrl.dispose();
+    _recordTimer?.cancel();
+    _recorder?.dispose();
+    _player?.stop();
+    _player?.dispose();
+    super.dispose();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -939,7 +941,10 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
   // Voice recording
   AudioRecorder? _recorder;
   bool _isRecording = false;
+  bool _isPaused = false;
   String? _recordPath;
+  int _recordSeconds = 0;
+  dynamic _recordTimer; // Timer
   AudioPlayer? _player;
   bool _isPlaying = false;
   String? _playingDocId;
@@ -978,7 +983,9 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
     _tabs.dispose();
     _titleCtrl.dispose(); _descCtrl.dispose(); _spCtrl.dispose();
     _docBodyCtrl.dispose();
+    (_recordTimer as Timer?)?.cancel();
     _recorder?.dispose();
+    _player?.stop();
     _player?.dispose();
     super.dispose();
   }
@@ -1062,7 +1069,7 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
 
   Future<void> _startRecording() async {
     try {
-      _recorder = AudioRecorder();
+      _recorder ??= AudioRecorder();
       final hasPermission = await _recorder!.hasPermission();
       if (!hasPermission) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mikrofonzugriff erforderlich')));
@@ -1071,28 +1078,47 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
       final dir = await getTemporaryDirectory();
       _recordPath = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder!.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: _recordPath!);
-      setState(() => _isRecording = true);
+      setState(() { _isRecording = true; _isPaused = false; _recordSeconds = 0; });
+      _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && _isRecording && !_isPaused) setState(() => _recordSeconds++);
+      });
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aufnahme-Fehler: $e')));
     }
   }
 
+  Future<void> _pauseResumeRecording() async {
+    if (_recorder == null) return;
+    if (_isPaused) {
+      await _recorder!.resume();
+      setState(() => _isPaused = false);
+    } else {
+      await _recorder!.pause();
+      setState(() => _isPaused = true);
+    }
+  }
+
   Future<void> _stopRecordingAndSave() async {
     if (_recorder == null) return;
+    (_recordTimer as Timer?)?.cancel();
+    _recordTimer = null;
     await _recorder!.stop();
-    setState(() => _isRecording = false);
+    setState(() { _isRecording = false; _isPaused = false; _recordSeconds = 0; });
     final path = _recordPath;
     if (path == null) return;
     // Upload voice file
     try {
       final bytes = await _readFileBytes(path);
-      final storagePath = '${widget.projectId}/tasks/${_task['id']}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final now = DateTime.now();
+      final ts = now.millisecondsSinceEpoch;
+      final autoName = 'Sprachaufnahme_${DateFormat('yyyyMMdd_HHmmss').format(now)}.m4a';
+      final storagePath = '${widget.projectId}/tasks/${_task['id']}/voice_$ts.m4a';
       await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'audio/m4a');
       await SupabaseService.addTaskDoc(_task['id'], widget.projectId, {
         'documentation_type': 'voice',
         'content': '',
         'storage_path': storagePath,
-        'file_name': 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+        'file_name': autoName,
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sprachaufnahme gespeichert')));
       _loadMedia();
@@ -1102,14 +1128,26 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
   }
 
   Future<void> _uploadVoiceFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      withData: true, // ensures bytes are available on iOS
+    );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    if (file.bytes == null && file.path == null) return;
+    Uint8List? bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (file.path != null) {
+        bytes = await _readFileBytes(file.path!);
+      }
+    }
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden')));
+      return;
+    }
     try {
-      final bytes = file.bytes ?? await _readFileBytes(file.path!);
       final ext = file.extension ?? 'm4a';
-      final storagePath = '${widget.projectId}/tasks/${_task['id']}/voice_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/tasks/${_task['id']}/voice_$ts.$ext';
       await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'audio/$ext');
       await SupabaseService.addTaskDoc(_task['id'], widget.projectId, {
         'documentation_type': 'voice',
@@ -1125,20 +1163,53 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
   }
 
   Future<void> _uploadVideoFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.video);
+    final result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    if (file.bytes == null && file.path == null) return;
+    Uint8List? bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (file.path != null) bytes = await _readFileBytes(file.path!);
+    }
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden')));
+      return;
+    }
+    // Ask for a custom name
+    String? customName;
+    if (mounted) {
+      final ctrl = TextEditingController(text: file.name);
+      customName = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Video benennen'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Dateiname'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Überspringen')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty ? ctrl.text.trim() : null),
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      );
+    }
+    final now = DateTime.now();
+    final ext = file.extension ?? 'mp4';
+    final autoName = 'Video_${DateFormat('yyyyMMdd_HHmmss').format(now)}.$ext';
+    final fileName = (customName != null && customName.isNotEmpty) ? customName : autoName;
     try {
-      final bytes = file.bytes ?? await _readFileBytes(file.path!);
-      final ext = file.extension ?? 'mp4';
-      final storagePath = '${widget.projectId}/tasks/${_task['id']}/video_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ts = now.millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/tasks/${_task['id']}/video_$ts.$ext';
       await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'video/$ext');
       await SupabaseService.addTaskDoc(_task['id'], widget.projectId, {
         'documentation_type': 'video',
         'content': '',
         'storage_path': storagePath,
-        'file_name': file.name,
+        'file_name': fileName,
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video hochgeladen')));
       _loadMedia();
@@ -1151,16 +1222,51 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
     final picker = ImagePicker();
     final video = await picker.pickVideo(source: ImageSource.camera);
     if (video == null) return;
+    // Ask for a custom name
+    final now = DateTime.now();
+    final autoName = 'Video_${DateFormat('yyyyMMdd_HHmmss').format(now)}.${video.name.split('.').last.toLowerCase()}';
+    String? customName;
+    if (mounted) {
+      final ctrl = TextEditingController();
+      customName = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Video benennen'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: autoName,
+              labelText: 'Dateiname (optional)',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null), // skip → auto-name
+              child: const Text('Überspringen'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty ? ctrl.text.trim() : null),
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      );
+    }
+    final fileName = (customName != null && customName.isNotEmpty)
+        ? (customName.contains('.') ? customName : '$customName.${video.name.split('.').last.toLowerCase()}')
+        : autoName;
     try {
       final bytes = await video.readAsBytes();
       final ext = video.name.split('.').last.toLowerCase();
-      final storagePath = '${widget.projectId}/tasks/${_task['id']}/video_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ts = now.millisecondsSinceEpoch;
+      final storagePath = '${widget.projectId}/tasks/${_task['id']}/video_$ts.$ext';
       await SupabaseService.uploadFile(bucket: 'task-images', path: storagePath, bytes: bytes, contentType: 'video/$ext');
       await SupabaseService.addTaskDoc(_task['id'], widget.projectId, {
         'documentation_type': 'video',
         'content': '',
         'storage_path': storagePath,
-        'file_name': video.name,
+        'file_name': fileName,
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video gespeichert')));
       _loadMedia();
@@ -1572,22 +1678,41 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
   }
 
   Widget _voiceInput() {
+    final mm = (_recordSeconds ~/ 60).toString().padLeft(2, '0');
+    final ss = (_recordSeconds % 60).toString().padLeft(2, '0');
     return Column(children: [
       Row(children: [
         Expanded(child: ElevatedButton.icon(
           icon: Icon(_isRecording ? LucideIcons.stopCircle : LucideIcons.mic, size: 18, color: Colors.white),
-          label: Text(_isRecording ? 'Aufnahme stoppen' : 'Aufnahme starten'),
+          label: Text(_isRecording ? 'Aufnahme stoppen & Speichern' : 'Aufnahme starten'),
           style: ElevatedButton.styleFrom(backgroundColor: _isRecording ? AppColors.danger : const Color(0xFFF59E0B)),
           onPressed: _isRecording ? _stopRecordingAndSave : _startRecording,
         )),
       ]),
       if (_isRecording) ...[
-        const SizedBox(height: 10),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(width: 10, height: 10, decoration: BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
-          const SizedBox(width: 8),
-          const Text('Aufnahme l\u00e4uft\u2026', style: TextStyle(fontSize: 13, color: AppColors.danger, fontWeight: FontWeight.w600)),
-        ]),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(width: 9, height: 9, decoration: BoxDecoration(
+              color: _isPaused ? AppColors.textTertiary : AppColors.danger, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(_isPaused ? 'Pausiert' : 'Aufnahme l\u00e4uft\u2026',
+              style: TextStyle(fontSize: 13, color: _isPaused ? AppColors.textSecondary : AppColors.danger, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('$mm:$ss', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.text)),
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: _pauseResumeRecording,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(6), border: Border.all(color: AppColors.border)),
+                child: Icon(_isPaused ? LucideIcons.play : LucideIcons.pause, size: 16, color: AppColors.primary),
+              ),
+            ),
+          ]),
+        ),
       ],
       const SizedBox(height: 10),
       OutlinedButton.icon(
@@ -1685,16 +1810,75 @@ class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProvi
             child: content.contains('<') && content.contains('>')
                 ? Html(data: content, style: {'body': Style(margin: Margins.zero, padding: HtmlPaddings.zero, color: AppColors.text)})
                 : Text(content, style: const TextStyle(fontSize: 14, color: AppColors.text, height: 1.5)))),
+        // Voice progress bar
+        if (type == 'voice' && storagePath != null && isPlayingThis && _player != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: StreamBuilder<Duration>(
+              stream: _player!.positionStream,
+              builder: (context, posSnap) {
+                return StreamBuilder<Duration?>(
+                  stream: _player!.durationStream,
+                  builder: (context, durSnap) {
+                    final pos = posSnap.data ?? Duration.zero;
+                    final dur = durSnap.data ?? Duration.zero;
+                    final progress = dur.inMilliseconds > 0 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0) : 0.0;
+                    String _fmt(Duration d) => '${d.inMinutes.toString().padLeft(2,'0')}:${(d.inSeconds % 60).toString().padLeft(2,'0')}';
+                    return Column(children: [
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
+                        child: Slider(
+                          value: progress,
+                          onChanged: (v) {
+                            if (dur.inMilliseconds > 0) _player!.seek(Duration(milliseconds: (v * dur.inMilliseconds).round()));
+                          },
+                          activeColor: const Color(0xFFF59E0B),
+                          inactiveColor: AppColors.border,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          Text(_fmt(pos), style: const TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+                          Text(_fmt(dur), style: const TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+                        ]),
+                      ),
+                    ]);
+                  },
+                );
+              },
+            ),
+          ),
         if (type == 'video' && storagePath != null)
-          Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 14), child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-            child: Row(children: [
-              const Icon(LucideIcons.playCircle, size: 20, color: Color(0xFF8B5CF6)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(doc['file_name'] as String? ?? 'Video', style: const TextStyle(fontSize: 13, color: AppColors.text), overflow: TextOverflow.ellipsis)),
-            ]),
-          )),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+            child: GestureDetector(
+              onTap: () async {
+                try {
+                  final url = await SupabaseService.getSignedUrl('task-images', storagePath);
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.3))),
+                child: Row(children: [
+                  const Icon(LucideIcons.playCircle, size: 22, color: Color(0xFF8B5CF6)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(doc['file_name'] as String? ?? 'Video', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text), overflow: TextOverflow.ellipsis),
+                    const Text('Tippen zum Abspielen', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  ])),
+                  const Icon(LucideIcons.externalLink, size: 14, color: Color(0xFF8B5CF6)),
+                ]),
+              ),
+            ),
+          ),
       ]),
     );
   }
