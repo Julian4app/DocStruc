@@ -10,6 +10,7 @@ import '../../../core/providers/permissions_provider.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import '../../../core/utils/tablet_utils.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,10 +173,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
     final descCtrl = TextEditingController(text: existing?['description'] ?? '');
     String? parentId = existing?['parent_folder_id'] as String?;
 
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final confirmed = await showAdaptiveSheet<bool>(
+      context,
       builder: (ctx) => _BottomSheet(
         title: existing != null ? 'Ordner bearbeiten' : 'Neuer Ordner',
         child: StatefulBuilder(builder: (ctx2, setSt) {
@@ -240,10 +239,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
     final name = folder['name'] as String? ?? 'Ordner';
     bool nameMatches = false;
 
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final confirmed = await showAdaptiveSheet<bool>(
+      context,
       builder: (ctx) => _BottomSheet(
         title: 'Ordner löschen',
         child: StatefulBuilder(builder: (ctx2, setSt) {
@@ -388,10 +385,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
 
   Future<void> _renameFile(Map<String, dynamic> file) async {
     final ctrl = TextEditingController(text: file['name'] as String? ?? '');
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final confirmed = await showAdaptiveSheet<bool>(
+      context,
       builder: (ctx) => _BottomSheet(
         title: 'Datei umbenennen',
         child: Column(
@@ -451,10 +446,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
   }
 
   Future<void> _showVersionsModal(Map<String, dynamic> file) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    await showAdaptiveSheet(
+      context,
       builder: (ctx) =>
           _VersionsSheet(file: file, projectId: widget.projectId),
     );
@@ -462,10 +455,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
   }
 
   Future<void> _showShareModal(Map<String, dynamic> file) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    await showAdaptiveSheet(
+      context,
       builder: (ctx) => _ShareSheet(file: file, members: _members),
     );
   }
@@ -473,10 +464,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
   Future<void> _showLinkToFolderModal(Map<String, dynamic> doc) async {
     String? selectedFolderId;
 
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final confirmed = await showAdaptiveSheet<bool>(
+      context,
       builder: (ctx) => _BottomSheet(
         title: 'Zu Ordner hinzufügen',
         child: StatefulBuilder(builder: (ctx2, setSt) {
@@ -845,9 +834,8 @@ void _showFolderMenu(
   VoidCallback? onEdit,
   VoidCallback? onDelete,
 }) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
+  showAdaptiveSheet(
+    context,
     builder: (_) => Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -928,9 +916,8 @@ void _showFileMenu(
 }) {
   final name = file['name'] as String? ?? 'Datei';
   final mime = file['mime_type'] as String?;
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
+  showAdaptiveSheet(
+    context,
     builder: (_) => Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -2247,9 +2234,8 @@ Widget _folderDropdown({
 
   return GestureDetector(
     onTap: () async {
-      final result = await showModalBottomSheet<String?>(
-        context: context,
-        backgroundColor: Colors.transparent,
+      final result = await showAdaptiveSheet<String?>(
+        context,
         builder: (ctx) => Container(
           decoration: const BoxDecoration(
             color: AppColors.surface,

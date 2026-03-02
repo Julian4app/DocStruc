@@ -9,6 +9,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
+import '../../../core/utils/tablet_utils.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 const _pageSize = 50;
@@ -170,10 +171,8 @@ class _ProjectCommunicationPageState extends ConsumerState<ProjectCommunicationP
     final ctrl = TextEditingController(text: existing?['content'] ?? '');
     String selectedVisibility = 'all_participants';
 
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final confirmed = await showAdaptiveSheet<bool>(
+      context,
       builder: (ctx) => _NoteModal(
         controller: ctrl,
         isEdit: isEdit,

@@ -1075,10 +1075,8 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
   }
 
   Future<String?> _showMemberPicker(BuildContext ctx) {
-    return showModalBottomSheet<String>(
-      context: ctx,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
+    return showAdaptiveSheet<String>(
+      ctx,
       builder: (_) => Container(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
         decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -1131,9 +1129,8 @@ class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerP
       {'value': 'team_only',       'label': 'Nur mein Team',   'sub': 'Nur Teammitglieder können sehen',   'icon': LucideIcons.userCheck},
       {'value': 'owner_only',      'label': 'Nur ich',         'sub': 'Nur ich (Eigentümer) kann sehen',   'icon': LucideIcons.lock},
     ];
-    return showModalBottomSheet<String>(
-      context: ctx,
-      backgroundColor: Colors.transparent,
+    return showAdaptiveSheet<String>(
+      ctx,
       builder: (_) => Container(
         decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
         child: Column(mainAxisSize: MainAxisSize.min, children: [

@@ -500,7 +500,7 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
   Widget _calLegend(String l, Color c) => Row(mainAxisSize:MainAxisSize.min,children:[Container(width:10,height:10,decoration:BoxDecoration(color:c,shape:BoxShape.circle)),const SizedBox(width:4),Text(l,style:const TextStyle(fontSize:12,color:AppColors.textSecondary))]);
 
   void _showCalDaySheet(BuildContext ctx, int day, List<Map<String,dynamic>> items) {
-    showModalBottomSheet(context:ctx,backgroundColor:Colors.transparent,builder:(_)=>Container(
+    showAdaptiveSheet(ctx,builder:(_)=>Container(
       decoration:const BoxDecoration(color:AppColors.surface,borderRadius:BorderRadius.vertical(top:Radius.circular(20))),
       child:Column(mainAxisSize:MainAxisSize.min,children:[
         Padding(padding:const EdgeInsets.only(top:12),child:Container(width:40,height:4,decoration:BoxDecoration(color:AppColors.border,borderRadius:BorderRadius.circular(2)))),
@@ -621,10 +621,8 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
     final priorityColor = _priorityColor(li['priority'] as String?);
     final typeColor = isDefect ? priorityColor : AppColors.primary;
 
-    showModalBottomSheet(
-      context: ctx,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    showAdaptiveSheet(
+      ctx,
       builder: (_) => Container(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
         decoration: const BoxDecoration(
