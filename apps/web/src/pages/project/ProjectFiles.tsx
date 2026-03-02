@@ -16,7 +16,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   FolderOpen, Upload, File, FileText, Image, Video, Folder, Download, 
   MoreVertical, Edit2, Trash2, Share2, X, Plus, FolderPlus, Clock,
-  User, ChevronRight, ChevronDown, Eye, EyeOff
+  User, ChevronRight, ChevronDown, Eye, EyeOff,
+  Archive, Tag, Briefcase, Star, Building2, Home, Lock, Book, Camera,
+  Code, Database, Package, Layers, Music, Globe, Heart
 } from 'lucide-react';
 
 interface ProjectFolder {
@@ -26,6 +28,7 @@ interface ProjectFolder {
   name: string;
   description: string | null;
   color: string | null;
+  icon_name: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -45,6 +48,7 @@ interface ProjectFile {
   uploaded_by: string;
   uploaded_at: string;
   uploader_name?: string;
+  tags?: string[];
 }
 
 interface FileVersion {
@@ -126,7 +130,9 @@ export function ProjectFiles() {
   const [selectedFolderForLink, setSelectedFolderForLink] = useState<string | null>(null);
   
   // Form data
-  const [folderFormData, setFolderFormData] = useState({ name: '', description: '', parent_folder_id: null as string | null });
+  const [folderFormData, setFolderFormData] = useState({ name: '', description: '', parent_folder_id: null as string | null, icon_name: 'Folder' });
+  const [tagInputValues, setTagInputValues] = useState<Record<string, string>>({});
+  const [showTagInputFor, setShowTagInputFor] = useState<string | null>(null);
   const [editingFolder, setEditingFolder] = useState<ProjectFolder | null>(null);
   const [renamingFile, setRenamingFile] = useState<ProjectFile | null>(null);
   const [newFileName, setNewFileName] = useState('');
@@ -325,6 +331,7 @@ export function ProjectFiles() {
         parent_folder_id: folderFormData.parent_folder_id,
         name: folderFormData.name,
         description: folderFormData.description,
+        icon_name: folderFormData.icon_name,
         created_by: userId
       });
 
@@ -336,7 +343,7 @@ export function ProjectFiles() {
 
     showToast('Ordner erfolgreich erstellt', 'success');
     setIsFolderModalOpen(false);
-    setFolderFormData({ name: '', description: '', parent_folder_id: null });
+    setFolderFormData({ name: '', description: '', parent_folder_id: null, icon_name: 'Folder' });
     loadFolders();
   };
 
@@ -347,7 +354,8 @@ export function ProjectFiles() {
       .from('project_folders')
       .update({
         name: folderFormData.name,
-        description: folderFormData.description
+        description: folderFormData.description,
+        icon_name: folderFormData.icon_name
       })
       .eq('id', editingFolder.id);
 
@@ -360,7 +368,7 @@ export function ProjectFiles() {
     showToast('Ordner erfolgreich aktualisiert', 'success');
     setIsFolderModalOpen(false);
     setEditingFolder(null);
-    setFolderFormData({ name: '', description: '', parent_folder_id: null });
+    setFolderFormData({ name: '', description: '', parent_folder_id: null, icon_name: 'Folder' });
     loadFolders();
   };
 
@@ -501,21 +509,17 @@ export function ProjectFiles() {
     try {
       const { data, error } = await supabase.storage
         .from('project-files')
-        .download(file.storage_path);
+        .createSignedUrl(file.storage_path, 60, { download: file.name });
 
-      if (error) throw error;
+      if (error || !data) throw error || new Error('No signed URL');
 
-      // Force download by using application/octet-stream — prevents browser from rendering inline
-      const blob = new Blob([data], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = data.signedUrl;
       a.download = file.name;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       showToast('Datei wird heruntergeladen', 'success');
     } catch (error: any) {
@@ -529,20 +533,17 @@ export function ProjectFiles() {
       const bucket = doc.type === 'task-documentation' ? 'task-images' : 'project-files';
       const { data, error } = await supabase.storage
         .from(bucket)
-        .download(doc.storage_path);
+        .createSignedUrl(doc.storage_path, 60, { download: doc.name });
 
-      if (error) throw error;
+      if (error || !data) throw error || new Error('No signed URL');
 
-      const blob = new Blob([data], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = data.signedUrl;
       a.download = doc.name;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       showToast('Datei wird heruntergeladen', 'success');
     } catch (error: any) {
@@ -797,6 +798,81 @@ export function ProjectFiles() {
     }
   };
 
+  const FOLDER_ICON_MAP: Record<string, React.ReactElement> = {
+    Folder: <Folder size={24} color="#F59E0B" />,
+    FolderOpen: <FolderOpen size={24} color="#F59E0B" />,
+    Archive: <Archive size={24} color="#6366F1" />,
+    Briefcase: <Briefcase size={24} color="#0EA5E9" />,
+    Star: <Star size={24} color="#F59E0B" />,
+    Building2: <Building2 size={24} color="#10B981" />,
+    Home: <Home size={24} color="#3B82F6" />,
+    Lock: <Lock size={24} color="#DC2626" />,
+    Book: <Book size={24} color="#8B5CF6" />,
+    Camera: <Camera size={24} color="#EC4899" />,
+    Code: <Code size={24} color="#06B6D4" />,
+    Database: <Database size={24} color="#64748b" />,
+    Package: <Package size={24} color="#D97706" />,
+    Layers: <Layers size={24} color="#14B8A6" />,
+    Music: <Music size={24} color="#F43F5E" />,
+    Globe: <Globe size={24} color="#3B82F6" />,
+    Heart: <Heart size={24} color="#EF4444" />,
+  };
+
+  const FOLDER_ICON_OPTIONS = [
+    { name: 'Folder', label: 'Standard' },
+    { name: 'Archive', label: 'Archiv' },
+    { name: 'Briefcase', label: 'Aktentasche' },
+    { name: 'Star', label: 'Favorit' },
+    { name: 'Building2', label: 'Gebäude' },
+    { name: 'Home', label: 'Haus' },
+    { name: 'Lock', label: 'Gesperrt' },
+    { name: 'Book', label: 'Buch' },
+    { name: 'Camera', label: 'Kamera' },
+    { name: 'Code', label: 'Code' },
+    { name: 'Database', label: 'Datenbank' },
+    { name: 'Package', label: 'Paket' },
+    { name: 'Layers', label: 'Ebenen' },
+    { name: 'Music', label: 'Musik' },
+    { name: 'Globe', label: 'Web' },
+    { name: 'Heart', label: 'Favorit 2' },
+  ];
+
+  const getFolderIcon = (iconName: string | null | undefined): React.ReactElement => {
+    return FOLDER_ICON_MAP[iconName || 'Folder'] || FOLDER_ICON_MAP['Folder'];
+  };
+
+  const handleAddTag = async (file: ProjectFile, tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    const currentTags = file.tags || [];
+    if (currentTags.includes(trimmed)) return;
+    const newTags = [...currentTags, trimmed];
+    const { error } = await supabase
+      .from('project_files')
+      .update({ tags: newTags })
+      .eq('id', file.id);
+    if (error) {
+      showToast('Fehler beim Hinzufügen des Tags', 'error');
+      return;
+    }
+    setFiles(prev => prev.map(f => f.id === file.id ? { ...f, tags: newTags } : f));
+    setTagInputValues(prev => ({ ...prev, [file.id]: '' }));
+    setShowTagInputFor(null);
+  };
+
+  const handleRemoveTag = async (file: ProjectFile, tag: string) => {
+    const newTags = (file.tags || []).filter(t => t !== tag);
+    const { error } = await supabase
+      .from('project_files')
+      .update({ tags: newTags })
+      .eq('id', file.id);
+    if (error) {
+      showToast('Fehler beim Entfernen des Tags', 'error');
+      return;
+    }
+    setFiles(prev => prev.map(f => f.id === file.id ? { ...f, tags: newTags } : f));
+  };
+
   const toggleFolder = (folderId: string) => {
     const newExpanded = new Set(expandedFolders);
     if (newExpanded.has(folderId)) {
@@ -855,7 +931,7 @@ export function ProjectFiles() {
               onPress={() => toggleFolder(folder.id)}
             >
               {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <Folder size={24} color="#F59E0B" />
+              {getFolderIcon(folder.icon_name)}
               <Text style={styles.folderName}>{folder.name}</Text>
               <View style={styles.folderBadge}>
                 <Text style={styles.folderBadgeText}>
@@ -882,7 +958,8 @@ export function ProjectFiles() {
                     setFolderFormData({
                       name: folder.name,
                       description: folder.description || '',
-                      parent_folder_id: folder.parent_folder_id
+                      parent_folder_id: folder.parent_folder_id,
+                      icon_name: folder.icon_name || 'Folder'
                     });
                     setIsFolderModalOpen(true);
                   }}
@@ -932,6 +1009,43 @@ export function ProjectFiles() {
             <Text style={styles.fileMetaText}>{formatDate(file.uploaded_at)}</Text>
             <Text style={styles.fileMetaSep}>•</Text>
             <Text style={styles.fileMetaText}>{file.uploader_name}</Text>
+          </View>
+          {/* Tags row */}
+          <View style={styles.tagsRow}>
+            {(file.tags || []).map(tag => (
+              <View key={tag} style={styles.tagChip}>
+                <Tag size={10} color="#6366F1" />
+                <Text style={styles.tagChipText}>{tag}</Text>
+                <TouchableOpacity onPress={() => handleRemoveTag(file, tag)} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+                  <X size={10} color="#6366F1" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {showTagInputFor === file.id ? (
+              <View style={styles.tagInputContainer}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={tagInputValues[file.id] || ''}
+                  onChange={(e) => setTagInputValues(prev => ({ ...prev, [file.id]: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddTag(file, tagInputValues[file.id] || '');
+                    if (e.key === 'Escape') setShowTagInputFor(null);
+                  }}
+                  onBlur={() => {
+                    if (tagInputValues[file.id]?.trim()) handleAddTag(file, tagInputValues[file.id]);
+                    else setShowTagInputFor(null);
+                  }}
+                  placeholder="Tag hinzufügen..."
+                  style={{ border: 'none', outline: 'none', fontSize: 11, backgroundColor: 'transparent', color: '#6366F1', width: 120 }}
+                />
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.addTagButton} onPress={() => setShowTagInputFor(file.id)}>
+                <Plus size={10} color="#94a3b8" />
+                <Text style={styles.addTagText}>Tag</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         <View style={styles.fileActionsRow}>
@@ -1020,7 +1134,7 @@ export function ProjectFiles() {
                 variant="outline"
                 onClick={() => {
                   setEditingFolder(null);
-                  setFolderFormData({ name: '', description: '', parent_folder_id: null });
+                  setFolderFormData({ name: '', description: '', parent_folder_id: null, icon_name: 'Folder' });
                   setIsFolderModalOpen(true);
                 }}
               >
@@ -1089,8 +1203,8 @@ export function ProjectFiles() {
               <Card style={styles.folderCard}>
             <View style={styles.folderHeader}>
               <View style={styles.folderTitleRow}>
-                <Folder size={24} color="#94a3b8" />
-                <Text style={styles.folderName}>Root</Text>
+                <Archive size={24} color="#6366F1" />
+                <Text style={styles.folderName}>Nicht zugeordnet</Text>
                 <View style={styles.folderBadge}>
                   <Text style={styles.folderBadgeText}>
                     {rootFiles.length} {rootFiles.length === 1 ? 'Datei' : 'Dateien'}
@@ -1203,7 +1317,7 @@ export function ProjectFiles() {
         onClose={() => {
           setIsFolderModalOpen(false);
           setEditingFolder(null);
-          setFolderFormData({ name: '', description: '', parent_folder_id: null });
+          setFolderFormData({ name: '', description: '', parent_folder_id: null, icon_name: 'Folder' });
         }}
         title={editingFolder ? 'Ordner bearbeiten' : 'Neuer Ordner'}
       >
@@ -1230,13 +1344,35 @@ export function ProjectFiles() {
             />
           </View>
 
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Ordner-Symbol</Text>
+            <View style={styles.iconPickerGrid}>
+              {FOLDER_ICON_OPTIONS.map(option => (
+                <TouchableOpacity
+                  key={option.name}
+                  style={[
+                    styles.iconPickerItem,
+                    folderFormData.icon_name === option.name && styles.iconPickerItemActive
+                  ]}
+                  onPress={() => setFolderFormData({ ...folderFormData, icon_name: option.name })}
+                >
+                  {getFolderIcon(option.name)}
+                  <Text style={[
+                    styles.iconPickerLabel,
+                    folderFormData.icon_name === option.name && styles.iconPickerLabelActive
+                  ]}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           <View style={styles.modalActions}>
             <Button
               variant="outline"
               onClick={() => {
                 setIsFolderModalOpen(false);
                 setEditingFolder(null);
-                setFolderFormData({ name: '', description: '', parent_folder_id: null });
+                setFolderFormData({ name: '', description: '', parent_folder_id: null, icon_name: 'Folder' });
               }}
               style={{ flex: 1 }}
             >
@@ -1796,6 +1932,85 @@ const styles = StyleSheet.create({
   fileActionsRow: {
     flexDirection: 'row',
     gap: 4,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  tagChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6366F1',
+  },
+  tagInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  addTagButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  addTagText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  iconPickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  iconPickerItem: {
+    width: 72,
+    alignItems: 'center',
+    gap: 4,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  iconPickerItemActive: {
+    borderColor: '#6366F1',
+    backgroundColor: '#EEF2FF',
+  },
+  iconPickerLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  iconPickerLabelActive: {
+    color: '#6366F1',
+    fontWeight: '700',
   },
   emptyText: {
     fontSize: 14,

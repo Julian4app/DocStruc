@@ -542,9 +542,8 @@ export function ProjectDocumentation() {
         </Button>
       </View>
 
-      {/* Search & Filters */}
-      <Card style={styles.filterCard}>
-        <View style={styles.searchRow}>
+      {/* Search & Filters — flat row, no Card wrapper */}
+      <View style={styles.filterRow}>
           <View style={styles.searchContainer}>
             <Search size={18} color="#94a3b8" />
             <input
@@ -705,8 +704,7 @@ export function ProjectDocumentation() {
               </>
             )}
           </div>
-        </View>
-      </Card>
+      </View>
 
       {/* Timeline */}
       <ScrollView style={styles.timeline} showsVerticalScrollIndicator={false}>
@@ -976,11 +974,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#64748b',
   },
-  filterCard: {
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 20,
   },
   searchRow: {
