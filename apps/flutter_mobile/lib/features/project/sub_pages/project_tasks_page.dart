@@ -798,7 +798,7 @@ class _TaskCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => Navigator.push(context, MaterialPageRoute(fullscreenDialog: true,
-          builder: (_) => _TaskDetailPage(task: task, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete))),
+          builder: (_) => TaskDetailPage(task: task, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete))),
         child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(width: 10, height: 10, decoration: BoxDecoration(color: _statusColor(status), shape: BoxShape.circle)),
@@ -909,18 +909,18 @@ class _KanbanCard extends StatelessWidget {
 // ═════════════════════════════════════════════════════════════════════════════
 // TASK DETAIL PAGE
 // ═════════════════════════════════════════════════════════════════════════════
-class _TaskDetailPage extends StatefulWidget {
+class TaskDetailPage extends StatefulWidget {
   final Map<String, dynamic> task;
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
   final bool canEdit;
   final bool canDelete;
-  const _TaskDetailPage({required this.task, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
-  @override State<_TaskDetailPage> createState() => _TaskDetailPageState();
+  const TaskDetailPage({required this.task, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
+  @override State<TaskDetailPage> createState() => _TaskDetailPageState();
 }
 
-class _TaskDetailPageState extends State<_TaskDetailPage> with SingleTickerProviderStateMixin {
+class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProviderStateMixin {
   late TabController _tabs;
   late Map<String, dynamic> _task;
   bool _editMode = false;

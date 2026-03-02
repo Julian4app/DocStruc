@@ -833,7 +833,7 @@ class _DefectCard extends StatelessWidget {
                 child: InkWell(
                   onTap: () => Navigator.push(context, MaterialPageRoute(
                     fullscreenDialog: true,
-                    builder: (_) => _DefectDetailPage(defect: defect, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete),
+                    builder: (_) => DefectDetailPage(defect: defect, members: members, projectId: projectId, onRefresh: onRefresh, canEdit: canEdit, canDelete: canDelete),
                   )),
         child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -908,18 +908,18 @@ class _DefectCard extends StatelessWidget {
 // DEFECT DETAIL PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _DefectDetailPage extends StatefulWidget {
+class DefectDetailPage extends StatefulWidget {
   final Map<String, dynamic> defect;
   final List<Map<String, dynamic>> members;
   final String projectId;
   final VoidCallback onRefresh;
   final bool canEdit;
   final bool canDelete;
-  const _DefectDetailPage({required this.defect, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
-  @override State<_DefectDetailPage> createState() => _DefectDetailPageState();
+  const DefectDetailPage({required this.defect, required this.members, required this.projectId, required this.onRefresh, this.canEdit = false, this.canDelete = false});
+  @override State<DefectDetailPage> createState() => _DefectDetailPageState();
 }
 
-class _DefectDetailPageState extends State<_DefectDetailPage> with SingleTickerProviderStateMixin {
+class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerProviderStateMixin {
   late TabController _tabs;
   late Map<String, dynamic> _defect;
   bool _editMode = false, _loadingDet = true, _savingDoc = false, _saving = false;

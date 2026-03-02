@@ -7,6 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/tablet_utils.dart';
 import '../../../core/widgets/burger_menu_leading.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
+import 'project_tasks_page.dart';
+import 'project_defects_page.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -424,15 +426,21 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
 
   // ── TIMELINE TAB ──────────────────────────────────────────────────────────
   Widget _timelineTab() {
+    final filtered = _filteredMilestones;
     return RefreshIndicator(onRefresh:_load, child:ListView(
       children:[
         _overviewCard(),
-        const SizedBox(height:16),
-        Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:4),child:const Text('Zeitlinie',style:TextStyle(fontSize:16,fontWeight:FontWeight.w700,color:AppColors.text))),
-        if(_milestones.isEmpty) Padding(padding:const EdgeInsets.all(32),child:Center(child:Column(children:const[Icon(LucideIcons.calendar,size:48,color:AppColors.textTertiary),SizedBox(height:12),Text('Noch keine Meilensteine',style:TextStyle(fontSize:15,color:AppColors.textSecondary))])))
-        else ..._milestones.asMap().entries.map((e){
+        const SizedBox(height:4),
+        _searchBar(),
+        const SizedBox(height:8),
+        if(filtered.isEmpty) Padding(padding:const EdgeInsets.all(32),child:Center(child:Column(children:[
+          Icon(_search.isNotEmpty ? LucideIcons.searchX : LucideIcons.calendar, size:48,color:AppColors.textTertiary),
+          const SizedBox(height:12),
+          Text(_search.isNotEmpty ? 'Keine Treffer' : 'Noch keine Meilensteine', style:const TextStyle(fontSize:15,color:AppColors.textSecondary)),
+        ])))
+        else ...filtered.asMap().entries.map((e){
           final idx=e.key; final m=e.value;
-          return _TimelineCard(m:m, isLast:idx==_milestones.length-1, onTap:()=>_showDetail(context,m));
+          return _TimelineCard(m:m, isLast:idx==filtered.length-1, onTap:()=>_showDetail(context,m));
         }),
         const SizedBox(height:100),
       ],
@@ -615,90 +623,58 @@ class _ProjectSchedulePageState extends State<ProjectSchedulePage> with SingleTi
     );
   }
 
-  void _openLinkedItem(BuildContext ctx, Map<String,dynamic> li) {
+  Future<void> _openLinkedItem(BuildContext ctx, Map<String,dynamic> li) async {
     final isDefect = li['task_type'] == 'defect';
-    final statusColor = _taskStatusColor(li['status'] as String?);
-    final priorityColor = _priorityColor(li['priority'] as String?);
-    final typeColor = isDefect ? priorityColor : AppColors.primary;
-
-    showAdaptiveSheet(
-      ctx,
-      builder: (_) => Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    // Show loading indicator while fetching full data
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final results = await Future.wait([
+        SupabaseService.getTasks(widget.projectId),
+        SupabaseService.getProjectMembers(widget.projectId),
+      ]);
+      final allTasks = (results[0] as List).cast<Map<String,dynamic>>();
+      final members = (results[1] as List).cast<Map<String,dynamic>>();
+      final taskId = li['id'] as String?;
+      final fullTask = taskId != null
+          ? allTasks.firstWhere((t) => t['id'] == taskId, orElse: () => li)
+          : li;
+      if (ctx.mounted) Navigator.pop(ctx); // dismiss loading
+      if (!ctx.mounted) return;
+      await Navigator.push(
+        ctx,
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => isDefect
+              ? DefectDetailPage(
+                  defect: fullTask,
+                  members: members,
+                  projectId: widget.projectId,
+                  onRefresh: _load,
+                  canEdit: true,
+                  canDelete: true,
+                )
+              : TaskDetailPage(
+                  task: fullTask,
+                  members: members,
+                  projectId: widget.projectId,
+                  onRefresh: _load,
+                  canEdit: true,
+                  canDelete: true,
+                ),
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(padding: const EdgeInsets.only(top: 12), child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
-          Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 40), children: [
-            // Type + Status badges
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(isDefect ? LucideIcons.alertTriangle : LucideIcons.checkSquare, size: 13, color: typeColor),
-                  const SizedBox(width: 5),
-                  Text(isDefect ? 'Mangel' : 'Aufgabe', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: typeColor)),
-                ]),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                child: Text(_taskStatusLabel(li['status'] as String?), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: statusColor)),
-              ),
-            ]),
-            const SizedBox(height: 16),
-            // Title
-            Text(li['title'] ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.text)),
-            // Description
-            if ((li['description'] as String?)?.isNotEmpty ?? false) ...[const SizedBox(height: 10), Text(li['description'] as String, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5))],
-            const SizedBox(height: 20),
-            // Info cards
-            Container(
-              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
-              child: Column(children: [
-                if (isDefect && li['priority'] != null) ...[_liDetailTile(LucideIcons.flag, 'Priorität', _priorityLabel(li['priority'] as String?), priorityColor), const Divider(height: 1)],
-                _liDetailTile(LucideIcons.activity, 'Status', _taskStatusLabel(li['status'] as String?), statusColor),
-                if (li['due_date'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.calendar, 'Fälligkeitsdatum', _fmt(li['due_date'] as String?), AppColors.textSecondary)],
-                if ((li['location'] as String?)?.isNotEmpty ?? false) ...[const Divider(height: 1), _liDetailTile(LucideIcons.mapPin, 'Ort / Bereich', li['location'] as String, AppColors.textSecondary)],
-                if (!isDefect && li['story_points'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.zap, 'Story Points', '${li['story_points']} SP', AppColors.primary)],
-                if (!isDefect && li['assigned_to'] != null) ...[const Divider(height: 1), _liDetailTile(LucideIcons.user, 'Zugewiesen an', li['assigned_to'] as String, AppColors.textSecondary)],
-              ]),
-            ),
-            const SizedBox(height: 20),
-            // Priority bar (visual) for defects
-            if (isDefect) Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: priorityColor.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12), border: Border.all(color: priorityColor.withValues(alpha: 0.2))),
-              child: Row(children: [
-                Icon(LucideIcons.flag, size: 16, color: priorityColor),
-                const SizedBox(width: 10),
-                Text('Priorität: ', style: TextStyle(fontSize: 13, color: priorityColor.withValues(alpha: 0.7))),
-                Text(_priorityLabel(li['priority'] as String?), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: priorityColor)),
-              ]),
-            ),
-          ])),
-        ]),
-      ),
-    );
-  }
-
-  Widget _liDetailTile(IconData icon, String label, String value, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(children: [
-        Container(width: 32, height: 32, decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, size: 15, color: color)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textTertiary)),
-          const SizedBox(height: 2),
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.text)),
-        ])),
-      ]),
-    );
+      );
+    } catch (e) {
+      if (ctx.mounted) Navigator.pop(ctx); // dismiss loading
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('Fehler beim Laden: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _deleteMilestone(Map<String,dynamic> m) async {

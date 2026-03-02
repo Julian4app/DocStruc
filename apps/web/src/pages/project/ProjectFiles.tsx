@@ -505,18 +505,48 @@ export function ProjectFiles() {
 
       if (error) throw error;
 
-      const url = URL.createObjectURL(data);
+      // Force download by using application/octet-stream — prevents browser from rendering inline
+      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.name;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       showToast('Datei wird heruntergeladen', 'success');
     } catch (error: any) {
       console.error('Error downloading file:', error);
+      showToast('Fehler beim Herunterladen der Datei', 'error');
+    }
+  };
+
+  const handleDocDownload = async (doc: UnifiedDocument) => {
+    try {
+      const bucket = doc.type === 'task-documentation' ? 'task-images' : 'project-files';
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .download(doc.storage_path);
+
+      if (error) throw error;
+
+      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      showToast('Datei wird heruntergeladen', 'success');
+    } catch (error: any) {
+      console.error('Error downloading document:', error);
       showToast('Fehler beim Herunterladen der Datei', 'error');
     }
   };
@@ -1151,13 +1181,10 @@ export function ProjectFiles() {
                     >
                       <Folder size={14} /> Zu Ordner hinzufügen
                     </Button>
-                    {doc.type === 'project-file' && (
+                    {(doc.type === 'project-file' || doc.type === 'task-documentation') && (
                       <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => {
-                          const file = files.find(f => f.id === doc.id);
-                          if (file) handleFileDownload(file);
-                        }}
+                        onPress={() => handleDocDownload(doc)}
                       >
                         <Download size={16} color="#3B82F6" />
                       </TouchableOpacity>
