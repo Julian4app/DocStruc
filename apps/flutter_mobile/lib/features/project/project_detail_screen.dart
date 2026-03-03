@@ -368,18 +368,18 @@ class _ProjectSidebarContent extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Close (phone) / Collapse (tablet) ────────────────────
+            // ── Back to Projects (phone) / Collapse (tablet) ─────────
             if (showCloseButton) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: onCloseProject,
                   child: const Row(
                     children: [
-                      Icon(LucideIcons.x, size: 18, color: muted),
+                      Icon(LucideIcons.arrowLeft, size: 18, color: muted),
                       SizedBox(width: 8),
-                      Text('Menü schließen',
+                      Text('Zurück zu Projekten',
                           style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
                     ],
                   ),
@@ -495,20 +495,36 @@ class _ProjectSidebarContent extends StatelessWidget {
 
             // ── Footer ────────────────────────────────────────────────
             const Divider(color: Color(0xFF334155), height: 1),
-            InkWell(
-              onTap: onCloseProject,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.arrowLeft, size: 18, color: muted),
-                    SizedBox(width: 10),
-                    Text('Zurück zu Projekten',
-                        style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
-                  ],
+            if (showCloseButton)
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.x, size: 18, color: muted),
+                      SizedBox(width: 10),
+                      Text('Menü schließen',
+                          style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              InkWell(
+                onTap: onCloseProject,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.arrowLeft, size: 18, color: muted),
+                      SizedBox(width: 10),
+                      Text('Zurück zu Projekten',
+                          style: TextStyle(fontSize: 14, color: muted, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),

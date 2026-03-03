@@ -166,6 +166,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         initialStatus:  _newStatus,
         initialCountry: _newCountry,
         isEditMode:     true,
+        editingProjectId: _editingProjectId,
         onStatusChanged:  (s) => _newStatus = s,
         onCountryChanged: (c) => _newCountry = c,
         onImagesChanged:  (imgs) => _pendingImages = imgs,
@@ -1018,6 +1019,7 @@ class _CreateProjectSheet extends StatefulWidget {
   final String initialStatus;
   final String initialCountry;
   final bool isEditMode;
+  final String? editingProjectId; // used in edit mode to load existing members
   final ValueChanged<String> onStatusChanged;
   final ValueChanged<String> onCountryChanged;
   final ValueChanged<List<({String name, Uint8List bytes, String ext})>> onImagesChanged;
@@ -1034,6 +1036,7 @@ class _CreateProjectSheet extends StatefulWidget {
     required this.initialStatus,
     required this.initialCountry,
     required this.isEditMode,
+    this.editingProjectId,
     required this.onStatusChanged,
     required this.onCountryChanged,
     required this.onImagesChanged,
@@ -1049,7 +1052,11 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
   late String _status;
   late String _country;
   List<({String name, Uint8List bytes, String ext})> _images = [];
+  // In create mode: all members to add after creation.
+  // In edit mode: only the NEW members added in this session (not existing ones).
   List<({String email, String type})> _members = [];
+  // In edit mode: the already-existing project members (read-only display).
+  List<({String email, String type})> _existingMembers = [];
 
   static const _countries = [
     ('DE', '🇩🇪', 'Deutschland'),
@@ -1076,6 +1083,30 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
     super.initState();
     _status  = widget.initialStatus;
     _country = widget.initialCountry;
+    if (widget.isEditMode && widget.editingProjectId != null) {
+      _loadExistingMembers();
+    }
+  }
+
+  Future<void> _loadExistingMembers() async {
+    try {
+      final projectId = widget.editingProjectId!;
+      final rows = await SupabaseService.getProjectMembers(projectId);
+      final loaded = <({String email, String type})>[];
+      for (final m in rows) {
+        // profiles join provides the email from the registered user
+        final profile = m['profiles'] as Map?;
+        final email = profile?['email'] as String?;
+        final type  = (m['member_type'] as String?) ?? 'employee';
+        if (email != null && email.isNotEmpty) {
+          loaded.add((email: email, type: type));
+        }
+      }
+      if (mounted) {
+        setState(() => _existingMembers = loaded);
+        // onMembersChanged stays empty — these are already in DB
+      }
+    } catch (_) {}
   }
 
   Future<void> _pickImages() async {
@@ -1142,8 +1173,12 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
               onPressed: () {
                 final email = emailCtrl.text.trim().toLowerCase();
                 if (email.isEmpty || !email.contains('@')) return;
-                // Prevent duplicates
+                // Prevent duplicates in new-members list and already-existing list
                 if (_members.any((m) => m.email == email)) {
+                  Navigator.pop(ctx);
+                  return;
+                }
+                if (_existingMembers.any((m) => m.email == email)) {
                   Navigator.pop(ctx);
                   return;
                 }
@@ -1171,9 +1206,13 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _ContactsPickerSheet(
-        alreadyAdded: _members.map((m) => m.email).toSet(),
+        alreadyAdded: {
+          ..._members.map((m) => m.email),
+          ..._existingMembers.map((m) => m.email),
+        },
         onAdd: (email, type) {
-          if (!_members.any((m) => m.email == email)) {
+          if (!_members.any((m) => m.email == email) &&
+              !_existingMembers.any((m) => m.email == email)) {
             setState(() => _members = [..._members, (email: email, type: type)]);
             widget.onMembersChanged(_members);
           }
@@ -1542,9 +1581,49 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
               ));
             }).toList()),
 
-            // Added members list
+            // Existing members display (edit mode only, read-only)
+            if (widget.isEditMode && _existingMembers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                const Icon(LucideIcons.users, size: 13, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text('Bereits hinzugefügt (${_existingMembers.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              ]),
+              const SizedBox(height: 6),
+              Container(
+                decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                child: Column(children: _existingMembers.asMap().entries.map((entry) {
+                  final i = entry.key; final m = entry.value;
+                  final color = _memberTypeColor(m.type);
+                  return Container(
+                    decoration: BoxDecoration(
+                      border: i < _existingMembers.length - 1 ? Border(bottom: BorderSide(color: AppColors.border)) : null,
+                    ),
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                      leading: Container(width: 32, height: 32, decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+                        child: Center(child: Text(m.email[0].toUpperCase(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color)))),
+                      title: Text(m.email, style: const TextStyle(fontSize: 13, color: AppColors.text)),
+                      subtitle: Text(_memberTypeLabel(m.type), style: TextStyle(fontSize: 11, color: color)),
+                      trailing: const Icon(LucideIcons.check, size: 14, color: AppColors.success),
+                    ),
+                  );
+                }).toList()),
+              ),
+            ],
+
+            // Added members list (new ones pending)
             if (_members.isNotEmpty) ...[
               const SizedBox(height: 12),
+              if (widget.isEditMode) ...[
+                Row(children: [
+                  const Icon(LucideIcons.userPlus, size: 13, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  const Text('Neu hinzufügen', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                ]),
+                const SizedBox(height: 6),
+              ],
               Container(
                 decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
                 child: Column(children: _members.asMap().entries.map((entry) {
@@ -1576,9 +1655,13 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
 
             const SizedBox(height: 6),
             Text(
-              _members.isEmpty
-                  ? 'Mitarbeiter, Bauherren und Gewerke werden direkt zur Beteiligte-Seite hinzugefügt.'
-                  : '${_members.length} Person${_members.length == 1 ? '' : 'en'} wird nach Erstellung eingeladen.',
+              widget.isEditMode
+                  ? (_members.isEmpty
+                      ? 'Neue Beteiligte über die Buttons oben hinzufügen.'
+                      : '${_members.length} neue Person${_members.length == 1 ? '' : 'en'} wird hinzugefügt.')
+                  : (_members.isEmpty
+                      ? 'Mitarbeiter, Bauherren und Gewerke werden direkt zur Beteiligte-Seite hinzugefügt.'
+                      : '${_members.length} Person${_members.length == 1 ? '' : 'en'} wird nach Erstellung eingeladen.'),
               style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
             ),
 

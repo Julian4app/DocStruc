@@ -305,7 +305,7 @@ class _NavItem extends StatelessWidget {
                 ? Container(
                     key: ValueKey('active_$label'),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 7),
+                        horizontal: 8, vertical: 7),
                     decoration: BoxDecoration(
                       color: isDark
                           ? const Color(0xFF7C6AF7).withValues(alpha: 0.18)
@@ -315,20 +315,18 @@ class _NavItem extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(icon, size: 16, color: activeColor),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: activeColor,
-                              letterSpacing: -0.1,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                        Icon(icon, size: 15, color: activeColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: activeColor,
+                            letterSpacing: -0.2,
                           ),
+                          overflow: TextOverflow.visible,
+                          maxLines: 1,
                         ),
                       ],
                     ),

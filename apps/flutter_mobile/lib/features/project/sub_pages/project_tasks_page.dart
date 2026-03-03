@@ -100,6 +100,7 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
   void initState() {
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
+    _tabs.addListener(() { if (mounted) setState(() {}); });
     _load();
   }
 
@@ -175,6 +176,11 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
           ? const LottieLoader()
           : TabBarView(
               controller: _tabs,
+              // Disable swipe-between-tabs when on Kanban (index 1)
+              // so horizontal scroll inside the board works naturally.
+              physics: _tabs.index == 1
+                  ? const NeverScrollableScrollPhysics()
+                  : const ScrollPhysics(),
               children: [_listView(), _kanbanView(), _calendarView()],
             ),
     );
