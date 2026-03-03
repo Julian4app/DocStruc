@@ -13,16 +13,16 @@ import 'package:path/path.dart' as p;
 
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/tablet_utils.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
 
 // ─── Public entry point ──────────────────────────────────────────────────────
 
 void showQuickAddSheet(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    useRootNavigator: true,
+  showAdaptiveSheet(
+    context,
+    maxWidth: 580,
+    maxHeight: 820,
     builder: (_) => const _QuickAddRoot(),
   );
 }
@@ -321,6 +321,7 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = isTablet(context);
     return PopScope(
       canPop: !_canGoBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -331,9 +332,11 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
           maxHeight: MediaQuery.of(context).size.height * 0.92,
           minHeight: MediaQuery.of(context).size.height * 0.5,
         ),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: tablet
+              ? BorderRadius.circular(28)
+              : const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Stack(children: [
           Column(children: [
@@ -359,13 +362,16 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
     );
   }
 
-  Widget _buildHandle() => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: Center(child: Container(
-      width: 40, height: 4,
-      decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-    )),
-  );
+  Widget _buildHandle() {
+    if (isTablet(context)) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Center(child: Container(
+        width: 40, height: 4,
+        decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+      )),
+    );
+  }
 
   Widget _buildHeader() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),

@@ -140,10 +140,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _showForgotPassword() async {
     final ctrl = TextEditingController(text: _loginEmail.text.trim());
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    await showAdaptiveSheet(
+      context,
+      maxWidth: 460,
+      maxHeight: 520,
       builder: (ctx) => _ForgotPasswordSheet(initialEmail: ctrl.text),
     );
     ctrl.dispose();
@@ -775,17 +775,21 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final tablet = isTablet(context);
+    final bottom = tablet ? 0.0 : MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: tablet
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // drag handle
-        Center(child: Container(width: 40, height: 4,
-          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+        // drag handle (phone only)
+        if (!tablet)
+          Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
         const SizedBox(height: 20),
         const Text('Passwort zurücksetzen',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
