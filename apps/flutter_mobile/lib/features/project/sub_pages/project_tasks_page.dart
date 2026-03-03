@@ -1103,8 +1103,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProvid
   }
 
   Future<void> _showDocMenu(Map<String, dynamic> doc) async {
-    final type    = doc['type'] as String? ?? 'text';
-    final docId   = doc['id'] as String;
+    final docId = doc['id'] as String;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1117,12 +1116,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProvid
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-          if (type != 'text')
-            ListTile(
-              leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
-              title: const Text('Umbenennen', style: TextStyle(fontWeight: FontWeight.w600)),
-              onTap: () { Navigator.pop(ctx); _renameDoc(doc); },
-            ),
+          ListTile(
+            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
+            title: const Text('Umbenennen', style: TextStyle(fontWeight: FontWeight.w600)),
+            onTap: () { Navigator.pop(ctx); _renameDoc(doc); },
+          ),
           ListTile(
             leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.danger)),
             title: const Text('Löschen', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger)),
