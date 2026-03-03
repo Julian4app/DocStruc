@@ -7,8 +7,8 @@ import { colors } from '@docstruc/theme';
 import { Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('admin@ployify.com');
-  const [password, setPassword] = useState('Test1234');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -17,20 +17,31 @@ export default function Login() {
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-          setError(error.message);
-      } else {
-          try {
-             // Optional: Check a 'profiles' table for role 'admin'
-             // const { data: profile } = ...
-          } catch(err) {} 
-          navigate('/');
+      if (authError) {
+        setError(authError.message);
+        return;
       }
+
+      // Server-side check: user must have is_admin = true in profiles
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', authData.user!.id)
+        .single();
+
+      if (profile?.is_admin !== true) {
+        // Sign out immediately — this account is not an admin
+        await supabase.auth.signOut();
+        setError('Access denied. This panel is restricted to administrators.');
+        return;
+      }
+
+      navigate('/');
     } catch (e: any) {
       setError(e.message);
     } finally {

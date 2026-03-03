@@ -30,36 +30,56 @@ import { ToastProvider } from './components/ToastContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    const checkSession = async (s: Session | null) => {
+      setSession(s);
+      if (!s) {
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+      // Verify is_admin flag server-side — never trust the JWT alone
+      const { data } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', s.user.id)
+        .single();
+      setIsAdmin(data?.is_admin === true);
       setLoading(false);
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkSession(session);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      checkSession(session);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
   if (loading) {
-      // Simple loading state
-      return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>Loading Nexus...</div>;
+    return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>Loading Nexus...</div>;
   }
 
   if (!session) {
     return <Navigate to="/login" replace />;
   }
 
-  return <>{children}</>;
-}
+  if (!isAdmin) {
+    // Authenticated but not an admin — sign out and redirect to login
+    supabase.auth.signOut();
+    return <Navigate to="/login" replace />;
+  }
 
-function LayoutWrapper({ children, title, actions }: { children: React.ReactNode, title: string, actions?: React.ReactNode }) {
+  return <>{children}</>;
+}function LayoutWrapper({ children, title, actions }: { children: React.ReactNode, title: string, actions?: React.ReactNode }) {
     return (
         <AdminLayout title={title} actions={actions}>
             {children}
