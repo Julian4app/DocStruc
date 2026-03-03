@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -9,6 +10,41 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/services/notification_service.dart';
+
+/// Supabase localStorage implementation backed by flutter_secure_storage.
+/// This stores the auth JWT in the OS keychain (iOS) / Android Keystore (Android)
+/// instead of SharedPreferences plain-text, satisfying GDPR Art. 32 and
+/// ISO 27001 A.10.1 for stored credentials.
+class _SecureLocalStorage extends LocalStorage {
+  _SecureLocalStorage()
+      : super(
+          initialize: () async {},
+          hasAccessToken: () async {
+            const s = FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
+            return s.containsKey(key: supabasePersistSessionKey);
+          },
+          accessToken: () async {
+            const s = FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
+            return s.read(key: supabasePersistSessionKey);
+          },
+          removePersistedSession: () async {
+            const s = FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
+            return s.delete(key: supabasePersistSessionKey);
+          },
+          persistSession: (String value) async {
+            const s = FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
+            return s.write(key: supabasePersistSessionKey, value: value);
+          },
+        );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,10 +81,26 @@ Future<void> main() async {
   }
 
   // Initialize Supabase
+  // Credentials are injected at build time via --dart-define (never hardcoded).
+  // Local dev: add a dart_defines.json file (gitignored) and run:
+  //   flutter run --dart-define-from-file=dart_defines.json
+  // CI/CD: pass --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+  const supabaseUrl =
+      String.fromEnvironment('SUPABASE_URL');
+  const supabaseAnonKey =
+      String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  assert(supabaseUrl.isNotEmpty,
+      'SUPABASE_URL is not set. Pass --dart-define=SUPABASE_URL=<url>');
+  assert(supabaseAnonKey.isNotEmpty,
+      'SUPABASE_ANON_KEY is not set. Pass --dart-define=SUPABASE_ANON_KEY=<key>');
+
   await Supabase.initialize(
-    url: 'https://vnwovhrwaxbewelgfwsy.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZud292aHJ3YXhiZXdlbGdmd3N5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzk2NjIsImV4cCI6MjA4NTgxNTY2Mn0.bKpd1MPraBBhNEtuC6KhMWLrnaXEuuqcH-Co-Ygk3Gg',
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
+    // Store auth tokens in the OS secure keychain/keystore instead of
+    // SharedPreferences plain-text (GDPR Art. 32 / ISO 27001 A.10.1).
+    localStorage: _SecureLocalStorage(),
   );
 
   // Initialize local notifications

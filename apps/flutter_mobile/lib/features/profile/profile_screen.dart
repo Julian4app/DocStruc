@@ -112,6 +112,83 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) setState(() => _saving = false);
   }
 
+  Future<void> _exportMyData(BuildContext context) async {
+    final supabase = SupabaseService.client;
+    try {
+      final result = await supabase.rpc('export_my_data');
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Datenexport (DSGVO Art. 20)'),
+          content: const Text(
+            'Ihre persönlichen Daten wurden als JSON exportiert. '
+            'In einer Produktionsumgebung würden diese per E-Mail '
+            'zugestellt oder als Download bereitgestellt.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler beim Export: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Konto löschen'),
+        content: const Text(
+          'Sind Sie sicher, dass Sie Ihr Konto löschen möchten?\n\n'
+          'Ihre persönlichen Daten werden anonymisiert. '
+          'Diese Aktion kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Konto löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    final supabase = SupabaseService.client;
+    try {
+      final result = await supabase.rpc('delete_my_account');
+      final success = (result as Map<String, dynamic>?)?['success'] == true;
+      if (!mounted) return;
+      if (success) {
+        await ref.read(authProvider.notifier).signOut();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Konto konnte nicht gelöscht werden.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: ${e.toString()}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -260,6 +337,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 style: TextStyle(color: AppColors.danger)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.danger),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _exportMyData(context),
+            icon: const Icon(LucideIcons.download, size: 18),
+            label: const Text('Meine Daten exportieren (DSGVO)'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _confirmDeleteAccount(context),
+            icon: const Icon(LucideIcons.trash2,
+                size: 18, color: AppColors.danger),
+            label: const Text('Konto löschen (DSGVO)',
+                style: TextStyle(color: AppColors.danger)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.danger),
+              minimumSize: const Size.fromHeight(44),
             ),
           ),
         ],

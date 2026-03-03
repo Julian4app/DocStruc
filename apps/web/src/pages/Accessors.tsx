@@ -359,8 +359,6 @@ export function Accessors() {
 
     setSavingTeamAdmin(true);
     try {
-      console.log('🔍 Assigning team admin:', adminEmail.trim().toLowerCase(), 'to team:', selectedTeamForAdmin.id);
-      
       // Find the user profile by email
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -369,7 +367,7 @@ export function Accessors() {
         .maybeSingle();
 
       if (profileError) {
-        console.error('❌ Profile lookup error:', profileError);
+        console.error('❌ Profile lookup error:', profileError.message);
         throw profileError;
       }
 
@@ -379,8 +377,6 @@ export function Accessors() {
         return;
       }
 
-      console.log('📊 Found profile:', profile.id, profile.email);
-
       // Remove old admin (if any) from this team
       const { error: demoteError } = await supabase
         .from('profiles')
@@ -389,11 +385,10 @@ export function Accessors() {
         .eq('team_role', 'team_admin');
 
       if (demoteError) {
-        console.error('⚠️ Error demoting old admin (non-critical):', demoteError);
+        console.error('⚠️ Error demoting old admin (non-critical):', demoteError.message);
       }
 
       // Assign new admin
-      console.log('📝 Updating profile to team_admin...');
       const { data: updateResult, error } = await supabase
         .from('profiles')
         .update({
@@ -405,7 +400,7 @@ export function Accessors() {
         .select();
 
       if (error) {
-        console.error('❌ Error updating profile:', error);
+        console.error('❌ Error updating profile:', error.message);
         throw error;
       }
       
@@ -413,8 +408,6 @@ export function Accessors() {
         console.error('❌ UPDATE returned 0 rows - RLS is blocking the update!');
         throw new Error('Profil konnte nicht aktualisiert werden. Bitte führen Sie die SQL-Migration "20260217_fix_permissions_complete.sql" aus.');
       }
-      
-      console.log('✅ Profile updated successfully:', updateResult[0]);
 
       // Also ensure this person is visible as accessor for the superuser
       if (userId) {

@@ -99,9 +99,7 @@ export function MyTeam() {
   const loadTeamData = async () => {
     setLoading(true);
     try {
-      console.log('🔍 MyTeam: Loading team data...');
       if (!userId) {
-        console.log('❌ MyTeam: No userId found');
         return;
       }
 
@@ -112,10 +110,11 @@ export function MyTeam() {
         .eq('id', userId)
         .single();
 
-      console.log('📊 MyTeam: Profile:', { profile, profileError });
+      if (profileError) {
+        console.error('❌ MyTeam: Profile load error:', profileError.message);
+      }
 
       if (!profile?.team_id) {
-        console.log('❌ MyTeam: No team_id found');
         setLoading(false);
         return;
       }
@@ -127,13 +126,13 @@ export function MyTeam() {
         .eq('id', profile.team_id)
         .single();
 
-      console.log('📊 MyTeam: Team data:', { teamData, teamError });
+      if (teamError) {
+        console.error('❌ MyTeam: Team load error:', teamError.message);
+      }
 
       if (teamData) setTeam(teamData);
 
       // Load team members
-      console.log('🔍 MyTeam: Querying members with team_id:', profile.team_id);
-      
       const { data: membersData, error: membersError } = await supabase
         .from('profiles')
         .select('id, email, first_name, last_name, team_role, joined_team_at, avatar_url')
@@ -141,15 +140,13 @@ export function MyTeam() {
         .order('team_role', { ascending: true })
         .order('first_name', { ascending: true });
 
-      console.log('📊 MyTeam: Members query returned:', { 
-        count: membersData?.length, 
-        membersError,
-        members: membersData?.map(m => ({ email: m.email, role: m.team_role }))
-      });
+      if (membersError) {
+        console.error('❌ MyTeam: Members load error:', membersError.message);
+      }
 
       setMembers(membersData || []);
     } catch (error: any) {
-      console.error('❌ MyTeam: Error loading:', error);
+      console.error('❌ MyTeam: Error loading:', error.message);
       showToast('Fehler beim Laden: ' + error.message, 'error');
     } finally {
       setLoading(false);
@@ -157,21 +154,16 @@ export function MyTeam() {
   };
 
   const addMember = async () => {
-    console.log('🔍 MyTeam: addMember called', { newEmail, team });
-    
     if (!newEmail.trim()) {
       showToast('Bitte E-Mail-Adresse eingeben', 'error');
       return;
     }
     if (!team) {
-      console.log('❌ MyTeam: No team found');
       return;
     }
 
     setSavingMember(true);
     try {
-      console.log('📝 MyTeam: Checking if user exists:', newEmail.toLowerCase());
-      
       // Check if user with this email exists
       const { data: existingProfile, error: profileError } = await supabase
         .from('profiles')
@@ -179,7 +171,9 @@ export function MyTeam() {
         .eq('email', newEmail.toLowerCase())
         .single();
 
-      console.log('📊 MyTeam: Existing profile:', { existingProfile, profileError });
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('❌ MyTeam: Profile lookup error:', profileError.message);
+      }
 
       if (!existingProfile) {
         showToast('Benutzer mit dieser E-Mail nicht gefunden. Der Benutzer muss sich zuerst registrieren.', 'error');
@@ -188,21 +182,17 @@ export function MyTeam() {
       }
 
       if (existingProfile.team_id && existingProfile.team_id !== team.id) {
-        console.log('❌ MyTeam: User already in another team');
         showToast('Dieser Benutzer gehört bereits einem anderen Team an.', 'error');
         setSavingMember(false);
         return;
       }
 
       if (existingProfile.team_id === team.id) {
-        console.log('⚠️ MyTeam: User already in this team');
         showToast('Dieser Benutzer ist bereits in Ihrem Team.', 'info');
         setSavingMember(false);
         return;
       }
 
-      console.log('📝 MyTeam: Updating profile to add to team...');
-      
       // Update the user's profile to add them to the team
       const { data: updateResult, error } = await supabase
         .from('profiles')
@@ -217,10 +207,8 @@ export function MyTeam() {
         .eq('id', existingProfile.id)
         .select();
 
-      console.log('📊 MyTeam: Update result:', { updateResult, error, updatedRows: updateResult?.length });
-
       if (error) {
-        console.error('❌ MyTeam: Error updating profile:', error);
+        console.error('❌ MyTeam: Error updating profile:', error.message);
         throw error;
       }
       
@@ -228,13 +216,9 @@ export function MyTeam() {
         console.error('❌ MyTeam: UPDATE succeeded but affected 0 rows!');
         throw new Error('Profile konnte nicht aktualisiert werden - möglicherweise fehlen Berechtigungen');
       }
-      
-      console.log('✅ MyTeam: Profile updated successfully:', updateResult[0]);
 
       // Also create a user_accessor entry for the superuser to see this member
       if (userId) {
-        console.log('📝 MyTeam: Creating user_accessor entry...');
-        
         // Find the superuser (team creator)
         const { data: teamDetail } = await supabase
           .from('teams')
@@ -243,8 +227,6 @@ export function MyTeam() {
           .single();
 
         if (teamDetail?.created_by) {
-          console.log('📝 MyTeam: Team created_by:', teamDetail.created_by);
-          
           // Insert into user_accessors so superuser can see this member
           const { error: accessorError } = await supabase
             .from('user_accessors')
@@ -263,14 +245,11 @@ export function MyTeam() {
             });
           
           if (accessorError) {
-            console.error('⚠️ MyTeam: Error creating accessor (non-critical):', accessorError);
-          } else {
-            console.log('✅ MyTeam: Accessor created');
+            console.error('⚠️ MyTeam: Error creating accessor (non-critical):', accessorError.message);
           }
         }
       }
 
-      console.log('✅ MyTeam: Member added successfully, refreshing data...');
       showToast('Mitarbeiter erfolgreich zum Team hinzugefügt', 'success');
       setIsAddMemberModalOpen(false);
       setNewEmail('');
@@ -279,7 +258,7 @@ export function MyTeam() {
       setNewPhone('');
       await loadTeamData();
     } catch (error: any) {
-      console.error('❌ MyTeam: Error in addMember:', error);
+      console.error('❌ MyTeam: Error in addMember:', error.message);
       showToast('Fehler: ' + error.message, 'error');
     } finally {
       setSavingMember(false);

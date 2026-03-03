@@ -285,8 +285,6 @@ export function ProjectParticipants() {
   // ==========================================
 
   const openEditPermissionsModal = async (member: ProjectMember) => {
-    console.log('🔍 openEditPermissionsModal called for:', member.accessor.accessor_email);
-    
     setEditingMember(member);
     setSelectedRoleId(member.role_id || '');
     setUseCustomPermissions(member.custom_permissions.length > 0);
@@ -294,10 +292,8 @@ export function ProjectParticipants() {
     const permsObj: Record<string, PermissionModule> = {};
     
     if (member.custom_permissions.length > 0) {
-      console.log('📊 Member has custom permissions:', member.custom_permissions.length);
       member.custom_permissions.forEach(perm => { permsObj[perm.module_key] = perm; });
     } else if (member.role_id) {
-      console.log('📊 Member has role:', member.role_id);
       const { data: rolePerms } = await supabase
         .from('role_permissions').select('*').eq('role_id', member.role_id);
       (rolePerms || []).forEach(perm => {
@@ -322,7 +318,6 @@ export function ProjectParticipants() {
     });
 
     setCustomPermissions(permsObj);
-    console.log('✅ Opening edit permissions modal');
     setIsEditPermissionsModalOpen(true);
     setActionMenuMemberId(null);
   };
@@ -333,7 +328,6 @@ export function ProjectParticipants() {
 
   const updateMemberPermissions = async () => {
     if (!editingMember) {
-      console.log('❌ updateMemberPermissions: No editing member');
       return;
     }
     if (!useCustomPermissions && !selectedRoleId) {
@@ -341,26 +335,16 @@ export function ProjectParticipants() {
       return;
     }
     
-    console.log('🔍 updateMemberPermissions: Starting update', {
-      member_id: editingMember.id,
-      useCustomPermissions,
-      selectedRoleId,
-      customPermissions: Object.keys(customPermissions).length
-    });
-    
     try {
       const newRoleId = useCustomPermissions ? null : (selectedRoleId || null);
       
-      console.log('📝 Updating project_members table...');
       const { data: updateData, error: updateError } = await supabase.from('project_members')
         .update({ role_id: newRoleId })
         .eq('id', editingMember.id)
         .select();
 
-      console.log('📊 Update result:', { updateData, updateError, rowsAffected: updateData?.length });
-
       if (updateError) {
-        console.error('❌ Error updating project_members:', updateError);
+        console.error('❌ Error updating project_members:', updateError.message);
         throw updateError;
       }
       
@@ -369,12 +353,11 @@ export function ProjectParticipants() {
         throw new Error('Keine Berechtigung, Mitglied zu aktualisieren. Möglicherweise fehlen Berechtigungen.');
       }
 
-      console.log('📝 Deleting old permissions...');
       const { error: deleteError } = await supabase.from('project_member_permissions')
         .delete().eq('project_member_id', editingMember.id);
 
       if (deleteError) {
-        console.error('❌ Error deleting permissions:', deleteError);
+        console.error('❌ Error deleting permissions:', deleteError.message);
         throw deleteError;
       }
 
@@ -388,23 +371,20 @@ export function ProjectParticipants() {
             can_edit: p.can_edit, can_delete: p.can_delete
           }));
         
-        console.log('📝 Inserting custom permissions:', permsToInsert.length);
-        
         if (permsToInsert.length > 0) {
           const { error: insertError } = await supabase.from('project_member_permissions').insert(permsToInsert);
           if (insertError) {
-            console.error('❌ Error inserting permissions:', insertError);
+            console.error('❌ Error inserting permissions:', insertError.message);
             throw insertError;
           }
         }
       }
 
-      console.log('✅ Permissions updated successfully');
       showToast('Berechtigungen aktualisiert', 'success');
       setIsEditPermissionsModalOpen(false);
       await loadMembers();
     } catch (error: any) {
-      console.error('❌ Error in updateMemberPermissions:', error);
+      console.error('❌ Error in updateMemberPermissions:', error.message);
       showToast('Fehler: ' + error.message, 'error');
     }
   };
@@ -429,19 +409,6 @@ export function ProjectParticipants() {
       const registeredUserId = member.user_id || member.accessor?.registered_user_id;
       const hasAccount = !!registeredUserId;
 
-      console.log('Inviting member:', {
-        member_id: member.id,
-        user_id: member.user_id,
-        accessor_registered_user_id: member.accessor?.registered_user_id,
-        registeredUserId,
-        hasAccount,
-        email: member.accessor.accessor_email,
-        projectId
-      });
-
-      // Auth session check not needed here - user is already authenticated via useAuth()
-      console.log('Auth userId exists:', !!userId);
-
       // Call send_project_invitation RPC which handles:
       // 1. Updating member status to 'invited'
       // 2. Creating in-app notification (if user has account)
@@ -451,8 +418,6 @@ export function ProjectParticipants() {
           p_user_id: registeredUserId || null,
           p_email: member.accessor.accessor_email
         });
-
-      console.log('Invitation result:', { inviteResult, inviteError });
 
       if (inviteError) throw inviteError;
 
@@ -557,12 +522,9 @@ export function ProjectParticipants() {
       return;
     }
     
-    console.log('🔍 Adding team members to project:', { selectedTeamMemberIds, userTeamId: profile?.team_id, projectId });
-    
     try {
       const userTeamId = profile?.team_id;
       if (!userId || !userTeamId) {
-        console.log('❌ No user or team ID:', { userId: !!userId, userTeamId });
         return;
       }
       
@@ -570,11 +532,8 @@ export function ProjectParticipants() {
       for (const memberId of selectedTeamMemberIds) {
         const teamMember = teamMembers.find(tm => tm.id === memberId);
         if (!teamMember) {
-          console.log('❌ Team member not found:', memberId);
           continue;
         }
-        
-        console.log('➕ Processing team member:', teamMember.email);
         
         // Check if user is already in project
         const { data: existingMember } = await supabase
@@ -585,7 +544,6 @@ export function ProjectParticipants() {
           .maybeSingle();
         
         if (existingMember) {
-          console.log('⏭️ Member already in project:', teamMember.email);
           continue; // Skip if already in project
         }
         
@@ -600,7 +558,6 @@ export function ProjectParticipants() {
         
         // Create accessor if doesn't exist
         if (!accessor) {
-          console.log('📝 Creating accessor for:', teamMember.email);
           const { data: newAccessor, error: accessorError } = await supabase
             .from('user_accessors')
             .insert({
@@ -616,18 +573,15 @@ export function ProjectParticipants() {
             .single();
           
           if (accessorError) {
-            console.error('❌ Error creating accessor:', accessorError);
+            console.error('❌ Error creating accessor:', accessorError.message);
             throw accessorError;
           }
           accessorId = newAccessor.id;
-          console.log('✅ Accessor created:', accessorId);
         } else {
           accessorId = accessor.id;
-          console.log('✅ Accessor exists:', accessorId);
         }
         
         // Add to project_members
-        console.log('📝 Adding to project_members...');
         const { error: insertError } = await supabase
           .from('project_members')
           .insert({
@@ -641,19 +595,17 @@ export function ProjectParticipants() {
           });
         
         if (insertError) {
-          console.error('❌ Error adding to project_members:', insertError);
+          console.error('❌ Error adding to project_members:', insertError.message);
           throw insertError;
         }
-        console.log('✅ Added to project_members');
       }
       
-      console.log('✅ All team members added successfully');
       showToast(`${selectedTeamMemberIds.length} Teammitglied(er) zum Projekt hinzugefügt`, 'success');
       setIsAddTeamMemberModalOpen(false);
       setSelectedTeamMemberIds([]);
       await loadMembers();
     } catch (error: any) {
-      console.error('❌ Error in addTeamMembersToProject:', error);
+      console.error('❌ Error in addTeamMembersToProject:', error.message);
       showToast('Fehler beim Hinzufügen: ' + error.message, 'error');
     }
   };
