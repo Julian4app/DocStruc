@@ -1076,10 +1076,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProvid
   Future<void> _showDocMenu(Map<String, dynamic> doc) async {
     final docId   = doc['id'] as String;
     final initial = doc['file_name'] as String? ?? '';
-    final result  = await showModalBottomSheet<_DocMenuResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final result  = await showAdaptiveSheet<_DocMenuResult>(
+      context,
+      maxWidth: 420,
+      maxHeight: 320,
       builder: (ctx) => _DocMenuSheet(initialName: initial),
     );
     if (!mounted) return;
@@ -2298,16 +2298,33 @@ class _DocMenuSheetState extends State<_DocMenuSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final tablet = isTablet(context);
+    final bottom = tablet ? 0.0 : MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: tablet
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+        if (!tablet)
+          Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(_renaming ? 'Umbenennen' : 'Optionen',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(LucideIcons.x, size: 20),
+                style: IconButton.styleFrom(foregroundColor: AppColors.textSecondary),
+              ),
+            ]),
+          ),
         if (!_renaming) ...[
           ListTile(
             leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
