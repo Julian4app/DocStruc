@@ -28,32 +28,9 @@ Future<T?> showAdaptiveSheet<T>(
           constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
           child: Material(
             color: Colors.transparent,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: builder(dialogCtx),
-                ),
-                // ── Close button ──────────────────────────────────────────
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(dialogCtx).pop(),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: const Icon(Icons.close, size: 17, color: Color(0xFF64748B)),
-                    ),
-                  ),
-                ),
-              ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: builder(dialogCtx),
             ),
           ),
         ),

@@ -713,6 +713,10 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
   // For dragging a selected element (move, not resize)
   Offset? _dragElementStart;
   _CanvasElement? _dragElementSnapshot; // snapshot of element at drag start
+  // Pinch-to-zoom state
+  double _pinchStartScale = 1.0;
+  Offset _pinchStartOffset = Offset.zero;
+  Offset? _pinchFocalPoint;
   final _textCtrl = TextEditingController();
   Offset? _textInsertPos;
   // For editing existing text elements
@@ -1011,6 +1015,63 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
     }
   }
 
+  // ── Pinch-to-zoom handlers ──────────────────────────────────────────────
+
+  void _handleScaleStart(ScaleStartDetails details) {
+    if (details.pointerCount >= 2) {
+      // Two-finger pinch — capture current state
+      setState(() {
+        _pinchStartScale = _scale;
+        _pinchStartOffset = _offset;
+        _pinchFocalPoint = details.localFocalPoint;
+        // Cancel any in-progress drawing
+        _isDrawing = false;
+        _drawStart = null;
+        _drawCurrent = null;
+        _currentPoints = [];
+        _panStart = null;
+      });
+    } else {
+      // Single finger — delegate to normal pan/draw handling
+      final fakeStart = DragStartDetails(
+        globalPosition: details.focalPoint,
+        localPosition: details.localFocalPoint,
+      );
+      _handlePanStart(fakeStart);
+    }
+  }
+
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (details.pointerCount >= 2 && _pinchFocalPoint != null) {
+      // Pinch zoom: scale around focal point
+      final newScale = (_pinchStartScale * details.scale).clamp(0.1, 8.0);
+      // Keep focal point stationary:
+      // offset = focalPoint - (focalPoint - pinchStartOffset) * (newScale / pinchStartScale)
+      final focalInCanvas = (_pinchFocalPoint! - _pinchStartOffset) / _pinchStartScale;
+      final newOffset = _pinchFocalPoint! - focalInCanvas * newScale;
+      setState(() {
+        _scale = newScale;
+        _offset = newOffset;
+      });
+    } else if (details.pointerCount < 2) {
+      // Single finger pan
+      final fakeDrag = DragUpdateDetails(
+        globalPosition: details.focalPoint,
+        localPosition: details.localFocalPoint,
+        delta: details.focalPointDelta,
+      );
+      _handlePanUpdate(fakeDrag);
+    }
+  }
+
+  void _handleScaleEnd(ScaleEndDetails details) {
+    if (_pinchFocalPoint != null) {
+      setState(() => _pinchFocalPoint = null);
+    }
+    final fakeEnd = DragEndDetails(velocity: details.velocity);
+    _handlePanEnd(fakeEnd);
+  }
+
   bool _hitTest(_CanvasElement el, Offset pos) {
     const tol = 12.0;
     switch (el.type) {
@@ -1190,9 +1251,9 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
           GestureDetector(
             onTapDown: _handleTapDown,
             onDoubleTapDown: _handleDoubleTap,
-            onPanStart: _tool == _DrawTool.pan ? (d) { _panStart = d.localPosition; } : _handlePanStart,
-            onPanUpdate: _handlePanUpdate,
-            onPanEnd: _handlePanEnd,
+            onScaleStart: _handleScaleStart,
+            onScaleUpdate: _handleScaleUpdate,
+            onScaleEnd: _handleScaleEnd,
             child: LayoutBuilder(
               builder: (context, constraints) => CustomPaint(
               painter: _FloorPlanPainter(

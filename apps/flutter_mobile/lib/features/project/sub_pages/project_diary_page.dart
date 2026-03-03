@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -102,9 +104,118 @@ class _ProjectDiaryPageState extends ConsumerState<ProjectDiaryPage> {
     setState(() => _loading = true);
     try {
       await Future.wait([_fetchEntries(), _fetchMembers()]);
+      // Auto-create today's entry if missing
+      await _ensureTodayEntry();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Automatically creates a diary entry for today if none exists yet.
+  /// Fetches current weather from Open-Meteo (free, no API key) using
+  /// the project's stored coordinates or by geocoding the address.
+  Future<void> _ensureTodayEntry() async {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final alreadyExists = _entries.any((e) => e['entry_date'] == today);
+    if (alreadyExists) return;
+
+    try {
+      // Load project coordinates
+      double? lat, lon;
+      try {
+        final project = await SupabaseService.getProject(widget.projectId);
+        final info = await SupabaseService.getProjectInfo(widget.projectId);
+        lat = (info?['latitude'] as num?)?.toDouble();
+        lon = (info?['longitude'] as num?)?.toDouble();
+
+        // Geocode if coords missing but address available
+        if ((lat == null || lon == null) && project != null) {
+          final parts = <String>[
+            project['street']?.toString() ?? '',
+            project['zip']?.toString() ?? '',
+            project['city']?.toString() ?? '',
+          ].where((s) => s.isNotEmpty).toList();
+          if (parts.isEmpty) {
+            final addr = project['address']?.toString() ?? '';
+            if (addr.isNotEmpty) parts.add(addr);
+          }
+          if (parts.isNotEmpty) {
+            final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+              'q': parts.join(', '),
+              'format': 'json',
+              'limit': '1',
+            });
+            final client = HttpClient();
+            client.userAgent = 'DocStruc/1.0 (contact@docstruc.app)';
+            final req = await client.getUrl(uri);
+            req.headers.set('Accept', 'application/json');
+            final res = await req.close().timeout(const Duration(seconds: 6));
+            final body = await res.transform(utf8.decoder).join();
+            client.close();
+            final List<dynamic> geoResults = json.decode(body) as List<dynamic>;
+            if (geoResults.isNotEmpty) {
+              lat = double.tryParse(geoResults[0]['lat']?.toString() ?? '');
+              lon = double.tryParse(geoResults[0]['lon']?.toString() ?? '');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[Diary] geocode error: $e');
+      }
+
+      // Fetch weather from Open-Meteo if we have coordinates
+      String? weatherCode;
+      double? temperature;
+      if (lat != null && lon != null) {
+        try {
+          final uri = Uri.https('api.open-meteo.com', '/v1/forecast', {
+            'latitude': lat.toString(),
+            'longitude': lon.toString(),
+            'current': 'temperature_2m,weathercode',
+            'timezone': 'auto',
+          });
+          final client = HttpClient();
+          final req = await client.getUrl(uri);
+          final res = await req.close().timeout(const Duration(seconds: 6));
+          final body = await res.transform(utf8.decoder).join();
+          client.close();
+          final data = json.decode(body) as Map<String, dynamic>;
+          final current = data['current'] as Map<String, dynamic>?;
+          temperature = (current?['temperature_2m'] as num?)?.toDouble();
+          final wmoCode = (current?['weathercode'] as num?)?.toInt();
+          weatherCode = _wmoToWeatherKey(wmoCode);
+        } catch (e) {
+          debugPrint('[Diary] weather fetch error: $e');
+        }
+      }
+
+      // Create the entry
+      final payload = <String, dynamic>{
+        'entry_date': today,
+        'work_performed': '(automatisch erstellt – bitte ausfüllen)',
+        if (weatherCode != null) 'weather': weatherCode,
+        if (temperature != null) 'temperature': temperature.round(),
+      };
+      await SupabaseService.createDiaryEntry(widget.projectId, payload);
+      await _fetchEntries();
+    } catch (e) {
+      debugPrint('[Diary] _ensureTodayEntry error: $e');
+    }
+  }
+
+  /// Maps WMO weather interpretation codes to the app's weather keys.
+  String? _wmoToWeatherKey(int? code) {
+    if (code == null) return null;
+    if (code == 0) return 'sunny';
+    if (code <= 2) return 'cloudy';
+    if (code == 3) return 'cloudy';
+    if (code >= 45 && code <= 48) return 'foggy';
+    if (code >= 51 && code <= 67) return 'rainy';
+    if (code >= 71 && code <= 77) return 'snowy';
+    if (code >= 80 && code <= 82) return 'rainy';
+    if (code >= 85 && code <= 86) return 'snowy';
+    if (code >= 95) return 'stormy';
+    return 'cloudy';
   }
 
   Future<void> _fetchEntries() async {
@@ -568,7 +679,7 @@ class _EntryDetailSheet extends StatelessWidget {
   String _fmtDate(String? d) {
     if (d == null) return '';
     try { return DateFormat('EEEE, dd. MMMM yyyy', 'de').format(DateTime.parse(d)); }
-    catch (_) { return d ?? ''; }
+    catch (_) { return d; }
   }
 
   String _creatorName() {
