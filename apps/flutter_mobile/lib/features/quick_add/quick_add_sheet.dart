@@ -580,6 +580,7 @@ class _StepRecordVoice extends StatefulWidget {
 class _StepRecordVoiceState extends State<_StepRecordVoice> {
   final _recorder = AudioRecorder();
   bool _isRecording = false;
+  bool _isPaused = false;
   bool _hasRecording = false;
   String? _path;
   int _seconds = 0;
@@ -597,16 +598,26 @@ class _StepRecordVoiceState extends State<_StepRecordVoice> {
     final dir = await getTemporaryDirectory();
     _path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: _path!);
-    setState(() { _isRecording = true; _seconds = 0; _hasRecording = false; });
+    setState(() { _isRecording = true; _isPaused = false; _seconds = 0; _hasRecording = false; });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _isRecording) setState(() => _seconds++);
+      if (mounted && _isRecording && !_isPaused) setState(() => _seconds++);
     });
+  }
+
+  Future<void> _pauseResume() async {
+    if (_isPaused) {
+      await _recorder.resume();
+      setState(() => _isPaused = false);
+    } else {
+      await _recorder.pause();
+      setState(() => _isPaused = true);
+    }
   }
 
   Future<void> _stop() async {
     _timer?.cancel();
     await _recorder.stop();
-    setState(() { _isRecording = false; _hasRecording = true; });
+    setState(() { _isRecording = false; _isPaused = false; _hasRecording = true; });
   }
 
   String get _fmt {
@@ -625,46 +636,65 @@ class _StepRecordVoiceState extends State<_StepRecordVoice> {
             width: 160, height: 160,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _isRecording ? red.withValues(alpha: 0.08) : AppColors.background,
-              border: Border.all(color: _isRecording ? red : AppColors.border, width: 2),
+              color: _isRecording
+                  ? (_isPaused ? AppColors.border.withValues(alpha: 0.3) : red.withValues(alpha: 0.08))
+                  : AppColors.background,
+              border: Border.all(
+                color: _isRecording ? (_isPaused ? AppColors.textTertiary : red) : AppColors.border,
+                width: 2),
             ),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(_isRecording ? LucideIcons.micOff : LucideIcons.mic,
-                  size: 44, color: _isRecording ? red : AppColors.textTertiary),
+              Icon(_isRecording ? (_isPaused ? LucideIcons.pause : LucideIcons.micOff) : LucideIcons.mic,
+                  size: 44,
+                  color: _isRecording ? (_isPaused ? AppColors.textSecondary : red) : AppColors.textTertiary),
               const SizedBox(height: 8),
               Text(_fmt, style: TextStyle(
                   fontSize: 26, fontWeight: FontWeight.w700,
-                  color: _isRecording ? red : AppColors.textSecondary,
+                  color: _isRecording ? (_isPaused ? AppColors.textSecondary : red) : AppColors.textSecondary,
                   fontFeatures: const [FontFeature.tabularFigures()])),
             ]),
           ),
         ),
         const SizedBox(height: 20),
         Text(
-          _isRecording ? '● Aufnahme läuft…'
+          _isRecording
+              ? (_isPaused ? '⏸ Aufnahme pausiert' : '● Aufnahme läuft…')
               : _hasRecording ? '✓ Aufnahme bereit'
               : 'Tippe zum Starten',
           style: TextStyle(
               fontSize: 14,
-              color: _isRecording ? red : _hasRecording ? AppColors.success : AppColors.textSecondary,
+              color: _isRecording
+                  ? (_isPaused ? AppColors.textSecondary : red)
+                  : _hasRecording ? AppColors.success : AppColors.textSecondary,
               fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 32),
-        Row(children: [
-          Expanded(child: _isRecording
-              ? _ActionBtn(label: 'Stoppen', icon: LucideIcons.square, color: red, onTap: _stop)
-              : _ActionBtn(label: 'Aufnehmen', icon: LucideIcons.mic, color: red, onTap: _start)),
-          if (_hasRecording) ...[
+        if (_isRecording) ...[
+          Row(children: [
+            Expanded(child: _ActionBtn(label: 'Stoppen', icon: LucideIcons.square, color: red, onTap: _stop)),
             const SizedBox(width: 12),
             Expanded(child: _ActionBtn(
-              label: 'Weiter', icon: LucideIcons.chevronRight, color: AppColors.primary,
-              onTap: () async {
-                final bytes = await File(_path!).readAsBytes();
-                widget.onDone(_Att(type: _CType.voice, bytes: bytes, fileName: p.basename(_path!)));
-              },
+              label: _isPaused ? 'Fortsetzen' : 'Pause',
+              icon: _isPaused ? LucideIcons.play : LucideIcons.pause,
+              color: _isPaused ? AppColors.primary : AppColors.textSecondary,
+              onTap: _pauseResume,
             )),
-          ],
-        ]),
+          ]),
+        ] else ...[
+          Row(children: [
+            Expanded(child: _ActionBtn(label: 'Aufnehmen', icon: LucideIcons.mic, color: red, onTap: _start)),
+            if (_hasRecording) ...[
+              const SizedBox(width: 12),
+              Expanded(child: _ActionBtn(
+                label: 'Weiter', icon: LucideIcons.chevronRight, color: AppColors.primary,
+                onTap: () async {
+                  final bytes = await File(_path!).readAsBytes();
+                  widget.onDone(_Att(type: _CType.voice, bytes: bytes, fileName: p.basename(_path!)));
+                },
+              )),
+            ],
+          ]),
+        ],
       ]),
     );
   }

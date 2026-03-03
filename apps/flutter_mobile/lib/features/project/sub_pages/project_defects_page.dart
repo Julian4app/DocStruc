@@ -1061,6 +1061,30 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
     _loadDet();
   }
 
+  Future<void> _renameDoc(Map<String, dynamic> doc) async {
+    final ctrl = TextEditingController(text: doc['file_name'] as String? ?? '');
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Umbenennen'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Speichern')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (newName == null || newName.isEmpty) return;
+    await SupabaseService.updateTaskDoc(doc['id'] as String, {'file_name': newName});
+    _loadDet();
+  }
+
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1807,6 +1831,8 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(typeLabel, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text)),
+              if (type != 'text' && (doc['file_name'] as String?)?.isNotEmpty == true)
+                Text(doc['file_name'] as String, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
               Text(_fmtDateTime(doc['created_at'] as String?), style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
             ])),
             if (type == 'voice' && storagePath != null)
@@ -1818,6 +1844,13 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
                   child: Icon(isPlayingThis ? LucideIcons.pause : LucideIcons.play, size: 16, color: isPlayingThis ? const Color(0xFFF59E0B) : AppColors.primary),
                 ),
               ),
+            if (type != 'text') ...[
+              const SizedBox(width: 6),
+              GestureDetector(
+                onTap: () => _renameDoc(doc),
+                child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.pencil, size: 14, color: AppColors.primary)),
+              ),
+            ],
             const SizedBox(width: 6),
             GestureDetector(
               onTap: () => SupabaseService.deleteTaskDoc(docId).then((_) => _loadDet()),

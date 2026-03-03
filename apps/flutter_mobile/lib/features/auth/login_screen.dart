@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/providers/auth_provider.dart';
+import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/tablet_utils.dart';
 
@@ -135,6 +136,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     } else {
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _showForgotPassword() async {
+    final ctrl = TextEditingController(text: _loginEmail.text.trim());
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ForgotPasswordSheet(initialEmail: ctrl.text),
+    );
+    ctrl.dispose();
   }
 
   // ── Input decoration ──────────────────────────────────────────────────────
@@ -469,7 +481,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
             const Spacer(),
             TextButton(
-              onPressed: () {},
+              onPressed: _showForgotPassword,
               style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
               child: const Text('Passwort vergessen?', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500)),
             ),
@@ -718,3 +730,141 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Forgot-password bottom sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ForgotPasswordSheet extends StatefulWidget {
+  final String initialEmail;
+  const _ForgotPasswordSheet({required this.initialEmail});
+  @override
+  State<_ForgotPasswordSheet> createState() => _ForgotPasswordSheetState();
+}
+
+class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
+  late final TextEditingController _ctrl;
+  bool _loading = false;
+  bool _sent = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  Future<void> _submit() async {
+    final email = _ctrl.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Bitte E-Mail-Adresse eingeben.');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      await SupabaseService.resetPassword(email);
+      if (!mounted) return;
+      setState(() { _loading = false; _sent = true; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; _error = 'Fehler: ${e.toString()}'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // drag handle
+        Center(child: Container(width: 40, height: 4,
+          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+        const SizedBox(height: 20),
+        const Text('Passwort zurücksetzen',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+        const SizedBox(height: 8),
+        Text(
+          _sent
+              ? 'Eine E-Mail wurde gesendet. Bitte prüfe dein Postfach und folge dem Link zum Zurücksetzen.'
+              : 'Gib deine E-Mail-Adresse ein. Wir senden dir einen Link zum Zurücksetzen deines Passworts.',
+          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 24),
+        if (!_sent) ...[
+          TextFormField(
+            controller: _ctrl,
+            keyboardType: TextInputType.emailAddress,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              labelText: 'E-Mail-Adresse',
+              prefixIcon: const Icon(LucideIcons.mail, size: 18),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade200)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(fontSize: 13, color: Color(0xFFEF4444))),
+          ],
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity, height: 50,
+            child: ElevatedButton(
+              onPressed: _loading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _loading
+                  ? const SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Link senden', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(child: TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Abbrechen', style: TextStyle(color: Colors.grey.shade500, fontSize: 14)),
+          )),
+        ] else ...[
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(LucideIcons.mailCheck, size: 48, color: AppColors.success),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(width: double.infinity, height: 50,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Schließen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+}

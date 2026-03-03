@@ -400,6 +400,10 @@ class SupabaseService {
     await client.from('task_documentation').delete().eq('id', docId);
   }
 
+  static Future<void> updateTaskDoc(String docId, Map<String, dynamic> data) async {
+    await client.from('task_documentation').update(data).eq('id', docId);
+  }
+
   // ── Milestone Tasks (linked items) ────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getMilestoneTasks(String milestoneId) async {
     try {
