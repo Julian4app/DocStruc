@@ -191,6 +191,40 @@ class SupabaseService {
     return url;
   }
 
+  /// Uploads an image into the project-info-images bucket and inserts a row
+  /// into project_info_images (which is what the dashboard card display reads).
+  static Future<String> uploadProjectInfoImage(String projectId, Uint8List bytes, String ext) async {
+    // Ensure a project_info row exists and get its id.
+    final info = await getProjectInfo(projectId);
+    if (info == null) throw Exception('Could not get project_info for $projectId');
+    final projectInfoId = info['id'] as String;
+
+    final path = 'project_info/$projectInfoId/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await client.storage
+        .from('project-info-images')
+        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: 'image/$ext', upsert: false));
+    final url = getProjectInfoImageUrl(path);
+
+    // Determine next display_order
+    final existing = await client
+        .from('project_info_images')
+        .select('display_order')
+        .eq('project_info_id', projectInfoId)
+        .order('display_order', ascending: false)
+        .limit(1);
+    final nextOrder = (existing as List).isNotEmpty
+        ? ((existing.first['display_order'] as int? ?? 0) + 1)
+        : 0;
+
+    await client.from('project_info_images').insert({
+      'project_info_id': projectInfoId,
+      'storage_path': path,
+      'url': url,
+      'display_order': nextOrder,
+    });
+    return url;
+  }
+
   /// Adds a project member by email. Creates a user_accessor if needed, then inserts into project_members.
   static Future<void> addProjectMemberByEmail({
     required String projectId,

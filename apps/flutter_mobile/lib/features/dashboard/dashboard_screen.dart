@@ -202,8 +202,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // Upload new project images if any
       for (final img in _pendingImages) {
         try {
-          await SupabaseService.uploadProjectImage(projectId, img.bytes, img.ext);
-        } catch (_) {}
+          await SupabaseService.uploadProjectInfoImage(projectId, img.bytes, img.ext);
+        } catch (e) {
+          debugPrint('[_updateProject] image upload error: $e');
+        }
       }
 
       // Add new members
@@ -692,8 +694,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           final projectId = created['id'] as String;
           for (final img in _pendingImages) {
             try {
-              await SupabaseService.uploadProjectImage(projectId, img.bytes, img.ext);
-            } catch (_) {}
+              await SupabaseService.uploadProjectInfoImage(projectId, img.bytes, img.ext);
+            } catch (e) {
+              debugPrint('[_createProject] image upload error: $e');
+            }
           }
           for (final member in _pendingMembers) {
             try {

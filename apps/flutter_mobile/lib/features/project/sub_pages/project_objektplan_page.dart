@@ -736,6 +736,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
     _tool = _mode == _PlanMode.technical ? _DrawTool.wall : _DrawTool.freehand;
     _freeElements = _parseElements(widget.apartment.floorPlanData);
     _techElements = _parseElements(widget.apartment.technicalPlanData);
+    _scale = 0.35;
   }
 
   @override
@@ -1351,11 +1352,12 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                 );
               }),
             ),
-          // Text input overlay
+          // Text input overlay — anchored to bottom, always above keyboard
           if (_showTextInput && _textInsertPos != null)
             Positioned(
-              left: _textInsertPos!.dx * _scale + _offset.dx,
-              top: _textInsertPos!.dy * _scale + _offset.dy,
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
               child: Material(
                 elevation: 8,
                 borderRadius: BorderRadius.circular(10),
@@ -1363,10 +1365,8 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        width: 160,
+                      Expanded(
                         child: TextField(
                           controller: _textCtrl,
                           autofocus: true,
