@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/supabase_service.dart';
 import '../services/notification_service.dart';
@@ -26,7 +27,8 @@ class NotificationsState {
       );
 }
 
-class NotificationsNotifier extends StateNotifier<NotificationsState> {
+class NotificationsNotifier extends StateNotifier<NotificationsState>
+    with WidgetsBindingObserver {
   Timer? _pollTimer;
 
   /// IDs already seen so we don't fire duplicate push notifications.
@@ -35,15 +37,50 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   /// Cached user notification settings (loaded from user_settings).
   Map<String, dynamic> _notifSettings = {};
 
+  // Poll interval: 2 minutes instead of 30 seconds (4× less battery).
+  static const _pollInterval = Duration(seconds: 120);
+
   NotificationsNotifier() : super(const NotificationsState()) {
+    WidgetsBinding.instance.addObserver(this);
     _initAndLoad();
   }
 
+  /// Pause or resume the poll timer based on app lifecycle.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App is back in foreground – restart polling and fetch immediately.
+        _startTimer();
+        _poll();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        // App is backgrounded – stop polling to save battery.
+        _stopTimer();
+        break;
+      case AppLifecycleState.inactive:
+        // Transitional state (e.g. incoming call overlay) – keep current state.
+        break;
+    }
+  }
+
+  void _startTimer() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
+  }
+
+  void _stopTimer() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
   Future<void> _initAndLoad() async {
-    // Load notification settings first
+    // Load notification settings once on startup.
     await _reloadSettings();
 
-    // Request permission if push is enabled
+    // Request permission if push is enabled.
     if (_notifSettings['pushNotifications'] != false) {
       final hasPerm = await NotificationService.hasPermission();
       if (!hasPerm) {
@@ -53,9 +90,8 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
 
     await load();
 
-    // Poll every 30 seconds for new notifications
-    _pollTimer =
-        Timer.periodic(const Duration(seconds: 30), (_) => _poll());
+    // Start polling at 2-minute interval.
+    _startTimer();
   }
 
   Future<void> _reloadSettings() async {
@@ -69,6 +105,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   }
 
   /// Update in-memory settings (called from SettingsScreen after save).
+  /// Also triggers a fresh settings reload from the server.
   void updateSettings(Map<String, dynamic> settings) {
     _notifSettings = Map<String, dynamic>.from(settings);
   }
@@ -76,7 +113,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   Future<void> load() async {
     try {
       final data = await SupabaseService.getNotifications();
-      // Mark all existing IDs as seen on first load (no spurious pushes)
+      // Mark all existing IDs as seen on first load (no spurious pushes).
       if (_seenIds.isEmpty) {
         for (final n in data) {
           final id = n['id'] as String?;
@@ -95,23 +132,22 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
   }
 
   /// Called on poll timer – fires push for genuinely new notifications.
+  /// Settings are NOT reloaded here; they are loaded once at init and
+  /// updated explicitly via [updateSettings] to avoid wasteful network calls.
   Future<void> _poll() async {
     try {
-      // Refresh settings in case user changed them
-      await _reloadSettings();
-
       final data = await SupabaseService.getNotifications();
       final unread = data.where((n) => n['is_read'] != true).length;
       state = state.copyWith(notifications: data, unreadCount: unread);
 
-      // Fire local push for any new notification not yet seen
+      // Fire local push for any new notification not yet seen.
       for (final n in data) {
         final id = n['id'] as String?;
         if (id == null) continue;
         if (_seenIds.contains(id)) continue;
         _seenIds.add(id);
 
-        // Only push for unread ones
+        // Only push for unread ones.
         if (n['is_read'] == true) continue;
 
         await NotificationService.showForDbNotification(n, _notifSettings);
@@ -143,7 +179,8 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _stopTimer();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }

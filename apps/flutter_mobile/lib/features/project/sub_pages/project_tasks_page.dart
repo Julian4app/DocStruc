@@ -1842,7 +1842,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProvid
                 : Text(content, style: const TextStyle(fontSize: 14, color: AppColors.text, height: 1.5)))),
         // Voice progress bar
         if (type == 'voice' && storagePath != null && isPlayingThis && _player != null)
-          Padding(
+          RepaintBoundary(
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: StreamBuilder<Duration>(
               stream: _player!.positionStream,
@@ -1878,6 +1879,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> with SingleTickerProvid
                 );
               },
             ),
+          ),
           ),
         if (type == 'video' && storagePath != null)
           Padding(

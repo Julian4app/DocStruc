@@ -1853,7 +1853,8 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
           Padding(padding: const EdgeInsets.all(14), child: Align(alignment: Alignment.centerLeft,
             child: Text(content, style: const TextStyle(fontSize: 14, color: AppColors.text)))),
         if (type == 'voice' && storagePath != null && isPlayingThis && _player != null)
-          Padding(
+          RepaintBoundary(
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: StreamBuilder<Duration>(
               stream: _player!.positionStream,
@@ -1889,6 +1890,7 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
                 );
               },
             ),
+          ),
           ),
         if (type == 'video' && storagePath != null)
           Padding(

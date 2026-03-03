@@ -584,7 +584,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               itemBuilder: (context, index) {
                 final p = projects[index];
                 final pid = p['id'] as String;
-                return _ProjectCard(
+                return RepaintBoundary(
+                  child: _ProjectCard(
                   project: p,
                   color: _projectColor(p),
                   dateFormat: _dateFormat,
@@ -596,7 +597,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ).animate().fadeIn(
                       duration: 300.ms,
                       delay: (50 * index).ms,
-                    );
+                    ),
+                );
               },
             )
           : ListView.builder(
@@ -605,7 +607,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               itemBuilder: (context, index) {
                 final p = projects[index];
                 final pid = p['id'] as String;
-                return _ProjectCard(
+                return RepaintBoundary(
+                  child: _ProjectCard(
                   project: p,
                   color: _projectColor(p),
                   dateFormat: _dateFormat,
@@ -617,7 +620,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ).animate().fadeIn(
                       duration: 300.ms,
                       delay: (50 * index).ms,
-                    );
+                    ),
+                );
               },
             ),
     );
