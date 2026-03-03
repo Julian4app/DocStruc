@@ -122,7 +122,7 @@ SELECT public.attach_audit_trigger('invoices');
 SELECT public.attach_audit_trigger('company_subscriptions');
 
 -- Invitation system
-SELECT public.attach_audit_trigger('project_invitations');
+SELECT public.attach_audit_trigger('team_invitations');
 
 -- -------------------------------------------------------
 -- RLS on audit_logs: only superusers may read
@@ -164,7 +164,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.audit_trigger_fn() IS
-  'SOC 2 CC7.2 / ISO 27001 A.12.4 – Generic audit trigger. Records actor, action, before/after values for INSERT/UPDATE/DELETE operations on sensitive tables.';
+  'SOC 2 CC7.2 / ISO 27001 A.12.4 – Generic audit trigger. Records actor, action, before/after values for INSERT/UPDATE/DELETE operations on sensitive tables (projects, project_members, profiles, companies, invoices, company_subscriptions, team_invitations).';
 
 COMMENT ON FUNCTION public.purge_old_audit_logs() IS
   'Deletes audit log entries older than 2 years. Schedule via pg_cron or Supabase scheduled functions.';
