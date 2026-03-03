@@ -1036,12 +1036,12 @@ class SupabaseService {
   static Future<String> uploadFile({
     required String bucket,
     required String path,
-    required List<int> bytes,
+    required Uint8List bytes,
     String? contentType,
   }) async {
     await storage.from(bucket).uploadBinary(
           path,
-          bytes as dynamic,
+          bytes,
           fileOptions: FileOptions(
             upsert: true,
             contentType: contentType,
@@ -1115,7 +1115,7 @@ class SupabaseService {
 
   // Simple uploadFile(path, bytes, name) convenience wrapper
   static Future<String> uploadFileSimple(
-      String path, List<int> bytes, String fileName) async {
+      String path, Uint8List bytes, String fileName) async {
     return uploadFile(
       bucket: 'project-files',
       path: path,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,7 +33,7 @@ enum _CType { photo, voice, video, text }
 
 class _Att {
   final _CType type;
-  final List<int>? bytes;
+  final Uint8List? bytes;
   final String fileName;
   final String? text;
   const _Att({required this.type, this.bytes, required this.fileName, this.text});
@@ -102,7 +103,7 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
         ? await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85)
         : await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (xfile == null || !mounted) return;
-    final bytes = (await xfile.readAsBytes()).toList();
+    final bytes = await xfile.readAsBytes();
     _gotAttachment(_Att(type: _CType.photo, bytes: bytes, fileName: p.basename(xfile.path)));
   }
 
@@ -111,7 +112,7 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
         ? await ImagePicker().pickVideo(source: ImageSource.camera)
         : await ImagePicker().pickVideo(source: ImageSource.gallery);
     if (xfile == null || !mounted) return;
-    final bytes = (await xfile.readAsBytes()).toList();
+    final bytes = await xfile.readAsBytes();
     _gotAttachment(_Att(type: _CType.video, bytes: bytes, fileName: p.basename(xfile.path)));
   }
 
@@ -119,7 +120,7 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
     final result = await FilePicker.platform.pickFiles(type: FileType.audio, withData: true);
     if (result == null || result.files.isEmpty || !mounted) return;
     final f = result.files.first;
-    _gotAttachment(_Att(type: _CType.voice, bytes: f.bytes?.toList(), fileName: f.name));
+    _gotAttachment(_Att(type: _CType.voice, bytes: f.bytes, fileName: f.name));
   }
 
   void _gotAttachment(_Att att) {
@@ -214,7 +215,7 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
 
       if (att.type == _CType.text) {
         // Store text as a .txt file in storage
-        final textBytes = (att.text ?? '').codeUnits;
+        final textBytes = Uint8List.fromList((att.text ?? '').codeUnits);
         final storagePath = '$projectId/files/note_$ts.txt';
         await SupabaseService.uploadFile(
           bucket: 'project-files',
@@ -658,7 +659,7 @@ class _StepRecordVoiceState extends State<_StepRecordVoice> {
             Expanded(child: _ActionBtn(
               label: 'Weiter', icon: LucideIcons.chevronRight, color: AppColors.primary,
               onTap: () async {
-                final bytes = (await File(_path!).readAsBytes()).toList();
+                final bytes = await File(_path!).readAsBytes();
                 widget.onDone(_Att(type: _CType.voice, bytes: bytes, fileName: p.basename(_path!)));
               },
             )),
