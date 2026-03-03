@@ -133,6 +133,10 @@ export function ProjectFiles() {
   const [folderFormData, setFolderFormData] = useState({ name: '', description: '', parent_folder_id: null as string | null, icon_name: 'Folder' });
   const [tagInputValues, setTagInputValues] = useState<Record<string, string>>({});
   const [showTagInputFor, setShowTagInputFor] = useState<string | null>(null);
+  const [projectTagPresets, setProjectTagPresets] = useState<{ id: string; name: string; color: string | null }[]>([]);
+  const [projectRestrictTags, setProjectRestrictTags] = useState(false);
+  const [tagModalFile, setTagModalFile] = useState<ProjectFile | null>(null);
+  const [tagModalInput, setTagModalInput] = useState('');
   const [editingFolder, setEditingFolder] = useState<ProjectFolder | null>(null);
   const [renamingFile, setRenamingFile] = useState<ProjectFile | null>(null);
   const [newFileName, setNewFileName] = useState('');
@@ -168,10 +172,30 @@ export function ProjectFiles() {
         loadFolders(),
         loadFiles(),
         loadProjectMembers(),
-        loadAllDocuments()
+        loadAllDocuments(),
+        loadProjectTagPresets(),
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProjectTagPresets = async () => {
+    if (!id) return;
+    const { data, error } = await supabase
+      .from('project_tag_presets')
+      .select('tag_id, tag_name, color, restrict_to_preset')
+      .eq('project_id', id);
+    if (error) {
+      // Table may not exist yet — silently ignore
+      return;
+    }
+    if (data && data.length > 0) {
+      setProjectTagPresets(data.map((r: any) => ({ id: r.tag_id, name: r.tag_name, color: r.color })));
+      setProjectRestrictTags(data[0].restrict_to_preset ?? false);
+    } else {
+      setProjectTagPresets([]);
+      setProjectRestrictTags(false);
     }
   };
 
@@ -1021,31 +1045,10 @@ export function ProjectFiles() {
                 </TouchableOpacity>
               </View>
             ))}
-            {showTagInputFor === file.id ? (
-              <View style={styles.tagInputContainer}>
-                <input
-                  autoFocus
-                  type="text"
-                  value={tagInputValues[file.id] || ''}
-                  onChange={(e) => setTagInputValues(prev => ({ ...prev, [file.id]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddTag(file, tagInputValues[file.id] || '');
-                    if (e.key === 'Escape') setShowTagInputFor(null);
-                  }}
-                  onBlur={() => {
-                    if (tagInputValues[file.id]?.trim()) handleAddTag(file, tagInputValues[file.id]);
-                    else setShowTagInputFor(null);
-                  }}
-                  placeholder="Tag hinzufügen..."
-                  style={{ border: 'none', outline: 'none', fontSize: 11, backgroundColor: 'transparent', color: '#6366F1', width: 120 }}
-                />
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.addTagButton} onPress={() => setShowTagInputFor(file.id)}>
-                <Plus size={10} color="#94a3b8" />
-                <Text style={styles.addTagText}>Tag</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={styles.addTagButton} onPress={() => { setTagModalFile(file); setTagModalInput(''); }}>
+              <Plus size={10} color="#94a3b8" />
+              <Text style={styles.addTagText}>Tag</Text>
+            </TouchableOpacity>
           </View>
         </View>
         <View style={styles.fileActionsRow}>
@@ -1429,6 +1432,96 @@ export function ProjectFiles() {
             >
               Umbenennen
             </Button>
+          </View>
+        </View>
+      </ModernModal>
+
+      {/* Tag Picker Modal */}
+      <ModernModal
+        visible={!!tagModalFile}
+        onClose={() => { setTagModalFile(null); setTagModalInput(''); }}
+        title={`Tag hinzufügen – ${tagModalFile?.name ?? ''}`}
+      >
+        <View style={{ gap: 16, paddingTop: 4 }}>
+          {/* Preset chips */}
+          {projectTagPresets.length > 0 && (
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>Vorschläge</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {projectTagPresets
+                  .filter(p => !((tagModalFile?.tags || []) as string[]).includes(p.name))
+                  .map(preset => (
+                    <TouchableOpacity
+                      key={preset.id}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        paddingHorizontal: 12, paddingVertical: 7,
+                        borderRadius: 20, borderWidth: 1.5,
+                        borderColor: preset.color || '#6366F1',
+                        backgroundColor: (preset.color || '#6366F1') + '20',
+                      }}
+                      onPress={() => {
+                        if (tagModalFile) handleAddTag(tagModalFile, preset.name);
+                        setTagModalFile(null);
+                        setTagModalInput('');
+                      }}
+                    >
+                      <Tag size={12} color={preset.color || '#6366F1'} />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: preset.color || '#6366F1' }}>{preset.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            </View>
+          )}
+          {/* Free-text input — hidden when restricted to presets */}
+          {!projectRestrictTags && (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: '#475569' }}>
+                {projectTagPresets.length > 0 ? 'Oder eigenen Tag eingeben' : 'Tag eingeben'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={tagModalInput}
+                  onChange={(e) => setTagModalInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && tagModalInput.trim() && tagModalFile) {
+                      handleAddTag(tagModalFile, tagModalInput.trim());
+                      setTagModalFile(null);
+                      setTagModalInput('');
+                    }
+                    if (e.key === 'Escape') { setTagModalFile(null); setTagModalInput(''); }
+                  }}
+                  placeholder="z.B. Revisionsplan..."
+                  style={{
+                    flex: 1, height: 38, paddingLeft: 12, paddingRight: 12,
+                    border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14,
+                    outline: 'none', color: '#1e293b',
+                  }}
+                />
+                <Button
+                  onClick={() => {
+                    if (tagModalInput.trim() && tagModalFile) {
+                      handleAddTag(tagModalFile, tagModalInput.trim());
+                      setTagModalFile(null);
+                      setTagModalInput('');
+                    }
+                  }}
+                  disabled={!tagModalInput.trim()}
+                >
+                  Hinzufügen
+                </Button>
+              </View>
+            </View>
+          )}
+          {projectTagPresets.length === 0 && projectRestrictTags && (
+            <Text style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', paddingVertical: 8 }}>
+              Keine Tags für dieses Projekt konfiguriert.
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <Button variant="outline" onClick={() => { setTagModalFile(null); setTagModalInput(''); }}>Schließen</Button>
           </View>
         </View>
       </ModernModal>
@@ -1959,12 +2052,27 @@ const styles = StyleSheet.create({
   tagInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     backgroundColor: '#EEF2FF',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#6366F1',
+  },
+  tagPresetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  tagPresetChipText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   addTagButton: {
     flexDirection: 'row',

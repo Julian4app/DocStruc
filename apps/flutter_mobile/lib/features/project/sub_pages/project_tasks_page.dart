@@ -365,11 +365,28 @@ class _ProjectTasksPageState extends ConsumerState<ProjectTasksPage>
                     ),
                     const SizedBox(height: 8),
                     ...colTasks.map((t) => Padding(padding: const EdgeInsets.only(bottom: 8),
-                      child: Draggable<Map<String, dynamic>>(
+                      child: LongPressDraggable<Map<String, dynamic>>(
                         data: t,
+                        delay: const Duration(milliseconds: 400),
                         feedback: Material(color: Colors.transparent, child: SizedBox(width: 244, child: Opacity(opacity: 0.85, child: _KanbanCard(t)))),
                         childWhenDragging: Opacity(opacity: 0.3, child: _KanbanCard(t)),
-                        child: _KanbanCard(t),
+                        child: GestureDetector(
+                          onTap: () {
+                            final perms = ref.read(permissionsProvider(widget.projectId)).valueOrNull ?? ProjectPermissions.none;
+                            Navigator.push(context, MaterialPageRoute(
+                              fullscreenDialog: true,
+                              builder: (_) => TaskDetailPage(
+                                task: t,
+                                members: _members,
+                                projectId: widget.projectId,
+                                onRefresh: _load,
+                                canEdit: perms.canEdit('tasks'),
+                                canDelete: perms.canDelete('tasks'),
+                              ),
+                            ));
+                          },
+                          child: _KanbanCard(t),
+                        ),
                       ))),
                     if (colTasks.isEmpty) Container(height: 60, decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: isHovered ? color : AppColors.border)),
                       child: Center(child: Text(isHovered ? 'Hier ablegen' : 'Keine Aufgaben', style: TextStyle(fontSize: 12, color: isHovered ? color : AppColors.textTertiary)))),

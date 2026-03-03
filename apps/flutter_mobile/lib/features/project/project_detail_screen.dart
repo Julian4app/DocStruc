@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../core/providers/auth_provider.dart';
 import '../../core/providers/permissions_provider.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/tablet_utils.dart';
 import 'sub_pages/project_dashboard_page.dart';
 import 'sub_pages/project_general_info_page.dart';
+import 'sub_pages/project_tag_presets_page.dart';
 import 'sub_pages/project_tasks_page.dart';
 import 'sub_pages/project_defects_page.dart';
 import 'sub_pages/project_schedule_page.dart';
@@ -91,6 +93,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
       case 'objektplan':       return ProjectObjektplanPage(projectId: widget.projectId);
       case 'activity':         return ProjectActivityPage(projectId: widget.projectId);
       case 'reports':          return ProjectReportsPage(projectId: widget.projectId);
+      case 'tag-presets':       return ProjectTagPresetsPage(projectId: widget.projectId);
       default:                 return ProjectDashboardPage(projectId: widget.projectId);
     }
   }
@@ -108,6 +111,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
     // Watch permissions — show loading spinner while resolving
     final permsAsync = ref.watch(permissionsProvider(widget.projectId));
     final perms = permsAsync.valueOrNull ?? ProjectPermissions.none;
+    final isSuperuser = ref.watch(authProvider).isSuperuser;
 
     // ── Tablet: collapsible permanent sidebar ────────────────────────────
     if (isTablet(context)) {
@@ -127,6 +131,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
                   color: color,
                   activeRoute: _activeRoute,
                   perms: perms,
+                  isSuperuser: isSuperuser,
                   showCloseButton: false,
                   collapsed: _sidebarCollapsed,
                   onToggleCollapse: () =>
@@ -157,6 +162,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         color: color,
         activeRoute: _activeRoute,
         perms: perms,
+        isSuperuser: isSuperuser,
         onSelectRoute: (route) {
           setState(() => _activeRoute = route);
           Navigator.of(context).pop();
@@ -239,6 +245,7 @@ class _ProjectDrawer extends StatelessWidget {
   final Color color;
   final String activeRoute;
   final ProjectPermissions perms;
+  final bool isSuperuser;
   final ValueChanged<String> onSelectRoute;
   final VoidCallback onCloseProject;
 
@@ -248,6 +255,7 @@ class _ProjectDrawer extends StatelessWidget {
     required this.color,
     required this.activeRoute,
     required this.perms,
+    this.isSuperuser = false,
     required this.onSelectRoute,
     required this.onCloseProject,
   });
@@ -263,6 +271,7 @@ class _ProjectDrawer extends StatelessWidget {
         color: color,
         activeRoute: activeRoute,
         perms: perms,
+        isSuperuser: isSuperuser,
         showCloseButton: true,
         onSelectRoute: onSelectRoute,
         onCloseProject: onCloseProject,
@@ -279,6 +288,7 @@ class _ProjectSidebarContent extends StatelessWidget {
   final Color color;
   final String activeRoute;
   final ProjectPermissions perms;
+  final bool isSuperuser;
   final bool showCloseButton;
   final bool collapsed;
   final VoidCallback? onToggleCollapse;
@@ -291,6 +301,7 @@ class _ProjectSidebarContent extends StatelessWidget {
     required this.color,
     required this.activeRoute,
     required this.perms,
+    this.isSuperuser = false,
     required this.showCloseButton,
     this.collapsed = false,
     this.onToggleCollapse,
@@ -349,6 +360,8 @@ class _ProjectSidebarContent extends StatelessWidget {
                       _CollapsedItem(LucideIcons.activity,       'activity',      activeRoute, accent, muted, onSelectRoute),
                     if (perms.canView('reports'))
                       _CollapsedItem(LucideIcons.fileBarChart,   'reports',       activeRoute, accent, muted, onSelectRoute),
+                    if (isSuperuser)
+                      _CollapsedItem(LucideIcons.tags,           'tag-presets',   activeRoute, accent, muted, onSelectRoute),
                   ],
                 ),
               ),
@@ -489,6 +502,12 @@ class _ProjectSidebarContent extends StatelessWidget {
                     _DItem(LucideIcons.activity,        'Aktivitäten',     'activity',       activeRoute, accent, txt, muted, onSelectRoute),
                   if (perms.canView('reports'))
                     _DItem(LucideIcons.fileBarChart,    'Berichte',        'reports',        activeRoute, accent, txt, muted, onSelectRoute),
+                  // Superuser-only: tag management
+                  if (isSuperuser) ...[
+                    const SizedBox(height: 8),
+                    _DSec('SUPERUSER', muted),
+                    _DItem(LucideIcons.tags,            'Tag-Verwaltung',  'tag-presets',    activeRoute, accent, txt, muted, onSelectRoute),
+                  ],
                 ],
               ),
             ),

@@ -7,6 +7,13 @@
 			"command": "flutter run -d EE084F3E-EE97-40E3-BD45-6B8BCC12691A",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Flutter Run iPhone Simulator",
+			"type": "shell",
+			"command": "flutter run -d EE084F3E-EE97-40E3-BD45-6B8BCC12691A --dart-define-from-file=dart_defines.json",
+			"isBackground": true,
+			"problemMatcher": []
 		}
 	]
 }

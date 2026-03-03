@@ -16,34 +16,28 @@ import 'core/services/notification_service.dart';
 /// instead of SharedPreferences plain-text, satisfying GDPR Art. 32 and
 /// ISO 27001 A.10.1 for stored credentials.
 class _SecureLocalStorage extends LocalStorage {
-  _SecureLocalStorage()
-      : super(
-          initialize: () async {},
-          hasAccessToken: () async {
-            const s = FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
-            return s.containsKey(key: supabasePersistSessionKey);
-          },
-          accessToken: () async {
-            const s = FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
-            return s.read(key: supabasePersistSessionKey);
-          },
-          removePersistedSession: () async {
-            const s = FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
-            return s.delete(key: supabasePersistSessionKey);
-          },
-          persistSession: (String value) async {
-            const s = FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
-            return s.write(key: supabasePersistSessionKey, value: value);
-          },
-        );
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> hasAccessToken() =>
+      _storage.containsKey(key: supabasePersistSessionKey);
+
+  @override
+  Future<String?> accessToken() =>
+      _storage.read(key: supabasePersistSessionKey);
+
+  @override
+  Future<void> removePersistedSession() =>
+      _storage.delete(key: supabasePersistSessionKey);
+
+  @override
+  Future<void> persistSession(String persistSessionString) =>
+      _storage.write(key: supabasePersistSessionKey, value: persistSessionString);
 }
 
 Future<void> main() async {
@@ -100,7 +94,9 @@ Future<void> main() async {
     anonKey: supabaseAnonKey,
     // Store auth tokens in the OS secure keychain/keystore instead of
     // SharedPreferences plain-text (GDPR Art. 32 / ISO 27001 A.10.1).
-    localStorage: _SecureLocalStorage(),
+    authOptions: FlutterAuthClientOptions(
+      localStorage: _SecureLocalStorage(),
+    ),
   );
 
   // Initialize local notifications

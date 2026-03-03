@@ -1610,4 +1610,139 @@ class SupabaseService {
       return false;
     }
   }
+
+  // ── Superuser Tag Library ─────────────────────────────────────────────────
+
+  /// Returns all tags owned by the current superuser.
+  static Future<List<Map<String, dynamic>>> getSuperuserTags() async {
+    try {
+      final result = await client
+          .from('superuser_tags')
+          .select()
+          .order('name', ascending: true);
+      return (result as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getSuperuserTags] error: $e');
+      return [];
+    }
+  }
+
+  /// Creates a new tag in the current superuser's tag library.
+  static Future<Map<String, dynamic>?> createSuperuserTag({
+    required String name,
+    String? color,
+  }) async {
+    final userId = currentUserId;
+    if (userId == null) return null;
+    try {
+      final result = await client
+          .from('superuser_tags')
+          .insert({'owner_id': userId, 'name': name.trim(), if (color != null) 'color': color})
+          .select()
+          .single();
+      return result;
+    } catch (e) {
+      debugPrint('[createSuperuserTag] error: $e');
+      return null;
+    }
+  }
+
+  /// Updates a superuser tag (name or color).
+  static Future<void> updateSuperuserTag(
+      String tagId, Map<String, dynamic> data) async {
+    try {
+      await client.from('superuser_tags').update(data).eq('id', tagId);
+    } catch (e) {
+      debugPrint('[updateSuperuserTag] error: $e');
+    }
+  }
+
+  /// Deletes a superuser tag (cascades to project_tag_settings).
+  static Future<void> deleteSuperuserTag(String tagId) async {
+    try {
+      await client.from('superuser_tags').delete().eq('id', tagId);
+    } catch (e) {
+      debugPrint('[deleteSuperuserTag] error: $e');
+    }
+  }
+
+  // ── Project Tag Settings ──────────────────────────────────────────────────
+
+  /// Returns all tag-preset assignments for a project, joined with tag details.
+  static Future<List<Map<String, dynamic>>> getProjectTagPresets(
+      String projectId) async {
+    try {
+      final result = await client
+          .from('project_tag_presets')
+          .select()
+          .eq('project_id', projectId);
+      return (result as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('[getProjectTagPresets] error: $e');
+      return [];
+    }
+  }
+
+  /// Returns the effective restrict_to_preset flag for a project.
+  static Future<bool> getProjectRestrictTags(String projectId) async {
+    try {
+      final result = await client.rpc(
+        'get_project_restrict_tags',
+        params: {'p_project_id': projectId},
+      );
+      return result == true;
+    } catch (e) {
+      debugPrint('[getProjectRestrictTags] error: $e');
+      return false;
+    }
+  }
+
+  /// Assigns a tag to a project (connects tag from library to project).
+  static Future<void> assignTagToProject({
+    required String projectId,
+    required String tagId,
+    bool restrictToPreset = false,
+  }) async {
+    try {
+      await client.from('project_tag_settings').upsert({
+        'project_id': projectId,
+        'tag_id': tagId,
+        'restrict_to_preset': restrictToPreset,
+      }, onConflict: 'project_id,tag_id');
+    } catch (e) {
+      debugPrint('[assignTagToProject] error: $e');
+    }
+  }
+
+  /// Removes a tag assignment from a project.
+  static Future<void> removeTagFromProject({
+    required String projectId,
+    required String tagId,
+  }) async {
+    try {
+      await client
+          .from('project_tag_settings')
+          .delete()
+          .eq('project_id', projectId)
+          .eq('tag_id', tagId);
+    } catch (e) {
+      debugPrint('[removeTagFromProject] error: $e');
+    }
+  }
+
+  /// Updates the restrict_to_preset flag for ALL tag assignments on a project
+  /// (toggle applies project-wide).
+  static Future<void> setProjectRestrictTags({
+    required String projectId,
+    required bool restrict,
+  }) async {
+    try {
+      await client
+          .from('project_tag_settings')
+          .update({'restrict_to_preset': restrict})
+          .eq('project_id', projectId);
+    } catch (e) {
+      debugPrint('[setProjectRestrictTags] error: $e');
+    }
+  }
 }

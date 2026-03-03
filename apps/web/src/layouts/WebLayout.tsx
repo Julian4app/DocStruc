@@ -15,7 +15,8 @@ import {
   Users, 
   Bell,
   Smartphone,
-  UsersRound
+  UsersRound,
+  Tags
 } from 'lucide-react';
 
 export function WebLayout() {
@@ -128,6 +129,7 @@ export function WebLayout() {
           items: [
               { label: 'Projekte Manager', path: '/manage-projects', icon: Folder },
               { label: 'Zugreifer', path: '/accessors', icon: Users },
+              { label: 'Tag-Verwaltung', path: '/tag-management', icon: Tags },
           ]
       });
   }

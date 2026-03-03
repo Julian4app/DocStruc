@@ -183,6 +183,11 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
   List<Map<String, dynamic>> _members = [];
   List<Map<String, dynamic>> _allDocs = [];
 
+  /// Tag presets configured by the superuser for this project
+  List<Map<String, dynamic>> _projectTagPresets = [];
+  /// Whether custom tags are blocked (only preset tags allowed)
+  bool _projectRestrictTags = false;
+
   final Set<String> _expandedFolders = {};
   late final TabController _tabCtrl;
 
@@ -209,6 +214,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
         SupabaseService.getAllProjectFiles(widget.projectId),
         SupabaseService.getProjectMembers(widget.projectId),
         SupabaseService.getAllDocuments(widget.projectId),
+        SupabaseService.getProjectTagPresets(widget.projectId),
+        SupabaseService.getProjectRestrictTags(widget.projectId),
       ]);
       if (mounted) {
         setState(() {
@@ -216,6 +223,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
           _files = (results[1] as List).cast<Map<String, dynamic>>();
           _members = (results[2] as List).cast<Map<String, dynamic>>();
           _allDocs = (results[3] as List).cast<Map<String, dynamic>>();
+          _projectTagPresets = (results[4] as List).cast<Map<String, dynamic>>();
+          _projectRestrictTags = results[5] as bool;
           _loading = false;
         });
       }
@@ -779,6 +788,8 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
                     totalFiles: _files.length,
                     totalFolders: _folders.length,
                     totalSize: _totalSize,
+                    projectTagPresets: _projectTagPresets,
+                    projectRestrictTags: _projectRestrictTags,
                   ),
                   _AllDocsTab(
                     docs: _allDocs,
@@ -813,6 +824,8 @@ class _FoldersTab extends StatelessWidget {
   final int totalFiles;
   final int totalFolders;
   final int totalSize;
+  final List<Map<String, dynamic>> projectTagPresets;
+  final bool projectRestrictTags;
 
   const _FoldersTab({
     required this.folders,
@@ -831,6 +844,8 @@ class _FoldersTab extends StatelessWidget {
     required this.totalFiles,
     required this.totalFolders,
     required this.totalSize,
+    this.projectTagPresets = const [],
+    this.projectRestrictTags = false,
   });
 
   List<Map<String, dynamic>> _filesForFolder(String? folderId) =>
@@ -904,6 +919,8 @@ class _FoldersTab extends StatelessWidget {
                         onRename: onRename,
                         onDelete: onDelete,
                         onTagsChanged: onTagsChanged,
+                        projectTagPresets: projectTagPresets,
+                        projectRestrictTags: projectRestrictTags,
                       ))
                   .toList(),
             ),
@@ -946,6 +963,8 @@ class _FoldersTab extends StatelessWidget {
                       onRename: onRename,
                       onDelete: onDelete,
                       onTagsChanged: onTagsChanged,
+                      projectTagPresets: projectTagPresets,
+                      projectRestrictTags: projectRestrictTags,
                     ))
                 .toList(),
           ),
@@ -1323,6 +1342,8 @@ class _FileRow extends StatefulWidget {
   final void Function(Map<String, dynamic>) onRename;
   final void Function(Map<String, dynamic>) onDelete;
   final void Function(Map<String, dynamic>, List<String>) onTagsChanged;
+  final List<Map<String, dynamic>> projectTagPresets;
+  final bool projectRestrictTags;
 
   const _FileRow({
     required this.file,
@@ -1332,6 +1353,8 @@ class _FileRow extends StatefulWidget {
     required this.onRename,
     required this.onDelete,
     required this.onTagsChanged,
+    this.projectTagPresets = const [],
+    this.projectRestrictTags = false,
   });
 
   @override
@@ -1339,7 +1362,6 @@ class _FileRow extends StatefulWidget {
 }
 
 class _FileRowState extends State<_FileRow> {
-  bool _addingTag = false;
   final TextEditingController _tagCtrl = TextEditingController();
 
   @override
@@ -1353,24 +1375,213 @@ class _FileRowState extends State<_FileRow> {
 
   void _addTag(String tag) {
     final trimmed = tag.trim();
-    if (trimmed.isEmpty || _tags.contains(trimmed)) {
-      setState(() => _addingTag = false);
-      _tagCtrl.clear();
-      return;
-    }
+    if (trimmed.isEmpty || _tags.contains(trimmed)) return;
     final newTags = [..._tags, trimmed];
     widget.onTagsChanged(widget.file, newTags);
-    setState(() {
-      widget.file['tags'] = newTags;
-      _addingTag = false;
-    });
-    _tagCtrl.clear();
+    setState(() => widget.file['tags'] = newTags);
   }
 
   void _removeTag(String tag) {
     final newTags = _tags.where((t) => t != tag).toList();
     widget.onTagsChanged(widget.file, newTags);
     setState(() => widget.file['tags'] = newTags);
+  }
+
+  void _showTagSheet(BuildContext context) {
+    _tagCtrl.clear();
+    final presets = widget.projectTagPresets;
+    final restrict = widget.projectRestrictTags;
+
+    showAdaptiveSheet(
+      context,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (innerCtx, setSheetState) {
+          final currentTags = _tags;
+          final availablePresets = presets
+              .where((p) => !currentTags.contains(p['tag_name'] as String? ?? ''))
+              .toList();
+
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(innerCtx).viewInsets.bottom + 16,
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 12, bottom: 8),
+                      width: 36, height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // Title
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: Row(
+                      children: [
+                        const Icon(LucideIcons.tag, size: 18, color: Color(0xFF6366F1)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tag hinzufügen',
+                            style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(sheetCtx),
+                          child: const Icon(LucideIcons.x, size: 20, color: Color(0xFF94A3B8)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  // Preset chips
+                  if (availablePresets.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                      child: const Text(
+                        'Vorschläge',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: availablePresets.map((p) {
+                          final name = p['tag_name'] as String? ?? '';
+                          final colorHex = p['color'] as String?;
+                          final color = colorHex != null
+                              ? Color(int.parse(colorHex.replaceFirst('#', '0xFF')))
+                              : const Color(0xFF6366F1);
+                          return GestureDetector(
+                            onTap: () {
+                              _addTag(name);
+                              setSheetState(() {});
+                              Navigator.pop(sheetCtx);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: color, width: 1.5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(LucideIcons.tag, size: 12, color: color),
+                                  const SizedBox(width: 6),
+                                  Text(name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    if (!restrict) const Divider(height: 24, indent: 20, endIndent: 20),
+                  ],
+                  // Free-text input — hidden when restricted
+                  if (!restrict) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                      child: Text(
+                        availablePresets.isNotEmpty ? 'Oder eigenen Tag eingeben' : 'Tag eingeben',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: TextField(
+                                controller: _tagCtrl,
+                                autofocus: availablePresets.isEmpty,
+                                style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  hintText: 'z.B. Revisionsplan...',
+                                  hintStyle: TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                onSubmitted: (v) {
+                                  if (v.trim().isNotEmpty) {
+                                    _addTag(v);
+                                    Navigator.pop(sheetCtx);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () {
+                              final v = _tagCtrl.text;
+                              if (v.trim().isNotEmpty) {
+                                _addTag(v);
+                                Navigator.pop(sheetCtx);
+                              }
+                            },
+                            child: Container(
+                              height: 44,
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Center(
+                                child: Text('Hinzufügen',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (availablePresets.isEmpty && restrict) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+                      child: Text(
+                        'Keine weiteren Tags für dieses Projekt verfügbar.',
+                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -1470,60 +1681,31 @@ class _FileRowState extends State<_FileRow> {
                             ),
                           ),
                         )),
-                    if (_addingTag)
-                      Container(
-                        width: 110,
-                        height: 26,
+                    GestureDetector(
+                      onTap: () => _showTagSheet(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEEF2FF),
+                          color: AppColors.surfaceVariant,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF6366F1)),
+                          border:
+                              Border.all(color: AppColors.border),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: TextField(
-                          controller: _tagCtrl,
-                          autofocus: true,
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF6366F1)),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            hintText: 'Tag…',
-                            hintStyle: TextStyle(
-                                fontSize: 11, color: Color(0xFF6366F1)),
-                          ),
-                          onSubmitted: _addTag,
-                          onEditingComplete: () =>
-                              _addTag(_tagCtrl.text),
-                        ),
-                      )
-                    else
-                      GestureDetector(
-                        onTap: () => setState(() => _addingTag = true),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceVariant,
-                            borderRadius: BorderRadius.circular(20),
-                            border:
-                                Border.all(color: AppColors.border),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(LucideIcons.plus,
-                                  size: 10, color: AppColors.textTertiary),
-                              SizedBox(width: 3),
-                              Text('Tag',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textTertiary)),
-                            ],
-                          ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(LucideIcons.plus,
+                                size: 10, color: AppColors.textTertiary),
+                            SizedBox(width: 3),
+                            Text('Tag',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textTertiary)),
+                          ],
                         ),
                       ),
+                    ),
                   ],
                 ),
               ],

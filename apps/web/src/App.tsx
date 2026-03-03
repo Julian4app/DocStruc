@@ -10,6 +10,7 @@ const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ de
 const Accessors = lazy(() => import('./pages/Accessors').then(m => ({ default: m.Accessors })));
 const MyTeam = lazy(() => import('./pages/MyTeam').then(m => ({ default: m.MyTeam })));
 const ManageProjects = lazy(() => import('./pages/superuser/ManageProjects').then(m => ({ default: m.ManageProjects })));
+const TagManagement = lazy(() => import('./pages/superuser/TagManagement').then(m => ({ default: m.TagManagement })));
 const ProjectManagementDetail = lazy(() => import('./pages/superuser/ProjectManagementDetail').then(m => ({ default: m.ProjectManagementDetail })));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
@@ -201,6 +202,7 @@ function AppRoutes() {
           <Route path="/accessors" element={<Accessors />} />
           <Route path="/my-team" element={<MyTeam />} />
           <Route path="/manage-projects" element={<SuperuserGuard><ManageProjects /></SuperuserGuard>} />
+          <Route path="/tag-management" element={<SuperuserGuard><TagManagement /></SuperuserGuard>} />
           <Route path="/manage-projects/:id" element={<SuperuserGuard><ProjectManagementDetail /></SuperuserGuard>} />
           <Route path="/project/:id" element={<ProjectDetail />}>
             <Route index element={<ProjectDashboard />} />
