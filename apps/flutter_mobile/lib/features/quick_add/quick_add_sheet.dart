@@ -210,30 +210,43 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
     try {
       final projectId = _project!['id'] as String;
       final att = _attachment!;
+      final ts = DateTime.now().millisecondsSinceEpoch;
+
       if (att.type == _CType.text) {
+        // Store text as a .txt file in storage
+        final textBytes = (att.text ?? '').codeUnits;
+        final storagePath = '$projectId/files/note_$ts.txt';
+        await SupabaseService.uploadFile(
+          bucket: 'project-files',
+          path: storagePath,
+          bytes: textBytes,
+          contentType: 'text/plain',
+        );
         await SupabaseService.createFile(projectId, {
-          'name': 'Notiz_${DateTime.now().millisecondsSinceEpoch}.txt',
-          'file_type': 'text/plain',
-          'size': att.text?.length ?? 0,
+          'name': 'Notiz_$ts.txt',
+          'storage_path': storagePath,
+          'mime_type': 'text/plain',
+          'file_size': textBytes.length,
           if (folderId != null) 'folder_id': folderId,
         });
       } else {
         final bytes = att.bytes;
         if (bytes == null) throw Exception('Keine Daten');
-        final ext = p.extension(att.fileName).isEmpty ? _defExt(att.type) : p.extension(att.fileName);
-        final storagePath = '$projectId/files/${DateTime.now().millisecondsSinceEpoch}_${att.fileName}';
-        final url = await SupabaseService.uploadFile(
+        final rawExt = p.extension(att.fileName);
+        final ext = rawExt.isEmpty ? _defExt(att.type) : rawExt;
+        final mimeType = _mime(att.type, ext);
+        final storagePath = '$projectId/files/${ts}_${att.fileName}';
+        await SupabaseService.uploadFile(
           bucket: 'project-files',
           path: storagePath,
           bytes: bytes,
-          contentType: _mime(att.type, ext),
+          contentType: mimeType,
         );
         await SupabaseService.createFile(projectId, {
           'name': att.fileName,
-          'file_url': url,
           'storage_path': storagePath,
-          'file_type': att.type == _CType.photo ? 'image' : att.type == _CType.voice ? 'audio' : 'video',
-          'size': bytes.length,
+          'mime_type': mimeType,
+          'file_size': bytes.length,
           if (folderId != null) 'folder_id': folderId,
         });
       }
@@ -259,11 +272,14 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
     }
     final bytes = att.bytes;
     if (bytes == null) return;
-    final ext = p.extension(att.fileName).isEmpty ? _defExt(att.type) : p.extension(att.fileName);
-    final storagePath = '$projectId/tasks/$taskId/${DateTime.now().millisecondsSinceEpoch}$ext';
-    final bucket = att.type == _CType.photo ? 'task-images' : 'task-docs';
-    final url = await SupabaseService.uploadFile(
-      bucket: bucket, path: storagePath, bytes: bytes,
+    final rawExt = p.extension(att.fileName);
+    final ext = rawExt.isEmpty ? _defExt(att.type) : rawExt;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final storagePath = '$projectId/tasks/$taskId/${att.type == _CType.photo ? 'photo' : att.type == _CType.voice ? 'voice' : 'video'}_$ts$ext';
+    await SupabaseService.uploadFile(
+      bucket: 'task-images',
+      path: storagePath,
+      bytes: bytes,
       contentType: _mime(att.type, ext),
     );
     if (att.type == _CType.photo) {
@@ -271,7 +287,8 @@ class _QuickAddRootState extends State<_QuickAddRoot> {
     } else {
       await SupabaseService.addTaskDoc(taskId, projectId, {
         'documentation_type': att.type == _CType.voice ? 'voice' : 'video',
-        'file_url': url,
+        'content': '',
+        'storage_path': storagePath,
         'file_name': att.fileName,
       });
     }

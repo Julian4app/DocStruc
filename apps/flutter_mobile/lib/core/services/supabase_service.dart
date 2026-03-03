@@ -479,7 +479,7 @@ class SupabaseService {
         .insert({
           ...data,
           'project_id': projectId,
-          if (userId != null) 'created_by': userId,
+          if (userId != null) 'creator_id': userId,
         })
         .select('id')
         .single();
