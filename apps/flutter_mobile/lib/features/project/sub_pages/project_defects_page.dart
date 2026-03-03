@@ -1061,79 +1061,26 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
     _loadDet();
   }
 
-  Future<void> _renameDoc(Map<String, dynamic> doc) async {
-    final ctrl = TextEditingController(text: doc['file_name'] as String? ?? '');
-    String? newName;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Umbenennen'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
-          onSubmitted: (v) { newName = v.trim(); Navigator.pop(ctx); },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-          ElevatedButton(
-            onPressed: () { newName = ctrl.text.trim(); Navigator.pop(ctx); },
-            child: const Text('Speichern'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (!mounted) return;
-    if (newName == null || newName!.isEmpty) return;
-    await SupabaseService.updateTaskDoc(doc['id'] as String, {'file_name': newName!});
-    if (mounted) _loadDet();
-  }
-
   Future<void> _showDocMenu(Map<String, dynamic> doc) async {
-    final docId = doc['id'] as String;
-    await showModalBottomSheet<void>(
+    final docId   = doc['id'] as String;
+    final initial = doc['file_name'] as String? ?? '';
+    final result  = await showModalBottomSheet<_DocMenuResult>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-          ListTile(
-            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
-            title: const Text('Umbenennen', style: TextStyle(fontWeight: FontWeight.w600)),
-            onTap: () { Navigator.pop(ctx); _renameDoc(doc); },
-          ),
-          ListTile(
-            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.danger)),
-            title: const Text('Löschen', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger)),
-            onTap: () async {
-              Navigator.pop(ctx);
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (d) => AlertDialog(
-                  title: const Text('Löschen'),
-                  content: const Text('Eintrag wirklich löschen?'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Abbrechen')),
-                    TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Löschen', style: TextStyle(color: AppColors.danger))),
-                  ],
-                ),
-              );
-              if (ok == true && mounted) {
-                await SupabaseService.deleteTaskDoc(docId);
-                if (mounted) _loadDet();
-              }
-            },
-          ),
-        ]),
-      ),
+      builder: (ctx) => _DocMenuSheet(initialName: initial),
     );
+    if (!mounted) return;
+    if (result == null) return;
+    if (result.action == _DocMenuAction.rename) {
+      if (result.newName != null && result.newName!.isNotEmpty) {
+        await SupabaseService.updateTaskDoc(docId, {'file_name': result.newName!});
+        if (mounted) _loadDet();
+      }
+    } else if (result.action == _DocMenuAction.delete) {
+      await SupabaseService.deleteTaskDoc(docId);
+      if (mounted) _loadDet();
+    }
   }
 
   Future<void> _delete() async {
@@ -2134,6 +2081,93 @@ class _DefMemberPickerTile extends StatelessWidget {
           const Icon(LucideIcons.chevronDown, size: 16, color: AppColors.textTertiary),
         ]),
       ),
+    );
+  }
+}
+
+// ─── Doc context menu ───────────────────────────────────────────────────────
+
+enum _DocMenuAction { rename, delete }
+
+class _DocMenuResult {
+  final _DocMenuAction action;
+  final String? newName;
+  const _DocMenuResult(this.action, {this.newName});
+}
+
+class _DocMenuSheet extends StatefulWidget {
+  final String initialName;
+  const _DocMenuSheet({required this.initialName});
+  @override
+  State<_DocMenuSheet> createState() => _DocMenuSheetState();
+}
+
+class _DocMenuSheetState extends State<_DocMenuSheet> {
+  bool _renaming = false;
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+        if (!_renaming) ...[
+          ListTile(
+            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
+            title: const Text('Umbenennen', style: TextStyle(fontWeight: FontWeight.w600)),
+            onTap: () => setState(() => _renaming = true),
+          ),
+          ListTile(
+            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.danger)),
+            title: const Text('Löschen', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger)),
+            onTap: () => Navigator.pop(context, const _DocMenuResult(_DocMenuAction.delete)),
+          ),
+        ] else ...[
+          const Text('Umbenennen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Name',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+            ),
+            onSubmitted: (v) => Navigator.pop(context, _DocMenuResult(_DocMenuAction.rename, newName: v.trim())),
+          ),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: OutlinedButton(
+              onPressed: () => setState(() => _renaming = false),
+              style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              child: const Text('Zurück'),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: ElevatedButton(
+              onPressed: () => Navigator.pop(context, _DocMenuResult(_DocMenuAction.rename, newName: _ctrl.text.trim())),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              child: const Text('Speichern'),
+            )),
+          ]),
+        ],
+      ]),
     );
   }
 }
