@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -341,8 +342,9 @@ class _FloorPlanPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
+    // Draw selection highlight behind element
     if (isSelected) {
-      paint.color = paint.color.withValues(alpha: 0.9);
+      _drawSelectionHighlight(canvas, el);
     }
 
     switch (el.type) {
@@ -562,15 +564,67 @@ class _FloorPlanPainter extends CustomPainter {
     }
   }
 
+  void _drawSelectionHighlight(Canvas canvas, _CanvasElement el) {
+    final glowPaint = Paint()
+      ..color = const Color(0xFF3B82F6).withValues(alpha: 0.35)
+      ..strokeWidth = (el.strokeWidth + 8) / scale
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    final outlinePaint = Paint()
+      ..color = const Color(0xFF3B82F6)
+      ..strokeWidth = 2.5 / scale
+      ..style = PaintingStyle.stroke;
+
+    switch (el.type) {
+      case _ElementType.freehand:
+        if (el.points != null && el.points!.length > 1) {
+          final path = Path()..moveTo(el.points![0].dx, el.points![0].dy);
+          for (var i = 1; i < el.points!.length; i++) {
+            path.lineTo(el.points![i].dx, el.points![i].dy);
+          }
+          canvas.drawPath(path, glowPaint);
+        }
+        break;
+      case _ElementType.line:
+      case _ElementType.dimension:
+        canvas.drawLine(Offset(el.x, el.y), Offset(el.x2 ?? el.x, el.y2 ?? el.y), glowPaint);
+        break;
+      case _ElementType.wall:
+        canvas.drawLine(Offset(el.x, el.y), Offset(el.x2 ?? el.x, el.y2 ?? el.y), glowPaint);
+        break;
+      case _ElementType.rect:
+        canvas.drawRect(Rect.fromLTWH(el.x - 4 / scale, el.y - 4 / scale, (el.width ?? 0) + 8 / scale, (el.height ?? 0) + 8 / scale), outlinePaint);
+        break;
+      case _ElementType.circle:
+        canvas.drawOval(Rect.fromLTWH(el.x - 4 / scale, el.y - 4 / scale, (el.width ?? 0) + 8 / scale, (el.height ?? 0) + 8 / scale), outlinePaint);
+        break;
+      case _ElementType.terrace:
+        canvas.drawRect(Rect.fromLTWH(el.x - 4 / scale, el.y - 4 / scale, (el.width ?? 120) + 8 / scale, (el.height ?? 80) + 8 / scale), outlinePaint);
+        break;
+      case _ElementType.door:
+      case _ElementType.window:
+      case _ElementType.terraceDoor:
+        canvas.drawLine(Offset(el.x, el.y), Offset(el.x + (el.width ?? 60), el.y), glowPaint);
+        break;
+      case _ElementType.text:
+        // Draw a small highlight dot at the text position
+        canvas.drawCircle(Offset(el.x, el.y), 6 / scale, Paint()..color = const Color(0xFF3B82F6).withValues(alpha: 0.4)..style = PaintingStyle.fill);
+        break;
+    }
+  }
+
   void _drawSelectionHandles(Canvas canvas, _CanvasElement el) {
-    final handlePaint = Paint()..color = AppColors.primary..strokeWidth = 2 / scale..style = PaintingStyle.stroke;
+    final handlePaint = Paint()..color = const Color(0xFF3B82F6)..strokeWidth = 2.5 / scale..style = PaintingStyle.stroke;
     final fillPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
-    const hs = 8.0;
+    const hs = 11.0; // Larger handles for easier touch
 
     void drawHandle(Offset pos) {
       final r = hs / scale;
       canvas.drawCircle(pos, r, fillPaint);
       canvas.drawCircle(pos, r, handlePaint);
+      // Inner dot for visibility
+      canvas.drawCircle(pos, r * 0.35, Paint()..color = const Color(0xFF3B82F6)..style = PaintingStyle.fill);
     }
 
     if (el.type == _ElementType.line || el.type == _ElementType.wall || el.type == _ElementType.dimension) {
@@ -582,6 +636,8 @@ class _FloorPlanPainter extends CustomPainter {
     } else if (el.type == _ElementType.door || el.type == _ElementType.window || el.type == _ElementType.terraceDoor) {
       drawHandle(Offset(el.x, el.y));
       drawHandle(Offset(el.x + (el.width ?? 60), el.y));
+    } else if (el.type == _ElementType.text) {
+      drawHandle(Offset(el.x, el.y));
     }
   }
 
@@ -652,8 +708,15 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
   double _wallThickness = 15.0;
   bool _isSaving = false;
   bool _showTextInput = false;
+  // 'start' | 'end' | 'topLeft' | 'bottomRight' — which handle is being dragged
+  String? _draggingHandle;
+  // For dragging a selected element (move, not resize)
+  Offset? _dragElementStart;
+  _CanvasElement? _dragElementSnapshot; // snapshot of element at drag start
   final _textCtrl = TextEditingController();
   Offset? _textInsertPos;
+  // For editing existing text elements
+  String? _editingTextId;
 
   List<_CanvasElement> _parseElements(String? raw) {
     if (raw == null) return [];
@@ -791,18 +854,76 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
       setState(() {
         _textInsertPos = pos;
         _showTextInput = true;
+        _editingTextId = null;
       });
     }
+  }
+
+  void _handleDoubleTap(TapDownDetails details) {
+    final pos = _toCanvas(details.localPosition);
+    if (_tool == _DrawTool.select) {
+      // Double-tap on a text element → open editor
+      for (final el in _elements.reversed) {
+        if (el.type == _ElementType.text && _hitTest(el, pos)) {
+          setState(() {
+            _editingTextId = el.id;
+            _textCtrl.text = el.text ?? '';
+            _textInsertPos = Offset(el.x, el.y);
+            _showTextInput = true;
+          });
+          return;
+        }
+      }
+    }
+  }
+
+  /// Returns which resize handle at [pos] for the currently selected element,
+  /// or null if not near any handle. Returns 'start'/'end'/'topLeft'/'bottomRight'.
+  String? _handleHitTest(_CanvasElement el, Offset pos) {
+    const handleR = 20.0; // generous touch radius in canvas coords (scaled by 1/scale already)
+    final r = handleR / _scale;
+    if (el.type == _ElementType.line || el.type == _ElementType.wall || el.type == _ElementType.dimension) {
+      if ((pos - Offset(el.x, el.y)).distance < r) return 'start';
+      if ((pos - Offset(el.x2 ?? el.x, el.y2 ?? el.y)).distance < r) return 'end';
+    } else if (el.type == _ElementType.rect || el.type == _ElementType.circle || el.type == _ElementType.terrace) {
+      if ((pos - Offset(el.x, el.y)).distance < r) return 'topLeft';
+      if ((pos - Offset(el.x + (el.width ?? 0), el.y + (el.height ?? 0))).distance < r) return 'bottomRight';
+    } else if (el.type == _ElementType.door || el.type == _ElementType.window || el.type == _ElementType.terraceDoor) {
+      if ((pos - Offset(el.x, el.y)).distance < r) return 'start';
+      if ((pos - Offset(el.x + (el.width ?? 60), el.y)).distance < r) return 'end';
+    }
+    return null;
   }
 
   void _handlePanStart(DragStartDetails details) {
     final pos = _toCanvas(details.localPosition);
     if (_tool == _DrawTool.pan) {
       _panStart = details.localPosition;
+    } else if (_tool == _DrawTool.select) {
+      // Check if we're dragging a resize handle on the selected element
+      if (_selectedId != null) {
+        final selEl = _elements.firstWhere((e) => e.id == _selectedId, orElse: () => _elements.first);
+        final handle = _handleHitTest(selEl, pos);
+        if (handle != null) {
+          _pushUndo();
+          setState(() => _draggingHandle = handle);
+          return;
+        }
+        // Check if dragging the element body (move)
+        if (_hitTest(selEl, pos)) {
+          _pushUndo();
+          setState(() {
+            _dragElementStart = pos;
+            _dragElementSnapshot = selEl.copyWith();
+          });
+          return;
+        }
+      }
+      // No selected element hit — do nothing (tap already handled in _handleTapDown)
     } else if (_tool == _DrawTool.freehand) {
       _pushUndo();
       setState(() { _isDrawing = true; _currentPoints = [pos]; });
-    } else if (_tool != _DrawTool.select && _tool != _DrawTool.eraser && _tool != _DrawTool.text) {
+    } else if (_tool != _DrawTool.eraser && _tool != _DrawTool.text) {
       setState(() { _drawStart = pos; _drawCurrent = pos; _isDrawing = true; });
     }
   }
@@ -813,6 +934,57 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
         setState(() {
           _offset += details.localPosition - _panStart!;
           _panStart = details.localPosition;
+        });
+      }
+    } else if (_tool == _DrawTool.select) {
+      final pos = _toCanvas(details.localPosition);
+      if (_selectedId != null && _draggingHandle != null) {
+        // Resize: move the dragged endpoint
+        final idx = _elements.indexWhere((e) => e.id == _selectedId);
+        if (idx == -1) return;
+        final el = _elements[idx];
+        setState(() {
+          if (_draggingHandle == 'start') {
+            _elements[idx] = el.copyWith(
+              x: pos.dx, y: pos.dy,
+              length: _calcLength(pos, Offset(el.x2 ?? el.x, el.y2 ?? el.y)) * 2,
+            );
+          } else if (_draggingHandle == 'end') {
+            if (el.type == _ElementType.door || el.type == _ElementType.window || el.type == _ElementType.terraceDoor) {
+              final newW = (pos.dx - el.x).abs().clamp(20.0, 300.0);
+              _elements[idx] = el.copyWith(width: newW, length: newW * 2);
+            } else {
+              _elements[idx] = el.copyWith(
+                x2: pos.dx, y2: pos.dy,
+                length: _calcLength(Offset(el.x, el.y), pos) * 2,
+              );
+            }
+          } else if (_draggingHandle == 'topLeft') {
+            final br = Offset(el.x + (el.width ?? 0), el.y + (el.height ?? 0));
+            _elements[idx] = el.copyWith(
+              x: math.min(pos.dx, br.dx), y: math.min(pos.dy, br.dy),
+              width: (br.dx - pos.dx).abs(), height: (br.dy - pos.dy).abs(),
+            );
+          } else if (_draggingHandle == 'bottomRight') {
+            _elements[idx] = el.copyWith(
+              width: (pos.dx - el.x).abs(), height: (pos.dy - el.y).abs(),
+            );
+          }
+        });
+      } else if (_selectedId != null && _dragElementStart != null && _dragElementSnapshot != null) {
+        // Move element
+        final dx = pos.dx - _dragElementStart!.dx;
+        final dy = pos.dy - _dragElementStart!.dy;
+        final snap = _dragElementSnapshot!;
+        final idx = _elements.indexWhere((e) => e.id == _selectedId);
+        if (idx == -1) return;
+        setState(() {
+          _elements[idx] = snap.copyWith(
+            x: snap.x + dx, y: snap.y + dy,
+            x2: snap.x2 != null ? snap.x2! + dx : null,
+            y2: snap.y2 != null ? snap.y2! + dy : null,
+            points: snap.points?.map((p) => Offset(p.dx + dx, p.dy + dy)).toList(),
+          );
         });
       }
     } else if (_tool == _DrawTool.freehand && _isDrawing) {
@@ -826,6 +998,12 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
   void _handlePanEnd(DragEndDetails details) {
     if (_tool == _DrawTool.pan) {
       _panStart = null;
+    } else if (_tool == _DrawTool.select) {
+      setState(() {
+        _draggingHandle = null;
+        _dragElementStart = null;
+        _dragElementSnapshot = null;
+      });
     } else if (_tool == _DrawTool.freehand) {
       _finishFreehand();
     } else if (_isDrawing && _drawStart != null && _drawCurrent != null) {
@@ -867,6 +1045,27 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
     var t = ((p.dx - a.dx) * dx + (p.dy - a.dy) * dy) / len2;
     t = t.clamp(0.0, 1.0);
     return (p - Offset(a.dx + t * dx, a.dy + t * dy)).distance;
+  }
+
+  void _commitTextInput(String val) {
+    if (_editingTextId != null) {
+      // Edit existing text element
+      if (val.isNotEmpty) {
+        _pushUndo();
+        final idx = _elements.indexWhere((e) => e.id == _editingTextId);
+        if (idx != -1) {
+          _elements[idx] = _elements[idx].copyWith(text: val);
+        }
+      }
+      setState(() { _showTextInput = false; _editingTextId = null; _textCtrl.clear(); });
+    } else {
+      // Create new text element
+      if (val.isNotEmpty && _textInsertPos != null) {
+        _pushUndo();
+        _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: _fontSize));
+      }
+      setState(() { _showTextInput = false; _textCtrl.clear(); });
+    }
   }
 
   void _deleteSelected() {
@@ -921,13 +1120,15 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
     return Material(
       color: const Color(0xFFF8FAFC),
       child: Column(
         children: [
         // ── Header bar ────────────────────────────────────────────────────
         Container(
-          height: 56,
+          height: 56 + topPadding,
+          padding: EdgeInsets.only(top: topPadding),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: Color(0xFFe2e8f0))),
@@ -988,6 +1189,7 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
         children: [
           GestureDetector(
             onTapDown: _handleTapDown,
+            onDoubleTapDown: _handleDoubleTap,
             onPanStart: _tool == _DrawTool.pan ? (d) { _panStart = d.localPosition; } : _handlePanStart,
             onPanUpdate: _handlePanUpdate,
             onPanEnd: _handlePanEnd,
@@ -1036,31 +1238,57 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
           if (_selectedId != null)
             Positioned(
               bottom: 16, left: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8)]),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(LucideIcons.mousePointer2, size: 14, color: Color(0xFF64748b)),
-                    const SizedBox(width: 8),
-                    const Text('Element ausgewählt', style: TextStyle(fontSize: 12, color: Color(0xFF334155))),
-                    const SizedBox(width: 12),
-                    GestureDetector(
-                      onTap: _deleteSelected,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: const Color(0xFFfee2e2), borderRadius: BorderRadius.circular(6)),
-                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(LucideIcons.trash2, size: 12, color: Color(0xFFdc2626)),
-                          SizedBox(width: 4),
-                          Text('Löschen', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFdc2626))),
-                        ]),
+              child: Builder(builder: (context) {
+                final selEl = _elements.where((e) => e.id == _selectedId).firstOrNull;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8)]),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.mousePointer2, size: 14, color: Color(0xFF64748b)),
+                      const SizedBox(width: 8),
+                      const Text('Element ausgewählt', style: TextStyle(fontSize: 12, color: Color(0xFF334155))),
+                      if (selEl?.type == _ElementType.text) ...[  
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            if (selEl == null) return;
+                            setState(() {
+                              _editingTextId = selEl.id;
+                              _textCtrl.text = selEl.text ?? '';
+                              _textInsertPos = Offset(selEl.x, selEl.y);
+                              _showTextInput = true;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6)),
+                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(LucideIcons.pencil, size: 12, color: Color(0xFF1d4ed8)),
+                              SizedBox(width: 4),
+                              Text('Bearbeiten', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1d4ed8))),
+                            ]),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _deleteSelected,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(color: const Color(0xFFfee2e2), borderRadius: BorderRadius.circular(6)),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(LucideIcons.trash2, size: 12, color: Color(0xFFdc2626)),
+                            SizedBox(width: 4),
+                            Text('Löschen', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFdc2626))),
+                          ]),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              }),
             ),
           // Text input overlay
           if (_showTextInput && _textInsertPos != null)
@@ -1082,31 +1310,26 @@ class _CanvasEditorPageState extends State<_CanvasEditorPage> {
                           controller: _textCtrl,
                           autofocus: true,
                           style: const TextStyle(fontSize: 14),
-                          decoration: const InputDecoration(hintText: 'Text eingeben...', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6), border: OutlineInputBorder()),
+                          decoration: InputDecoration(
+                            hintText: 'Text eingeben...',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            border: const OutlineInputBorder(),
+                            labelText: _editingTextId != null ? 'Text bearbeiten' : null,
+                          ),
                           onSubmitted: (val) {
-                            if (val.isNotEmpty && _textInsertPos != null) {
-                              _pushUndo();
-                              _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: _fontSize));
-                            }
-                            setState(() { _showTextInput = false; _textCtrl.clear(); });
+                            _commitTextInput(val);
                           },
                         ),
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
-                        onTap: () {
-                          final val = _textCtrl.text;
-                          if (val.isNotEmpty && _textInsertPos != null) {
-                            _pushUndo();
-                            _elements.add(_CanvasElement(id: _genId(), type: _ElementType.text, x: _textInsertPos!.dx, y: _textInsertPos!.dy, text: val, color: _strokeColor, strokeWidth: 1, fontSize: _fontSize));
-                          }
-                          setState(() { _showTextInput = false; _textCtrl.clear(); });
-                        },
+                        onTap: () => _commitTextInput(_textCtrl.text),
                         child: Container(width: 32, height: 32, decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.check, size: 16, color: Colors.white)),
                       ),
                       const SizedBox(width: 4),
                       GestureDetector(
-                        onTap: () => setState(() { _showTextInput = false; _textCtrl.clear(); }),
+                        onTap: () => setState(() { _showTextInput = false; _editingTextId = null; _textCtrl.clear(); }),
                         child: Container(width: 32, height: 32, decoration: BoxDecoration(border: Border.all(color: const Color(0xFFe2e8f0)), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.x, size: 16)),
                       ),
                     ],
@@ -1467,25 +1690,63 @@ class _ProjectObjektplanPageState extends State<ProjectObjektplanPage> {
     _load();
   }
 
+  String _mimeType(String? ext) {
+    switch (ext?.toLowerCase()) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'gif': return 'image/gif';
+      case 'webp': return 'image/webp';
+      case 'heic': case 'heif': return 'image/heic';
+      case 'pdf': return 'application/pdf';
+      case 'dwg': return 'application/acad';
+      case 'dxf': return 'application/dxf';
+      default: return 'application/octet-stream';
+    }
+  }
+
   Future<void> _uploadAttachment(_Apartment apt) async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf'],
+      withData: true,
+    );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    final bytes = file.bytes ?? Uint8List(0);
-    if (bytes.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden')));
+
+    // On mobile file.bytes may be null when withData is not respected — read from path
+    Uint8List? bytes = file.bytes;
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {}
+    }
+
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datei konnte nicht gelesen werden. Bitte wählen Sie eine unterstützte Datei.')));
       return;
     }
+
     try {
       final ext = file.extension ?? 'bin';
-      final path = 'building-plans/${widget.projectId}/${apt.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
-      await _client.storage.from('project-files').uploadBinary(path, bytes, fileOptions: FileOptions(upsert: true, contentType: file.extension));
-      final url = _client.storage.from('project-files').getPublicUrl(path);
-      await _client.from('building_attachments').insert({'apartment_id': apt.id, 'name': file.name, 'url': url, 'type': file.extension, 'size': file.size});
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Anlage hochgeladen'), backgroundColor: Color(0xFF22c55e)));
+      final mime = _mimeType(ext);
+      final storagePath = 'building-plans/${widget.projectId}/${apt.id}/${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await _client.storage.from('project-files').uploadBinary(
+        storagePath,
+        bytes,
+        fileOptions: FileOptions(upsert: true, contentType: mime),
+      );
+      final url = _client.storage.from('project-files').getPublicUrl(storagePath);
+      await _client.from('building_attachments').insert({
+        'apartment_id': apt.id,
+        'name': file.name,
+        'url': url,
+        'type': ext,
+        'size': bytes.length,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plan hochgeladen ✓'), backgroundColor: Color(0xFF22c55e)));
       _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Hochladen: $e')));
     }
   }
 
