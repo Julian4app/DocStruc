@@ -218,9 +218,8 @@ class _ProjectDocumentationPageState extends State<ProjectDocumentationPage> {
           : Column(
               children: [
                 // ── Subtitle bar ────────────────────────────────────────────
-                Container(
-                  color: AppColors.surface,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Text(
                     '$_total Einträge · Chronologische Timeline aller Dokumentationen',
                     style: const TextStyle(

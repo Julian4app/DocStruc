@@ -53,6 +53,68 @@ IconData _fileIcon(String? mime) {
   return LucideIcons.file;
 }
 
+// Folder icon map — name → (icon, color)
+IconData _folderIconData(String? iconName) {
+  switch (iconName) {
+    case 'Archive':   return LucideIcons.archive;
+    case 'Briefcase': return LucideIcons.briefcase;
+    case 'Star':      return LucideIcons.star;
+    case 'Building2': return LucideIcons.building2;
+    case 'Home':      return LucideIcons.home;
+    case 'Lock':      return LucideIcons.lock;
+    case 'Book':      return LucideIcons.book;
+    case 'Camera':    return LucideIcons.camera;
+    case 'Code':      return LucideIcons.code;
+    case 'Database':  return LucideIcons.database;
+    case 'Package':   return LucideIcons.package;
+    case 'Layers':    return LucideIcons.layers;
+    case 'Music':     return LucideIcons.music;
+    case 'Globe':     return LucideIcons.globe;
+    case 'Heart':     return LucideIcons.heart;
+    default:          return LucideIcons.folder;
+  }
+}
+
+Color _folderIconColor(String? iconName) {
+  switch (iconName) {
+    case 'Archive':   return const Color(0xFF6366F1);
+    case 'Briefcase': return const Color(0xFF0EA5E9);
+    case 'Star':      return const Color(0xFFF59E0B);
+    case 'Building2': return const Color(0xFF10B981);
+    case 'Home':      return const Color(0xFF3B82F6);
+    case 'Lock':      return const Color(0xFFDC2626);
+    case 'Book':      return const Color(0xFF8B5CF6);
+    case 'Camera':    return const Color(0xFFEC4899);
+    case 'Code':      return const Color(0xFF06B6D4);
+    case 'Database':  return const Color(0xFF64748B);
+    case 'Package':   return const Color(0xFFD97706);
+    case 'Layers':    return const Color(0xFF14B8A6);
+    case 'Music':     return const Color(0xFFF43F5E);
+    case 'Globe':     return const Color(0xFF3B82F6);
+    case 'Heart':     return const Color(0xFFEF4444);
+    default:          return const Color(0xFFF59E0B);
+  }
+}
+
+const List<Map<String, String>> _kFolderIconOptions = [
+  {'name': 'Folder',    'label': 'Standard'},
+  {'name': 'Archive',   'label': 'Archiv'},
+  {'name': 'Briefcase', 'label': 'Aktentasche'},
+  {'name': 'Star',      'label': 'Favorit'},
+  {'name': 'Building2', 'label': 'Gebäude'},
+  {'name': 'Home',      'label': 'Haus'},
+  {'name': 'Lock',      'label': 'Gesperrt'},
+  {'name': 'Book',      'label': 'Buch'},
+  {'name': 'Camera',    'label': 'Kamera'},
+  {'name': 'Code',      'label': 'Code'},
+  {'name': 'Database',  'label': 'Datenbank'},
+  {'name': 'Package',   'label': 'Paket'},
+  {'name': 'Layers',    'label': 'Ebenen'},
+  {'name': 'Music',     'label': 'Musik'},
+  {'name': 'Globe',     'label': 'Web'},
+  {'name': 'Heart',     'label': 'Favorit 2'},
+];
+
 Color _fileColor(String? mime) {
   if (mime == null) return AppColors.textSecondary;
   if (mime.startsWith('image/')) return const Color(0xFF10B981);
@@ -172,6 +234,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
     final nameCtrl = TextEditingController(text: existing?['name'] ?? '');
     final descCtrl = TextEditingController(text: existing?['description'] ?? '');
     String? parentId = existing?['parent_folder_id'] as String?;
+    String selectedIcon = (existing?['icon_name'] as String?) ?? 'Folder';
 
     final confirmed = await showAdaptiveSheet<bool>(
       context,
@@ -187,6 +250,52 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
               const SizedBox(height: 16),
               _label('Beschreibung'),
               _input(descCtrl, 'Optionale Beschreibung', maxLines: 3),
+              const SizedBox(height: 16),
+              _label('Ordner-Symbol'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _kFolderIconOptions.map((opt) {
+                  final name = opt['name']!;
+                  final label = opt['label']!;
+                  final isSelected = selectedIcon == name;
+                  final ic = _folderIconData(name);
+                  final col = _folderIconColor(name);
+                  return GestureDetector(
+                    onTap: () => setSt(() => selectedIcon = name),
+                    child: Container(
+                      width: 64,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected ? col.withValues(alpha: 0.12) : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected ? col : AppColors.border,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(ic, size: 22, color: col),
+                          const SizedBox(height: 4),
+                          Text(label,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              color: isSelected ? col : AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
               const SizedBox(height: 16),
               if (existing == null) ...[
                 _label('Übergeordneter Ordner (optional)'),
@@ -217,6 +326,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
         await SupabaseService.updateFolder(existing['id'] as String, {
           'name': nameCtrl.text.trim(),
           'description': descCtrl.text.trim(),
+          'icon_name': selectedIcon,
         });
         _snack('Ordner aktualisiert');
       } else {
@@ -224,6 +334,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
           'name': nameCtrl.text.trim(),
           'description': descCtrl.text.trim(),
           'parent_folder_id': parentId,
+          'icon_name': selectedIcon,
           'created_by': SupabaseService.currentUserId,
         });
         _snack('Ordner erstellt');
@@ -563,6 +674,25 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
     ));
   }
 
+  Future<void> _handleTagsChanged(
+      Map<String, dynamic> file, List<String> newTags) async {
+    try {
+      await SupabaseService.client
+          .from('project_files')
+          .update({'tags': newTags})
+          .eq('id', file['id'] as String);
+      // Update local state immediately
+      if (mounted) {
+        setState(() {
+          final idx = _files.indexWhere((f) => f['id'] == file['id']);
+          if (idx != -1) _files[idx]['tags'] = newTags;
+        });
+      }
+    } catch (e) {
+      _snack('Fehler beim Speichern des Tags: $e', error: true);
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -645,6 +775,7 @@ class _ProjectFilesPageState extends ConsumerState<ProjectFilesPage>
                     onShare: _showShareModal,
                     onRename: _renameFile,
                     onDelete: _deleteFile,
+                    onTagsChanged: _handleTagsChanged,
                     totalFiles: _files.length,
                     totalFolders: _folders.length,
                     totalSize: _totalSize,
@@ -678,6 +809,7 @@ class _FoldersTab extends StatelessWidget {
   final void Function(Map<String, dynamic>) onShare;
   final void Function(Map<String, dynamic>) onRename;
   final void Function(Map<String, dynamic>) onDelete;
+  final void Function(Map<String, dynamic>, List<String>) onTagsChanged;
   final int totalFiles;
   final int totalFolders;
   final int totalSize;
@@ -695,6 +827,7 @@ class _FoldersTab extends StatelessWidget {
     required this.onShare,
     required this.onRename,
     required this.onDelete,
+    required this.onTagsChanged,
     required this.totalFiles,
     required this.totalFolders,
     required this.totalSize,
@@ -753,13 +886,15 @@ class _FoldersTab extends StatelessWidget {
           if (rootFiles.isNotEmpty)
             _FolderCard(
               folderId: '__root__',
-              folderName: 'Root',
+              folderName: 'Nicht zugeordnet',
               fileCount: rootFiles.length,
               isExpanded: expandedFolders.contains('__root__'),
               onToggle: () => onToggleFolder('__root__'),
               onUpload: null,
               onEdit: null,
               onDelete: null,
+              isRoot: true,
+              iconName: null,
               children: rootFiles
                   .map((f) => _FileRow(
                         file: f,
@@ -768,6 +903,7 @@ class _FoldersTab extends StatelessWidget {
                         onShare: onShare,
                         onRename: onRename,
                         onDelete: onDelete,
+                        onTagsChanged: onTagsChanged,
                       ))
                   .toList(),
             ),
@@ -793,12 +929,14 @@ class _FoldersTab extends StatelessWidget {
           _FolderCard(
             folderId: fid,
             folderName: folder['name'] as String? ?? 'Ordner',
+            iconName: folder['icon_name'] as String?,
             fileCount: folderFiles.length,
             isExpanded: isExpanded,
             onToggle: () => onToggleFolder(fid),
             onUpload: () => onUploadToFolder(fid),
             onEdit: () => onEditFolder(folder),
             onDelete: () => onDeleteFolder(folder),
+            isRoot: false,
             children: folderFiles
                 .map((f) => _FileRow(
                       file: f,
@@ -807,6 +945,7 @@ class _FoldersTab extends StatelessWidget {
                       onShare: onShare,
                       onRename: onRename,
                       onDelete: onDelete,
+                      onTagsChanged: onTagsChanged,
                     ))
                 .toList(),
           ),
@@ -1032,6 +1171,8 @@ class _MenuTile extends StatelessWidget {
 class _FolderCard extends StatelessWidget {
   final String folderId;
   final String folderName;
+  final String? iconName;
+  final bool isRoot;
   final int fileCount;
   final bool isExpanded;
   final VoidCallback onToggle;
@@ -1050,6 +1191,8 @@ class _FolderCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.children,
+    this.iconName,
+    this.isRoot = false,
   });
 
   @override
@@ -1084,16 +1227,19 @@ class _FolderCard extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                   const SizedBox(width: 10),
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(LucideIcons.folder,
-                        size: 20, color: Color(0xFFF59E0B)),
-                  ),
+                  Builder(builder: (context) {
+                    final ic = isRoot ? LucideIcons.archive : _folderIconData(iconName);
+                    final col = isRoot ? const Color(0xFF6366F1) : _folderIconColor(iconName);
+                    return Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: col.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(ic, size: 20, color: col),
+                    );
+                  }),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(folderName,
@@ -1169,13 +1315,14 @@ class _FolderCard extends StatelessWidget {
 // File Row
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _FileRow extends StatelessWidget {
+class _FileRow extends StatefulWidget {
   final Map<String, dynamic> file;
   final void Function(Map<String, dynamic>) onDownload;
   final void Function(Map<String, dynamic>) onVersions;
   final void Function(Map<String, dynamic>) onShare;
   final void Function(Map<String, dynamic>) onRename;
   final void Function(Map<String, dynamic>) onDelete;
+  final void Function(Map<String, dynamic>, List<String>) onTagsChanged;
 
   const _FileRow({
     required this.file,
@@ -1184,16 +1331,56 @@ class _FileRow extends StatelessWidget {
     required this.onShare,
     required this.onRename,
     required this.onDelete,
+    required this.onTagsChanged,
   });
 
   @override
+  State<_FileRow> createState() => _FileRowState();
+}
+
+class _FileRowState extends State<_FileRow> {
+  bool _addingTag = false;
+  final TextEditingController _tagCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _tagCtrl.dispose();
+    super.dispose();
+  }
+
+  List<String> get _tags =>
+      ((widget.file['tags'] as List?)?.cast<String>()) ?? [];
+
+  void _addTag(String tag) {
+    final trimmed = tag.trim();
+    if (trimmed.isEmpty || _tags.contains(trimmed)) {
+      setState(() => _addingTag = false);
+      _tagCtrl.clear();
+      return;
+    }
+    final newTags = [..._tags, trimmed];
+    widget.onTagsChanged(widget.file, newTags);
+    setState(() {
+      widget.file['tags'] = newTags;
+      _addingTag = false;
+    });
+    _tagCtrl.clear();
+  }
+
+  void _removeTag(String tag) {
+    final newTags = _tags.where((t) => t != tag).toList();
+    widget.onTagsChanged(widget.file, newTags);
+    setState(() => widget.file['tags'] = newTags);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final name = file['name'] as String? ?? 'Datei';
-    final mime = file['mime_type'] as String?;
-    final size = file['file_size'];
-    final version = (file['version'] as int?) ?? 1;
-    final uploadedAt = file['uploaded_at'] as String?;
-    final uploader = _uploaderName(file);
+    final name = widget.file['name'] as String? ?? 'Datei';
+    final mime = widget.file['mime_type'] as String?;
+    final size = widget.file['file_size'];
+    final version = (widget.file['version'] as int?) ?? 1;
+    final uploadedAt = widget.file['uploaded_at'] as String?;
+    final uploader = _uploaderName(widget.file);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1203,6 +1390,7 @@ class _FileRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 40,
@@ -1246,48 +1434,145 @@ class _FileRow extends StatelessWidget {
                             fontSize: 11, color: AppColors.textTertiary)),
                   ],
                 ),
+                // ── Tags row ──────────────────────────────────────────────
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ..._tags.map((tag) => GestureDetector(
+                          onTap: () => _removeTag(tag),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF2FF),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: const Color(0xFFC7D2FE)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(LucideIcons.tag,
+                                    size: 10, color: Color(0xFF6366F1)),
+                                const SizedBox(width: 4),
+                                Text(tag,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF6366F1))),
+                                const SizedBox(width: 4),
+                                const Icon(LucideIcons.x,
+                                    size: 9, color: Color(0xFF6366F1)),
+                              ],
+                            ),
+                          ),
+                        )),
+                    if (_addingTag)
+                      Container(
+                        width: 110,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFF6366F1)),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: TextField(
+                          controller: _tagCtrl,
+                          autofocus: true,
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFF6366F1)),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            hintText: 'Tag…',
+                            hintStyle: TextStyle(
+                                fontSize: 11, color: Color(0xFF6366F1)),
+                          ),
+                          onSubmitted: _addTag,
+                          onEditingComplete: () =>
+                              _addTag(_tagCtrl.text),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: () => setState(() => _addingTag = true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(20),
+                            border:
+                                Border.all(color: AppColors.border),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(LucideIcons.plus,
+                                  size: 10, color: AppColors.textTertiary),
+                              SizedBox(width: 3),
+                              Text('Tag',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textTertiary)),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
           const SizedBox(width: 4),
-          _IconBtn(
-            icon: LucideIcons.download,
-            color: const Color(0xFF10B981),
-            tooltip: 'Herunterladen',
-            onTap: () => onDownload(file),
-          ),
-          const SizedBox(width: 2),
-          _IconBtn(
-            icon: LucideIcons.clock,
-            color: const Color(0xFF3B82F6),
-            tooltip: 'Versionen',
-            onTap: () => onVersions(file),
-          ),
-          const SizedBox(width: 2),
-          _IconBtn(
-            icon: LucideIcons.share2,
-            color: const Color(0xFF8B5CF6),
-            tooltip: 'Teilen',
-            onTap: () => onShare(file),
-          ),
-          const SizedBox(width: 2),
-          GestureDetector(
-            onTap: () => _showFileMenu(
-              context,
-              file: file,
-              onRename: onRename,
-              onDelete: onDelete,
-            ),
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
-                borderRadius: BorderRadius.circular(8),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              _IconBtn(
+                icon: LucideIcons.download,
+                color: const Color(0xFF10B981),
+                tooltip: 'Herunterladen',
+                onTap: () => widget.onDownload(widget.file),
               ),
-              child: const Icon(LucideIcons.moreVertical,
-                  size: 16, color: AppColors.textSecondary),
-            ),
+              const SizedBox(height: 2),
+              _IconBtn(
+                icon: LucideIcons.clock,
+                color: const Color(0xFF3B82F6),
+                tooltip: 'Versionen',
+                onTap: () => widget.onVersions(widget.file),
+              ),
+              const SizedBox(height: 2),
+              _IconBtn(
+                icon: LucideIcons.share2,
+                color: const Color(0xFF8B5CF6),
+                tooltip: 'Teilen',
+                onTap: () => widget.onShare(widget.file),
+              ),
+              const SizedBox(height: 2),
+              GestureDetector(
+                onTap: () => _showFileMenu(
+                  context,
+                  file: widget.file,
+                  onRename: widget.onRename,
+                  onDelete: widget.onDelete,
+                ),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(LucideIcons.moreVertical,
+                      size: 16, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
           ),
         ],
       ),
