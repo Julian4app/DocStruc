@@ -1063,7 +1063,8 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
 
   Future<void> _renameDoc(Map<String, dynamic> doc) async {
     final ctrl = TextEditingController(text: doc['file_name'] as String? ?? '');
-    final newName = await showDialog<String>(
+    String? newName;
+    await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Umbenennen'),
@@ -1071,18 +1072,70 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
           controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          onSubmitted: (v) { newName = v.trim(); Navigator.pop(ctx); },
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Speichern')),
+          ElevatedButton(
+            onPressed: () { newName = ctrl.text.trim(); Navigator.pop(ctx); },
+            child: const Text('Speichern'),
+          ),
         ],
       ),
     );
     ctrl.dispose();
-    if (newName == null || newName.isEmpty) return;
-    await SupabaseService.updateTaskDoc(doc['id'] as String, {'file_name': newName});
-    _loadDet();
+    if (!mounted) return;
+    if (newName == null || newName!.isEmpty) return;
+    await SupabaseService.updateTaskDoc(doc['id'] as String, {'file_name': newName!});
+    if (mounted) _loadDet();
+  }
+
+  Future<void> _showDocMenu(Map<String, dynamic> doc) async {
+    final type  = doc['type'] as String? ?? (doc['documentation_type'] as String? ?? 'text');
+    final docId = doc['id'] as String;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+          if (type != 'text')
+            ListTile(
+              leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.pencil, size: 18, color: AppColors.primary)),
+              title: const Text('Umbenennen', style: TextStyle(fontWeight: FontWeight.w600)),
+              onTap: () { Navigator.pop(ctx); _renameDoc(doc); },
+            ),
+          ListTile(
+            leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)), child: const Icon(LucideIcons.trash2, size: 18, color: AppColors.danger)),
+            title: const Text('Löschen', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger)),
+            onTap: () async {
+              Navigator.pop(ctx);
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  title: const Text('Löschen'),
+                  content: const Text('Eintrag wirklich löschen?'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Abbrechen')),
+                    TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Löschen', style: TextStyle(color: AppColors.danger))),
+                  ],
+                ),
+              );
+              if (ok == true && mounted) {
+                await SupabaseService.deleteTaskDoc(docId);
+                if (mounted) _loadDet();
+              }
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   Future<void> _delete() async {
@@ -1844,17 +1897,10 @@ class _DefectDetailPageState extends State<DefectDetailPage> with SingleTickerPr
                   child: Icon(isPlayingThis ? LucideIcons.pause : LucideIcons.play, size: 16, color: isPlayingThis ? const Color(0xFFF59E0B) : AppColors.primary),
                 ),
               ),
-            if (type != 'text') ...[
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () => _renameDoc(doc),
-                child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.pencil, size: 14, color: AppColors.primary)),
-              ),
-            ],
             const SizedBox(width: 6),
             GestureDetector(
-              onTap: () => SupabaseService.deleteTaskDoc(docId).then((_) => _loadDet()),
-              child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)), child: const Icon(LucideIcons.trash2, size: 14, color: AppColors.danger)),
+              onTap: () => _showDocMenu(doc),
+              child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(6), border: Border.all(color: AppColors.border)), child: const Icon(LucideIcons.moreVertical, size: 16, color: AppColors.textSecondary)),
             ),
           ]),
         ),
