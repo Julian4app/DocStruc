@@ -40,11 +40,12 @@ class _TabletShell extends StatelessWidget {
   const _TabletShell({required this.child});
 
   static const _tabs = [
-    _Tab(icon: LucideIcons.layoutGrid,  label: 'Projekte',       path: '/'),
-    _Tab(icon: LucideIcons.helpCircle,  label: 'Hilfe',          path: '/help'),
+    _Tab(icon: LucideIcons.layoutGrid,  label: 'Projekte',           path: '/'),
+    _Tab(icon: LucideIcons.checkSquare, label: 'ToDos',              path: '/todos'),
+    _Tab(icon: LucideIcons.helpCircle,  label: 'Hilfe',              path: '/help'),
     _Tab(icon: LucideIcons.bell,        label: 'Benachrichtigungen', path: '/notifications'),
-    _Tab(icon: LucideIcons.user,        label: 'Profil',         path: '/profile'),
-    _Tab(icon: LucideIcons.settings,    label: 'Einstellungen',  path: '/settings'),
+    _Tab(icon: LucideIcons.user,        label: 'Profil',             path: '/profile'),
+    _Tab(icon: LucideIcons.settings,    label: 'Einstellungen',      path: '/settings'),
   ];
 
   @override
@@ -174,11 +175,11 @@ class _BottomNav extends StatelessWidget {
   const _BottomNav();
 
   static const _leftTabs = [
-    _Tab(icon: LucideIcons.layoutGrid, label: 'Projekte', path: '/'),
-    _Tab(icon: LucideIcons.helpCircle, label: 'Hilfe', path: '/help'),
+    _Tab(icon: LucideIcons.layoutGrid,  label: 'Projekte', path: '/'),
+    _Tab(icon: LucideIcons.checkSquare, label: 'ToDos',    path: '/todos'),
   ];
   static const _rightTabs = [
-    _Tab(icon: LucideIcons.user, label: 'Profil', path: '/profile'),
+    _Tab(icon: LucideIcons.user,          label: 'Profil', path: '/profile'),
     _Tab(icon: LucideIcons.moreHorizontal, label: 'Mehr', path: '/settings'),
   ];
 

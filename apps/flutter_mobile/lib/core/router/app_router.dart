@@ -17,6 +17,7 @@ import '../../features/help/help_documents_screen.dart';
 import '../../features/legal/datenschutz_screen.dart';
 import '../../features/legal/impressum_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
+import '../../features/todo/screens/todo_page.dart';
 import '../widgets/app_shell.dart';
 
 // Auth state change notifier for GoRouter refresh
@@ -72,6 +73,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/notifications',
             builder: (context, state) => const NotificationsScreen(),
+          ),
+          GoRoute(
+            path: '/todos',
+            builder: (context, state) => const TodoPage(),
           ),
           GoRoute(
             path: '/settings',
