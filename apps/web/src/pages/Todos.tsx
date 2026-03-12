@@ -14,6 +14,7 @@ import { colors } from '@docstruc/theme';
 import { ModernModal } from '../components/ModernModal';
 import { DatePicker } from '../components/DatePicker';
 import { Select } from '../components/Select';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -133,23 +134,33 @@ export function TodoModal({
   useEffect(() => {
     if (!linkProjectId || !linkEntityType || hasPrelink) return;
     setLoadingEntities(true);
-    const tableMap: Record<string, string> = {
-      task: 'tasks',
-      defect: 'defects',
-      milestone: 'timeline_events',
-      document: 'documents',
+    setEntities([]);
+    const configs: Record<string, { table: string; labelCol: string }> = {
+      task:      { table: 'tasks',           labelCol: 'title' },
+      defect:    { table: 'tasks',           labelCol: 'title' },
+      milestone: { table: 'timeline_events', labelCol: 'title' },
+      document:  { table: 'documents',       labelCol: 'name'  },
     };
-    const table = tableMap[linkEntityType];
-    if (!table) { setEntities([]); setLoadingEntities(false); return; }
-    supabase
-      .from(table as any)
-      .select('id, title')
+    const cfg = configs[linkEntityType];
+    if (!cfg) { setEntities([]); setLoadingEntities(false); return; }
+
+    let query = supabase
+      .from(cfg.table as any)
+      .select(`id, ${cfg.labelCol}`)
       .eq('project_id', linkProjectId)
-      .order('title')
-      .then(({ data }) => {
-        setEntities((data || []).map((e: any) => ({ value: e.id, label: e.title || e.id })));
-        setLoadingEntities(false);
-      });
+      .order(cfg.labelCol);
+
+    // tasks vs defects are in the same 'tasks' table, distinguished by task_type
+    if (linkEntityType === 'defect') {
+      query = query.eq('task_type', 'defect') as any;
+    } else if (linkEntityType === 'task') {
+      query = query.neq('task_type', 'defect') as any;
+    }
+
+    query.then(({ data }) => {
+      setEntities((data || []).map((e: any) => ({ value: e.id, label: e[cfg.labelCol] || e.id })));
+      setLoadingEntities(false);
+    });
   }, [linkProjectId, linkEntityType, hasPrelink]);
 
   const handleSave = async () => {
@@ -211,6 +222,19 @@ export function TodoModal({
     { value: 'milestone', label: 'Meilenstein' },
     { value: 'document', label: 'Dokument' },
   ];
+
+  const nativeSelectStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 14px',
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#F8FAFC',
+    border: '1px solid #E2E8F0',
+    borderRadius: 10,
+    outline: 'none',
+    cursor: 'pointer',
+    appearance: 'auto',
+  };
 
   return (
     <ModernModal
@@ -300,48 +324,56 @@ export function TodoModal({
         ) : (
           /* Manual linking */
           <>
-            <Select
-              label="Projekt"
+            {/* Native selects bypass overflow:auto clipping in ModernModal */}
+            <Text style={mStyles.label}>Projekt</Text>
+            <select
               value={linkProjectId}
-              options={[{ value: '', label: 'Kein Projekt' }, ...projects]}
-              onChange={v => {
-                setLinkProjectId(String(v));
+              onChange={e => {
+                setLinkProjectId(e.target.value);
                 setLinkEntityType('');
                 setLinkEntityId('');
                 setEntities([]);
               }}
-              placeholder="Projekt auswählen..."
-            />
+              style={nativeSelectStyle}
+            >
+              <option value="">Kein Projekt</option>
+              {projects.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
 
             {linkProjectId && (
-              <View style={{ marginTop: 12 }}>
-                <Select
-                  label="Element-Typ"
+              <>
+                <Text style={[mStyles.label, { marginTop: 12 }]}>Element-Typ</Text>
+                <select
                   value={linkEntityType}
-                  options={entityTypeOptions}
-                  onChange={v => {
-                    setLinkEntityType(String(v));
+                  onChange={e => {
+                    setLinkEntityType(e.target.value);
                     setLinkEntityId('');
                     setEntities([]);
                   }}
-                  placeholder="Typ wählen..."
-                />
-              </View>
+                  style={nativeSelectStyle}
+                >
+                  <option value="">Typ wählen...</option>
+                  <option value="task">Aufgabe</option>
+                  <option value="defect">Mangel</option>
+                  <option value="milestone">Meilenstein</option>
+                  <option value="document">Dokument</option>
+                </select>
+              </>
             )}
 
             {linkProjectId && linkEntityType && (
-              <View style={{ marginTop: 12 }}>
-                <Select
-                  label="Element"
+              <>
+                <Text style={[mStyles.label, { marginTop: 12 }]}>Element</Text>
+                <select
                   value={linkEntityId}
-                  options={[
-                    { value: '', label: loadingEntities ? 'Lade...' : 'Element wählen...' },
-                    ...entities,
-                  ]}
-                  onChange={v => setLinkEntityId(String(v))}
-                  placeholder="Element wählen..."
-                />
-              </View>
+                  onChange={e => setLinkEntityId(e.target.value)}
+                  style={nativeSelectStyle}
+                  disabled={loadingEntities}
+                >
+                  <option value="">{loadingEntities ? 'Lade...' : 'Element wählen...'}</option>
+                  {entities.map(en => <option key={en.value} value={en.value}>{en.label}</option>)}
+                </select>
+              </>
             )}
           </>
         )}
@@ -588,34 +620,56 @@ function KanbanColumn({ status, todos, onEdit, onDelete, onStatusChange, onDrop 
   const [dragOver, setDragOver] = useState(false);
 
   return (
-    <View
-      style={[kanbanStyles.column, dragOver && kanbanStyles.columnDragOver]}
-      // @ts-ignore — web-only drag events
-      onDragOver={(e: any) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e: any) => {
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => {
+        // Only clear when leaving the column itself, not a child
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+      }}
+      onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        const todoId = e.dataTransfer?.getData('todoId');
+        const todoId = e.dataTransfer.getData('text/plain');
         if (todoId) onDrop(todoId, status);
+      }}
+      style={{
+        width: 280,
+        flexShrink: 0,
+        backgroundColor: dragOver ? '#EFF6FF' : '#F8FAFC',
+        borderRadius: 14,
+        border: `1.5px solid ${dragOver ? colors.primary : '#F1F5F9'}`,
+        padding: 14,
+        maxHeight: 'calc(100vh - 260px)',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'border-color 0.15s, background-color 0.15s',
       }}
     >
       {/* Column header */}
-      <View style={[kanbanStyles.columnHeader, { borderBottomColor: cfg.color }]}>
-        <View style={[kanbanStyles.colorDot, { backgroundColor: cfg.color }]} />
-        <Text style={kanbanStyles.columnTitle}>{cfg.label}</Text>
-        <View style={[kanbanStyles.countBadge, { backgroundColor: cfg.bgColor }]}>
-          <Text style={[kanbanStyles.countText, { color: cfg.color }]}>{todos.length}</Text>
-        </View>
-      </View>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        paddingBottom: 12, marginBottom: 12,
+        borderBottom: `2px solid ${cfg.color}`,
+      }}>
+        <div style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: cfg.color }} />
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cfg.label}</span>
+        <span style={{
+          padding: '2px 8px', borderRadius: 10,
+          backgroundColor: cfg.bgColor,
+          fontSize: 12, fontWeight: 800, color: cfg.color,
+        }}>{todos.length}</span>
+      </div>
 
-      <ScrollView style={kanbanStyles.columnScroll} showsVerticalScrollIndicator={false}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         {todos.map(todo => (
-          <View
+          <div
             key={todo.id}
-            // @ts-ignore
             draggable
-            onDragStart={(e: any) => { e.dataTransfer?.setData('todoId', todo.id); }}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', todo.id);
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            style={{ cursor: 'grab' }}
           >
             <TodoCard
               todo={todo}
@@ -624,15 +678,15 @@ function KanbanColumn({ status, todos, onEdit, onDelete, onStatusChange, onDrop 
               onStatusChange={onStatusChange}
               compact
             />
-          </View>
+          </div>
         ))}
         {todos.length === 0 && (
-          <View style={kanbanStyles.emptyCol}>
-            <Text style={kanbanStyles.emptyColText}>Keine Einträge</Text>
-          </View>
+          <div style={{ padding: 20, textAlign: 'center', color: '#cbd5e1', fontStyle: 'italic', fontSize: 13 }}>
+            Keine Einträge
+          </div>
         )}
-      </ScrollView>
-    </View>
+      </div>
+    </div>
   );
 }
 
@@ -686,6 +740,7 @@ export function Todos() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const PAGE_SIZE = 30;
 
@@ -749,12 +804,17 @@ export function Todos() {
     return () => setActions(null);
   }, [setActions]);
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('ToDo wirklich löschen?')) return;
-    const { error } = await supabase.from('todos').delete().eq('id', id);
+  const handleDelete = (id: string) => {
+    setPendingDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const { error } = await supabase.from('todos').delete().eq('id', pendingDeleteId);
+    setPendingDeleteId(null);
     if (error) { showToast(error.message, 'error'); return; }
     showToast('ToDo gelöscht', 'success');
-    setTodos(prev => prev.filter(t => t.id !== id));
+    setTodos(prev => prev.filter(t => t.id !== pendingDeleteId));
   };
 
   const handleStatusChange = async (id: string, status: TodoStatus) => {
@@ -790,6 +850,17 @@ export function Todos() {
         onClose={() => { setModalOpen(false); setEditingTodo(null); }}
         onSaved={() => fetchTodos(true)}
         userId={userId || ''}
+      />
+
+      <ConfirmDialog
+        visible={!!pendingDeleteId}
+        title="ToDo löschen"
+        message="Soll dieses ToDo wirklich gelöscht werden? Diese Aktion kann nicht rückgängig gemacht werden."
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
       />
 
       {/* Stats Row */}
@@ -853,19 +924,29 @@ export function Todos() {
         </View>
       </View>
 
-      {/* Filter chips */}
-      {statusFilter && (
-        <View style={pageStyles.filterChipRow}>
-          <View style={[pageStyles.filterChip, { borderColor: STATUS_CONFIG[statusFilter].color }]}>
-            <Text style={[pageStyles.filterChipText, { color: STATUS_CONFIG[statusFilter].color }]}>
-              {STATUS_CONFIG[statusFilter].label}
-            </Text>
-            <TouchableOpacity onPress={() => setStatusFilter(null)}>
-              <X size={12} color={STATUS_CONFIG[statusFilter].color} />
+      {/* Status Filter Bar */}
+      <View style={pageStyles.filterBar}>
+        <Filter size={14} color="#94a3b8" />
+        <TouchableOpacity
+          style={[pageStyles.filterChip, !statusFilter && pageStyles.filterChipAllActive]}
+          onPress={() => setStatusFilter(null)}
+        >
+          <Text style={[pageStyles.filterChipText, !statusFilter && pageStyles.filterChipAllActiveText]}>Alle</Text>
+        </TouchableOpacity>
+        {ALL_STATUSES.map(s => {
+          const cfg = STATUS_CONFIG[s];
+          const active = statusFilter === s;
+          return (
+            <TouchableOpacity
+              key={s}
+              style={[pageStyles.filterChip, active && { borderColor: cfg.color, backgroundColor: cfg.bgColor }]}
+              onPress={() => setStatusFilter(active ? null : s)}
+            >
+              <Text style={[pageStyles.filterChipText, active && { color: cfg.color, fontWeight: '700' }]}>{cfg.label}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      )}
+          );
+        })}
+      </View>
 
       {/* Content */}
       {loading ? (
@@ -904,11 +985,7 @@ export function Todos() {
           )}
         </View>
       ) : (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={pageStyles.kanbanContainer}
-        >
+        <div style={{ display: 'flex', flexDirection: 'row', gap: 16, overflowX: 'auto', paddingBottom: 40, paddingRight: 32 }}>
           {ALL_STATUSES.map(s => (
             <KanbanColumn
               key={s}
@@ -920,7 +997,7 @@ export function Todos() {
               onDrop={handleDrop}
             />
           ))}
-        </ScrollView>
+        </div>
       )}
     </>
   );
@@ -992,13 +1069,23 @@ const pageStyles = StyleSheet.create({
   toggleBtnActive: { backgroundColor: '#EFF6FF' },
   toggleBtnText: { fontSize: 13, color: '#94a3b8', fontWeight: '600' },
   toggleBtnTextActive: { color: colors.primary },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: 'wrap' as any,
+  },
   filterChipRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 8, borderWidth: 1.5, backgroundColor: '#fff',
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1.5,
+    borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
   },
-  filterChipText: { fontSize: 13, fontWeight: '600' },
+  filterChipAllActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterChipAllActiveText: { color: '#fff' },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
   listContainer: { paddingBottom: 40 },
   kanbanContainer: {
     flexDirection: 'row',
