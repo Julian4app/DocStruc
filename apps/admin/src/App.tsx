@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 
 // Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AdminReport from './pages/AdminReport';
 import Customers from './pages/Customers';
 import CustomerDetail from './pages/CustomerDetail';
 import ContactPersons from './pages/ContactPersons';
@@ -96,7 +97,7 @@ export default function App() {
         
         <Route path="/" element={
           <ProtectedRoute>
-            <LayoutWrapper title="Dashboard" actions={<Button onClick={() => {}} variant="secondary">Download Report</Button>}>
+            <LayoutWrapper title="Dashboard" actions={<Link to="/report" style={{ textDecoration: 'none' }}><Button variant="secondary">Download Report</Button></Link>}>
                 <Dashboard />
             </LayoutWrapper>
           </ProtectedRoute>
@@ -250,6 +251,14 @@ export default function App() {
           <ProtectedRoute>
              <LayoutWrapper title="Support Nachrichten">
                 <HelpMessages />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/report" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="System Report">
+                <AdminReport />
              </LayoutWrapper>
           </ProtectedRoute>
         } />

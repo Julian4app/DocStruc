@@ -13,18 +13,32 @@ const MiniKPI = ({ label, value }: { label: string, value: string }) => (
 );
 
 const getStatusColor = (status: string) => {
-    switch(status) {
-        case 'Active': return { bg: '#ecfdf5', text: '#059669', dot: '#10b981' }; 
-        case 'Inactive': return { bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' };
-        case 'Lead': return { bg: '#eff6ff', text: '#2563eb', dot: '#3b82f6' };
+    switch(status?.toLowerCase()) {
+        case 'active': return { bg: '#ecfdf5', text: '#059669', dot: '#10b981' };
+        case 'inactive': return { bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' };
+        case 'lead': return { bg: '#eff6ff', text: '#2563eb', dot: '#3b82f6' };
         default: return { bg: '#f1f5f9', text: '#475569', dot: '#94a3b8' };
     }
 };
+
+const getStatusLabel = (status: string) => {
+    switch(status?.toLowerCase()) {
+        case 'active': return 'Aktiv';
+        case 'inactive': return 'Inaktiv';
+        case 'lead': return 'Lead';
+        default: return status || 'Lead';
+    }
+};
+
+const STATUS_OPTIONS = ['all', 'active', 'inactive', 'lead'];
+const STATUS_LABELS: Record<string, string> = { all: 'Alle', active: 'Aktiv', inactive: 'Inaktiv', lead: 'Lead' };
 
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showFilter, setShowFilter] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -55,7 +69,7 @@ export default function Customers() {
       try {
           const { data, error } = await supabase
             .from('companies')
-            .insert([{ name: 'New Customer', status: 'Lead' }])
+            .insert([{ name: 'Neuer Kunde', status: 'lead' }])
             .select()
             .single();
           
@@ -63,14 +77,16 @@ export default function Customers() {
           if (data) navigate(`/customers/${data.id}`);
       } catch (e: any) {
           console.error('Error creating customer:', e);
-          alert('Kunden-Tabelle fehlt noch. Bitte zuerst die SQL-Migration über den Supabase SQL-Editor ausführen.');
+          alert(`Fehler beim Erstellen: ${e.message}`);
       }
   };
 
-  const filtered = customers.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) || 
-    c.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || (c.status || 'lead') === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <View style={styles.pageContainer}>
@@ -103,15 +119,35 @@ export default function Customers() {
             </View>
             
             <View style={{ flexDirection: 'row', gap: 12 }}>
-                <TouchableOpacity style={styles.filterBtn}>
-                    <Filter size={16} color="#64748b" />
-                    <Text style={styles.filterBtnText}>Filters</Text>
+                <TouchableOpacity style={[styles.filterBtn, showFilter && { borderColor: '#0E2A47', backgroundColor: '#eff6ff' }]} onPress={() => setShowFilter(v => !v)}>
+                    <Filter size={16} color={showFilter ? '#0E2A47' : '#64748b'} />
+                    <Text style={[styles.filterBtnText, showFilter && { color: '#0E2A47' }]}>Filter{statusFilter !== 'all' ? ` (${STATUS_LABELS[statusFilter]})` : ''}</Text>
                 </TouchableOpacity>
                 <Button onClick={handleAddCustomer} variant="primary" style={{ height: 40, paddingHorizontal: 16 }}>
                     <Plus size={16} color="white" style={{marginRight: 8}} /> Add Customer
                 </Button>
             </View>
         </View>
+
+        {/* Filter Panel */}
+        {showFilter && (
+            <View style={styles.filterPanel}>
+                <Text style={styles.filterPanelLabel}>Status</Text>
+                <View style={styles.filterChips}>
+                    {STATUS_OPTIONS.map(s => (
+                        <TouchableOpacity
+                            key={s}
+                            style={[styles.filterChip, statusFilter === s && styles.filterChipActive]}
+                            onPress={() => setStatusFilter(s)}
+                        >
+                            <Text style={[styles.filterChipText, statusFilter === s && styles.filterChipTextActive]}>
+                                {STATUS_LABELS[s]}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        )}
 
         {/* Table/List */}
         <View style={styles.tableCard}>
@@ -161,7 +197,7 @@ export default function Customers() {
                                     <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
                                         <View style={[styles.statusDot, { backgroundColor: statusStyle.dot }]} />
                                         <Text style={[styles.statusText, { color: statusStyle.text }]}>
-                                            {item.status || 'Active'}
+                                            {getStatusLabel(item.status)}
                                         </Text>
                                     </View>
                                 </View>
@@ -173,7 +209,7 @@ export default function Customers() {
                                 <View style={styles.col}>
                                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                                         <User size={14} color="#94a3b8" />
-                                        <Text style={styles.cellText}>{item.employees_count || 0} / {item.bought_accounts || 0}</Text>
+                                        <Text style={styles.cellText}>{item.employees_count || 0} / {item.accounts_count || 0}</Text>
                                     </View>
                                 </View>
                                 
@@ -288,6 +324,34 @@ const styles = StyleSheet.create({
       color: '#64748b'
   },
   
+  filterPanel: {
+      backgroundColor: 'white',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      padding: 16,
+      gap: 12,
+  },
+  filterPanelLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#64748b',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 8,
+  },
+  filterChips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  filterChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      backgroundColor: 'white',
+  },
+  filterChipActive: { backgroundColor: '#0E2A47', borderColor: '#0E2A47' },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  filterChipTextActive: { color: 'white' },
   tableCard: {
       backgroundColor: 'white',
       borderRadius: 16,
