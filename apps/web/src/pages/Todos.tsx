@@ -136,10 +136,10 @@ export function TodoModal({
     setLoadingEntities(true);
     setEntities([]);
     const configs: Record<string, { table: string; labelCol: string; extraFilter?: (q: any) => any }> = {
-      task:      { table: 'tasks',           labelCol: 'title',     extraFilter: q => q.neq('task_type', 'defect') },
-      defect:    { table: 'tasks',           labelCol: 'title',     extraFilter: q => q.eq('task_type', 'defect') },
-      milestone: { table: 'timeline_events', labelCol: 'title',     extraFilter: q => q.eq('event_type', 'milestone') },
-      document:  { table: 'project_files',   labelCol: 'file_name' },
+      task:      { table: 'tasks',           labelCol: 'title', extraFilter: q => q.neq('task_type', 'defect') },
+      defect:    { table: 'tasks',           labelCol: 'title', extraFilter: q => q.eq('task_type', 'defect') },
+      milestone: { table: 'timeline_events', labelCol: 'title', extraFilter: q => q.eq('event_type', 'milestone') },
+      document:  { table: 'project_files',   labelCol: 'name' },
     };
     const cfg = configs[linkEntityType];
     if (!cfg) { setEntities([]); setLoadingEntities(false); return; }
@@ -163,7 +163,7 @@ export function TodoModal({
       setEntities((data || []).map((e: any) => ({ value: e.id, label: e[cfg.labelCol] || e.id })));
       setLoadingEntities(false);
     });
-  }, [linkProjectId, linkEntityType, hasPrelink]);
+  }, [isOpen, linkProjectId, linkEntityType, hasPrelink]);
 
   const handleSave = async () => {
     if (!name.trim()) { showToast('Bitte Namen eingeben', 'error'); return; }

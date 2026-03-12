@@ -18,19 +18,24 @@ interface ModernModalProps {
  * with a true full-page overlay that covers the entire viewport.
  */
 export function ModernModal({ visible, onClose, title, children, maxWidth = 600, zIndex = 10000 }: ModernModalProps) {
-    const portalRef = useRef<HTMLDivElement | null>(null);
+    // Initialize div immediately so it's available on the very first render
+    const portalRef = useRef<HTMLDivElement>(
+        typeof document !== 'undefined'
+            ? (() => { const d = document.createElement('div'); d.id = 'modal-portal'; return d; })()
+            : null as any
+    );
 
     useEffect(() => {
-        if (typeof document === 'undefined') return;
-        
-        if (!portalRef.current) {
-            portalRef.current = document.createElement('div');
-            portalRef.current.id = 'modal-portal';
-        }
+        if (typeof document === 'undefined' || !portalRef.current) return;
         
         if (visible) {
             document.body.appendChild(portalRef.current);
             document.body.style.overflow = 'hidden';
+        } else {
+            if (document.body.contains(portalRef.current)) {
+                document.body.removeChild(portalRef.current);
+            }
+            document.body.style.overflow = '';
         }
         
         return () => {
