@@ -30,8 +30,8 @@ const getStatusLabel = (status: string) => {
     }
 };
 
-const STATUS_OPTIONS = ['all', 'active', 'inactive', 'lead'];
-const STATUS_LABELS: Record<string, string> = { all: 'Alle', active: 'Aktiv', inactive: 'Inaktiv', lead: 'Lead' };
+const STATUS_OPTIONS = ['all', 'Active', 'Inactive', 'Lead'];
+const STATUS_LABELS: Record<string, string> = { all: 'Alle', Active: 'Aktiv', Inactive: 'Inaktiv', Lead: 'Lead' };
 
 export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
@@ -69,7 +69,7 @@ export default function Customers() {
       try {
           const { data, error } = await supabase
             .from('companies')
-            .insert([{ name: 'Neuer Kunde', status: 'lead' }])
+            .insert([{ name: 'Neuer Kunde', status: 'Lead' }])
             .select()
             .single();
           
@@ -84,7 +84,7 @@ export default function Customers() {
   const filtered = customers.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.email?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || (c.status || 'lead') === statusFilter;
+    const matchesStatus = statusFilter === 'all' || (c.status || 'Lead') === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
