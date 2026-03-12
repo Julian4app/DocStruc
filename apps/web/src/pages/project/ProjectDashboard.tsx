@@ -35,12 +35,12 @@ interface UpcomingEvent {
 interface Milestone {
   id: string;
   title: string;
-  event_date: string;
+  start_date: string;
   end_date?: string | null;
   description?: string | null;
   color?: string | null;
-  eventType: string;
-  completed: boolean;
+  event_type: string;
+  status: string;
   linkedItemsCount?: number;
 }
 
@@ -140,9 +140,11 @@ export function ProjectDashboard() {
           .from('timeline_events')
           .select('*')
           .eq('project_id', id)
-          .gte('event_date', todayStr)
-          .order('event_date', { ascending: true })
-          .limit(5),
+          .in('event_type', ['milestone', 'deadline'])
+          .gte('start_date', todayStr)
+          .neq('status', 'cancelled')
+          .order('start_date', { ascending: true })
+          .limit(8),
         supabase
           .from('timeline_events')
           .select('*')
@@ -205,10 +207,19 @@ export function ProjectDashboard() {
 
         setMilestones(
           milestonesResult.data.map((milestone: any) => ({
-            ...milestone,
+            id: milestone.id,
+            title: milestone.title,
+            start_date: milestone.start_date,
+            end_date: milestone.end_date ?? null,
+            description: milestone.description ?? null,
+            color: milestone.color ?? null,
+            event_type: milestone.event_type,
+            status: milestone.status,
             linkedItemsCount: countMap.get(milestone.id) || 0,
           }))
         );
+      } else if (!milestonesResult.error) {
+        setMilestones([]);
       }
 
       if (!eventsResult.error) {
@@ -253,7 +264,7 @@ export function ProjectDashboard() {
 
   const taskProgress = stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0;
   const milestoneProgress = milestones.length > 0
-    ? (milestones.filter(m => m.completed).length / milestones.length) * 100
+    ? (milestones.filter(m => m.status === 'completed').length / milestones.length) * 100
     : 0;
   const progress = Math.round((taskProgress * 0.7) + (milestoneProgress * 0.3));
 
@@ -588,15 +599,16 @@ export function ProjectDashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {milestones.map((milestone: Milestone) => {
+                const isCompleted = milestone.status === 'completed';
                 const daysUntil = Math.ceil(
-                  (new Date(milestone.event_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                  (new Date(milestone.start_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                 );
                 const isToday    = daysUntil === 0;
                 const isPast     = daysUntil < 0;
                 const isUpcoming = daysUntil > 0 && daysUntil <= 7;
                 const barColor   = milestone.color ||
-                  (milestone.eventType === 'deadline' ? '#EF4444' :
-                   milestone.eventType === 'phase'    ? '#8B5CF6' : PRIMARY);
+                  (milestone.event_type === 'deadline' ? '#EF4444' :
+                   milestone.event_type === 'phase'    ? '#8B5CF6' : PRIMARY);
 
                 return (
                   <div
@@ -622,11 +634,11 @@ export function ProjectDashboard() {
                             background: barColor, color: '#fff', fontSize: 10, fontWeight: 700,
                             textTransform: 'uppercase', letterSpacing: 0.5,
                           }}>
-                            {milestone.eventType === 'deadline' ? 'Deadline' :
-                             milestone.eventType === 'phase' ? 'Bauphase' : 'Meilenstein'}
+                            {milestone.event_type === 'deadline' ? 'Deadline' :
+                             milestone.event_type === 'phase' ? 'Bauphase' : 'Meilenstein'}
                           </span>
                         </div>
-                        {milestone.completed && (
+                        {isCompleted && (
                           <div style={{
                             width: 24, height: 24, borderRadius: 12, background: '#F0FDF4',
                             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -639,7 +651,7 @@ export function ProjectDashboard() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: milestone.description ? 8 : 0 }}>
                         <Calendar size={14} color="#64748b" />
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>
-                          {new Date(milestone.event_date).toLocaleDateString('de-DE', {
+                          {new Date(milestone.start_date).toLocaleDateString('de-DE', {
                             day: '2-digit', month: 'short', year: 'numeric',
                           })}
                           {milestone.end_date && (
@@ -674,7 +686,7 @@ export function ProjectDashboard() {
                           </span>
                         ) : <span />}
 
-                        {!milestone.completed && (
+                        {!isCompleted && (
                           <span style={{
                             fontSize: 12, fontWeight: 600,
                             color: isToday ? '#F59E0B' : isPast ? '#EF4444' : isUpcoming ? '#10B981' : '#3B82F6',

@@ -18,9 +18,10 @@ interface TimelineEvent {
   start_date: string;
   end_date: string | null;
   event_type: 'milestone' | 'deadline' | 'phase';
-  status: 'pending' | 'completed';
+  status: string;
   color: string;
   project_id: string;
+  project?: { id: string; name: string } | null;
 }
 
 export function Dashboard() {
@@ -147,17 +148,26 @@ export function Dashboard() {
   }, [isSuperuser, setActions, handleCreateClick]);
 
   const fetchMilestones = async () => {
+    if (!userId) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
+    // First get the project IDs the user has access to
+    const { data: projectIds, error: idsError } = await supabase
+      .rpc('get_my_project_ids');
+    if (idsError || !projectIds || projectIds.length === 0) return;
+
     const { data, error } = await supabase
       .from('timeline_events')
-      .select('*')
+      .select('*, project:project_id(id, name)')
+      .in('project_id', projectIds)
+      .in('event_type', ['milestone', 'deadline'])
       .gte('start_date', today.toISOString())
-      .eq('status', 'pending')
+      .neq('status', 'completed')
+      .neq('status', 'cancelled')
       .order('start_date', { ascending: true })
-      .limit(5);
-    
+      .limit(8);
+
     if (!error && data) {
       setUpcomingMilestones(data);
     }
@@ -308,6 +318,11 @@ export function Dashboard() {
                           </Text>
                         </View>
                       </View>
+                      {(milestone as any).project?.name && (
+                        <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4, fontWeight: '500' }}>
+                          📁 {(milestone as any).project.name}
+                        </Text>
+                      )}
                       <View style={styles.milestoneFooter}>
                         <Text style={styles.milestoneDate}>
                           {formatDate(milestone.start_date)}
