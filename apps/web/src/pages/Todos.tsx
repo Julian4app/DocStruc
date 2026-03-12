@@ -135,29 +135,31 @@ export function TodoModal({
     if (!linkProjectId || !linkEntityType || hasPrelink) return;
     setLoadingEntities(true);
     setEntities([]);
-    const configs: Record<string, { table: string; labelCol: string }> = {
-      task:      { table: 'tasks',           labelCol: 'title' },
-      defect:    { table: 'tasks',           labelCol: 'title' },
-      milestone: { table: 'timeline_events', labelCol: 'title' },
-      document:  { table: 'documents',       labelCol: 'name'  },
+    const configs: Record<string, { table: string; labelCol: string; extraFilter?: (q: any) => any }> = {
+      task:      { table: 'tasks',           labelCol: 'title',     extraFilter: q => q.neq('task_type', 'defect') },
+      defect:    { table: 'tasks',           labelCol: 'title',     extraFilter: q => q.eq('task_type', 'defect') },
+      milestone: { table: 'timeline_events', labelCol: 'title',     extraFilter: q => q.eq('event_type', 'milestone') },
+      document:  { table: 'project_files',   labelCol: 'file_name' },
     };
     const cfg = configs[linkEntityType];
     if (!cfg) { setEntities([]); setLoadingEntities(false); return; }
 
-    let query = supabase
+    let query: any = supabase
       .from(cfg.table as any)
       .select(`id, ${cfg.labelCol}`)
       .eq('project_id', linkProjectId)
-      .order(cfg.labelCol);
+      .order(cfg.labelCol)
+      .limit(100);
 
-    // tasks vs defects are in the same 'tasks' table, distinguished by task_type
-    if (linkEntityType === 'defect') {
-      query = query.eq('task_type', 'defect') as any;
-    } else if (linkEntityType === 'task') {
-      query = query.neq('task_type', 'defect') as any;
+    if (cfg.extraFilter) {
+      query = cfg.extraFilter(query);
     }
 
-    query.then(({ data }) => {
+    query.then(({ data, error }: { data: any[] | null; error: any }) => {
+      if (error) {
+        console.error('[TodoModal] Entity load error:', error);
+        showToast('Fehler beim Laden der Elemente', 'error');
+      }
       setEntities((data || []).map((e: any) => ({ value: e.id, label: e[cfg.labelCol] || e.id })));
       setLoadingEntities(false);
     });
@@ -216,25 +218,11 @@ export function TodoModal({
   };
 
   const entityTypeOptions = [
-    { value: '', label: 'Typ wählen...' },
     { value: 'task', label: 'Aufgabe' },
     { value: 'defect', label: 'Mangel' },
     { value: 'milestone', label: 'Meilenstein' },
     { value: 'document', label: 'Dokument' },
   ];
-
-  const nativeSelectStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '10px 14px',
-    fontSize: 14,
-    color: '#0f172a',
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
-    borderRadius: 10,
-    outline: 'none',
-    cursor: 'pointer',
-    appearance: 'auto',
-  };
 
   return (
     <ModernModal
@@ -324,56 +312,45 @@ export function TodoModal({
         ) : (
           /* Manual linking */
           <>
-            {/* Native selects bypass overflow:auto clipping in ModernModal */}
-            <Text style={mStyles.label}>Projekt</Text>
-            <select
+            <Select
+              label="Projekt"
               value={linkProjectId}
-              onChange={e => {
-                setLinkProjectId(e.target.value);
+              options={[{ value: '', label: 'Kein Projekt' }, ...projects]}
+              onChange={v => {
+                setLinkProjectId(String(v));
                 setLinkEntityType('');
                 setLinkEntityId('');
                 setEntities([]);
               }}
-              style={nativeSelectStyle}
-            >
-              <option value="">Kein Projekt</option>
-              {projects.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
+              placeholder="Kein Projekt"
+            />
 
             {linkProjectId && (
-              <>
-                <Text style={[mStyles.label, { marginTop: 12 }]}>Element-Typ</Text>
-                <select
-                  value={linkEntityType}
-                  onChange={e => {
-                    setLinkEntityType(e.target.value);
-                    setLinkEntityId('');
-                    setEntities([]);
-                  }}
-                  style={nativeSelectStyle}
-                >
-                  <option value="">Typ wählen...</option>
-                  <option value="task">Aufgabe</option>
-                  <option value="defect">Mangel</option>
-                  <option value="milestone">Meilenstein</option>
-                  <option value="document">Dokument</option>
-                </select>
-              </>
+              <Select
+                label="Element-Typ"
+                value={linkEntityType}
+                options={entityTypeOptions}
+                onChange={v => {
+                  setLinkEntityType(String(v));
+                  setLinkEntityId('');
+                  setEntities([]);
+                }}
+                placeholder="Typ wählen..."
+              />
             )}
 
             {linkProjectId && linkEntityType && (
-              <>
-                <Text style={[mStyles.label, { marginTop: 12 }]}>Element</Text>
-                <select
-                  value={linkEntityId}
-                  onChange={e => setLinkEntityId(e.target.value)}
-                  style={nativeSelectStyle}
-                  disabled={loadingEntities}
-                >
-                  <option value="">{loadingEntities ? 'Lade...' : 'Element wählen...'}</option>
-                  {entities.map(en => <option key={en.value} value={en.value}>{en.label}</option>)}
-                </select>
-              </>
+              <Select
+                label="Element"
+                value={linkEntityId}
+                options={loadingEntities
+                  ? [{ value: '', label: 'Lade...' }]
+                  : [{ value: '', label: 'Element wählen...' }, ...entities]
+                }
+                onChange={v => setLinkEntityId(String(v))}
+                placeholder={loadingEntities ? 'Lade...' : 'Element wählen...'}
+                disabled={loadingEntities}
+              />
             )}
           </>
         )}
@@ -409,8 +386,9 @@ const mStyles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: '#0f172a',
+    flexShrink: 0,
   },
-  textarea: { height: 80, textAlignVertical: 'top' as any, paddingTop: 10 },
+  textarea: { height: 90, minHeight: 90, textAlignVertical: 'top' as any, paddingTop: 10, flexShrink: 0 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap' as any, gap: 8 },
   statusChip: {
     paddingHorizontal: 12,
@@ -467,6 +445,81 @@ const mStyles = StyleSheet.create({
   prelinkLabel: { fontSize: 13, color: '#1D4ED8' },
 });
 
+// ─── TodoDetailModal ──────────────────────────────────────────────────────
+
+interface TodoDetailModalProps {
+  todo: Todo | null;
+  onClose: () => void;
+  onEdit: (t: Todo) => void;
+}
+
+function TodoDetailModal({ todo, onClose, onEdit }: TodoDetailModalProps) {
+  if (!todo) return null;
+  const cfg = STATUS_CONFIG[todo.status];
+  const isOverdue = !!(todo.due_date && new Date(todo.due_date) < new Date() && todo.status !== 'done');
+  const formatDate = (d: string) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  return (
+    <ModernModal visible={!!todo} onClose={onClose} title="ToDo Details" maxWidth={520}>
+      {/* Status badge + title */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: cfg.bgColor }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: cfg.color }}>{cfg.label}</Text>
+        </View>
+        <Text style={{ flex: 1, fontSize: 18, fontWeight: '800', color: '#0f172a', lineHeight: 24 }}>
+          {todo.name}
+        </Text>
+      </View>
+
+      {/* Description */}
+      {todo.description ? (
+        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>Beschreibung</Text>
+          <Text style={{ fontSize: 14, color: '#475569', lineHeight: 20 }}>{todo.description}</Text>
+        </View>
+      ) : null}
+
+      {/* Meta info */}
+      <View style={{ gap: 8, marginBottom: 16 }}>
+        {todo.due_date && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Calendar size={15} color={isOverdue ? '#ef4444' : '#64748b'} />
+            <Text style={{ fontSize: 13, color: isOverdue ? '#ef4444' : '#64748b', fontWeight: isOverdue ? '700' : '500' }}>
+              Fällig: {formatDate(todo.due_date)}{isOverdue ? ' (Überfällig)' : ''}
+            </Text>
+          </View>
+        )}
+        {todo.location && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <MapPin size={15} color="#94a3b8" />
+            <Text style={{ fontSize: 13, color: '#64748b' }}>{todo.location}</Text>
+          </View>
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <CheckSquare size={15} color="#94a3b8" />
+          <Text style={{ fontSize: 13, color: '#94a3b8' }}>Erstellt: {formatDate(todo.created_at)}</Text>
+        </View>
+      </View>
+
+      {/* Footer */}
+      <View style={{ flexDirection: 'row', gap: 10, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center' }}
+          onPress={onClose}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748b' }}>Schließen</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center' }}
+          onPress={() => { onClose(); onEdit(todo); }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Bearbeiten</Text>
+        </TouchableOpacity>
+      </View>
+    </ModernModal>
+  );
+}
+
 // ─── TodoCard ──────────────────────────────────────────────────────────────
 
 interface TodoCardProps {
@@ -474,10 +527,11 @@ interface TodoCardProps {
   onEdit: (t: Todo) => void;
   onDelete: (id: string) => void;
   onStatusChange: (id: string, status: TodoStatus) => void;
+  onDetail?: (t: Todo) => void;
   compact?: boolean;
 }
 
-function TodoCard({ todo, onEdit, onDelete, onStatusChange, compact = false }: TodoCardProps) {
+function TodoCard({ todo, onEdit, onDelete, onStatusChange, onDetail, compact = false }: TodoCardProps) {
   const cfg = STATUS_CONFIG[todo.status];
   const StatusIcon = cfg.icon;
   const isOverdue = !!(todo.due_date && new Date(todo.due_date) < new Date() && todo.status !== 'done');
@@ -506,9 +560,11 @@ function TodoCard({ todo, onEdit, onDelete, onStatusChange, compact = false }: T
             <StatusIcon size={16} color={cfg.color} />
           </TouchableOpacity>
 
-          <Text style={[cardStyles.name, todo.status === 'done' && cardStyles.nameStrike]} numberOfLines={2}>
-            {todo.name}
-          </Text>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => onDetail && onDetail(todo)} activeOpacity={0.7}>
+            <Text style={[cardStyles.name, todo.status === 'done' && cardStyles.nameStrike]} numberOfLines={2}>
+              {todo.name}
+            </Text>
+          </TouchableOpacity>
 
           <View style={cardStyles.actions}>
             <TouchableOpacity onPress={() => onEdit(todo)} style={cardStyles.actionBtn}>
@@ -741,6 +797,7 @@ export function Todos() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [viewTodo, setViewTodo] = useState<Todo | null>(null);
 
   const PAGE_SIZE = 30;
 
@@ -850,6 +907,12 @@ export function Todos() {
         onClose={() => { setModalOpen(false); setEditingTodo(null); }}
         onSaved={() => fetchTodos(true)}
         userId={userId || ''}
+      />
+
+      <TodoDetailModal
+        todo={viewTodo}
+        onClose={() => setViewTodo(null)}
+        onEdit={t => { setViewTodo(null); setEditingTodo(t); setModalOpen(true); }}
       />
 
       <ConfirmDialog
@@ -972,6 +1035,7 @@ export function Todos() {
               onEdit={t => { setEditingTodo(t); setModalOpen(true); }}
               onDelete={handleDelete}
               onStatusChange={handleStatusChange}
+              onDetail={t => setViewTodo(t)}
             />
           ))}
           {hasMore && (
