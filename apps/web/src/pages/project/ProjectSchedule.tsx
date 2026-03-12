@@ -15,6 +15,8 @@ import { DatePicker } from '../../components/DatePicker';
 import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TaskDetailModal } from './TaskModals';
+import { TodoModal } from '../Todos';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface TimelineEvent {
   id: string;
@@ -65,6 +67,7 @@ interface LinkedItem {
 export function ProjectSchedule() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
+  const { userId } = useAuth();
   const ctx = useProjectPermissionContext();
   const pCanCreate = ctx?.isProjectOwner || ctx?.canCreate?.('schedule') || false;
   const pCanEdit = ctx?.isProjectOwner || ctx?.canEdit?.('schedule') || false;
@@ -96,6 +99,7 @@ export function ProjectSchedule() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMilestone, setSelectedMilestone] = useState<TimelineEvent | null>(null);
   const [selectedMilestoneLinkedItems, setSelectedMilestoneLinkedItems] = useState<any[]>([]);
+  const [isMilestoneTodoModalOpen, setIsMilestoneTodoModalOpen] = useState(false);
   const [isEditMilestoneMode, setIsEditMilestoneMode] = useState(false);
   
   // Task detail modal states
@@ -1805,6 +1809,13 @@ export function ProjectSchedule() {
                   <Text style={styles.deleteButtonText}>Löschen</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                style={[styles.editButton, { borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' }]}
+                onPress={() => setIsMilestoneTodoModalOpen(true)}
+              >
+                <CheckSquare size={16} color="#3B82F6" />
+                <Text style={[styles.editButtonText, { color: '#3B82F6' }]}>Als ToDo</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Type Badge */}
@@ -2322,6 +2333,18 @@ export function ProjectSchedule() {
           getUserName={getUserName}
         />
       )}
+
+      {/* Als ToDo hinzufügen (Meilenstein) */}
+      <TodoModal
+        isOpen={isMilestoneTodoModalOpen}
+        onClose={() => setIsMilestoneTodoModalOpen(false)}
+        onSaved={() => setIsMilestoneTodoModalOpen(false)}
+        userId={userId || ''}
+        prelinkedProjectId={id}
+        prelinkedEntityType="milestone"
+        prelinkedEntityId={selectedMilestone?.id}
+        prelinkedEntityLabel={selectedMilestone?.title}
+      />
     </>
   );
 }

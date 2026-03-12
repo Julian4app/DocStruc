@@ -20,8 +20,9 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
   Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2, Check,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, CheckSquare
 } from 'lucide-react';
+import { TodoModal } from '../Todos';
 
 interface Defect {
   id: string;
@@ -90,6 +91,7 @@ export function ProjectDefects() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDefect, setSelectedDefect] = useState<Defect | null>(null);
+  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
   const [showDeleteDefectConfirm, setShowDeleteDefectConfirm] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'info' | 'docs'>('info');
@@ -1032,6 +1034,18 @@ export function ProjectDefects() {
                       <Trash2 size={20} color="#ef4444" />
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity
+                    onPress={() => setIsTodoModalOpen(true)}
+                    style={{
+                      padding: 8,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#BFDBFE',
+                      backgroundColor: '#EFF6FF',
+                    }}
+                  >
+                    <CheckSquare size={18} color="#3B82F6" />
+                  </TouchableOpacity>
                 </>
               )}
             </View>
@@ -1598,6 +1612,18 @@ export function ProjectDefects() {
         variant="danger"
         onConfirm={confirmDeleteDefect}
         onCancel={() => setShowDeleteDefectConfirm(false)}
+      />
+
+      {/* Als ToDo hinzufügen */}
+      <TodoModal
+        isOpen={isTodoModalOpen}
+        onClose={() => setIsTodoModalOpen(false)}
+        onSaved={() => setIsTodoModalOpen(false)}
+        userId={userId || ''}
+        prelinkedProjectId={id}
+        prelinkedEntityType="defect"
+        prelinkedEntityId={selectedDefect?.id}
+        prelinkedEntityLabel={selectedDefect?.title}
       />
     </>
   );

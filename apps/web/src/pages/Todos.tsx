@@ -8,9 +8,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Plus, Trash2, Edit2, X, Calendar, MapPin,
   Circle, CheckCircle2, Clock, PauseCircle, List, Columns,
-  ChevronDown, AlertCircle, Search, Filter
+  ChevronDown, AlertCircle, Search, Filter, Link2
 } from 'lucide-react';
 import { colors } from '@docstruc/theme';
+import { ModernModal } from '../components/ModernModal';
+import { DatePicker } from '../components/DatePicker';
+import { Select } from '../components/Select';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -40,15 +43,40 @@ const ALL_STATUSES: TodoStatus[] = ['open', 'in_progress', 'waiting', 'done'];
 
 // ─── TodoModal ─────────────────────────────────────────────────────────────
 
-interface TodoModalProps {
+export interface TodoModalProps {
   isOpen: boolean;
   todo?: Todo | null;
   onClose: () => void;
   onSaved: () => void;
   userId: string;
+  // Pre-linking from external detail modals
+  prelinkedProjectId?: string;
+  prelinkedEntityType?: string;
+  prelinkedEntityId?: string;
+  prelinkedEntityLabel?: string;
 }
 
-function TodoModal({ isOpen, todo, onClose, onSaved, userId }: TodoModalProps) {
+interface ProjectOption {
+  value: string;
+  label: string;
+}
+
+interface EntityOption {
+  value: string;
+  label: string;
+}
+
+export function TodoModal({
+  isOpen,
+  todo,
+  onClose,
+  onSaved,
+  userId,
+  prelinkedProjectId,
+  prelinkedEntityType,
+  prelinkedEntityId,
+  prelinkedEntityLabel,
+}: TodoModalProps) {
   const { showToast } = useToast();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -56,6 +84,17 @@ function TodoModal({ isOpen, todo, onClose, onSaved, userId }: TodoModalProps) {
   const [dueDate, setDueDate] = useState('');
   const [location, setLocation] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Entity linking state
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [linkProjectId, setLinkProjectId] = useState('');
+  const [linkEntityType, setLinkEntityType] = useState('');
+  const [entities, setEntities] = useState<EntityOption[]>([]);
+  const [linkEntityId, setLinkEntityId] = useState('');
+  const [loadingEntities, setLoadingEntities] = useState(false);
+
+  // Prelinked = external entity already provided (from task/defect/milestone/document detail)
+  const hasPrelink = !!(prelinkedProjectId && prelinkedEntityType && prelinkedEntityId);
 
   useEffect(() => {
     if (todo) {
@@ -71,7 +110,47 @@ function TodoModal({ isOpen, todo, onClose, onSaved, userId }: TodoModalProps) {
       setDueDate('');
       setLocation('');
     }
-  }, [todo, isOpen]);
+    // Reset linking state when modal opens
+    setLinkProjectId(prelinkedProjectId || '');
+    setLinkEntityType(prelinkedEntityType || '');
+    setLinkEntityId(prelinkedEntityId || '');
+    setEntities([]);
+  }, [todo, isOpen, prelinkedProjectId, prelinkedEntityType, prelinkedEntityId]);
+
+  // Load projects for linking selector
+  useEffect(() => {
+    if (!isOpen || hasPrelink) return;
+    supabase
+      .from('projects')
+      .select('id, name')
+      .order('name')
+      .then(({ data }) => {
+        setProjects((data || []).map((p: any) => ({ value: p.id, label: p.name })));
+      });
+  }, [isOpen, hasPrelink]);
+
+  // Load entities when project + type selected
+  useEffect(() => {
+    if (!linkProjectId || !linkEntityType || hasPrelink) return;
+    setLoadingEntities(true);
+    const tableMap: Record<string, string> = {
+      task: 'tasks',
+      defect: 'defects',
+      milestone: 'timeline_events',
+      document: 'documents',
+    };
+    const table = tableMap[linkEntityType];
+    if (!table) { setEntities([]); setLoadingEntities(false); return; }
+    supabase
+      .from(table as any)
+      .select('id, title')
+      .eq('project_id', linkProjectId)
+      .order('title')
+      .then(({ data }) => {
+        setEntities((data || []).map((e: any) => ({ value: e.id, label: e.title || e.id })));
+        setLoadingEntities(false);
+      });
+  }, [linkProjectId, linkEntityType, hasPrelink]);
 
   const handleSave = async () => {
     if (!name.trim()) { showToast('Bitte Namen eingeben', 'error'); return; }
@@ -84,15 +163,38 @@ function TodoModal({ isOpen, todo, onClose, onSaved, userId }: TodoModalProps) {
         due_date: dueDate || null,
         location: location.trim() || null,
       };
+
+      let savedTodoId: string | null = null;
+
       if (todo) {
         const { error } = await supabase.from('todos').update(payload).eq('id', todo.id);
         if (error) throw error;
+        savedTodoId = todo.id;
         showToast('ToDo aktualisiert', 'success');
       } else {
-        const { error } = await supabase.from('todos').insert({ ...payload, owner_user_id: userId });
+        const { data, error } = await supabase
+          .from('todos')
+          .insert({ ...payload, owner_user_id: userId })
+          .select('id')
+          .single();
         if (error) throw error;
+        savedTodoId = data?.id || null;
         showToast('ToDo erstellt', 'success');
       }
+
+      // Insert link if entity selected (prelinked or manually chosen)
+      const finalEntityId = prelinkedEntityId || linkEntityId;
+      const finalEntityType = prelinkedEntityType || linkEntityType;
+      const finalProjectId = prelinkedProjectId || linkProjectId;
+      if (savedTodoId && finalEntityId && finalEntityType) {
+        await supabase.from('todo_links').upsert({
+          todo_id: savedTodoId,
+          entity_type: finalEntityType,
+          entity_id: finalEntityId,
+          project_id: finalProjectId || null,
+        }, { onConflict: 'todo_id,entity_type,entity_id' });
+      }
+
       onSaved();
       onClose();
     } catch (e: any) {
@@ -102,140 +204,169 @@ function TodoModal({ isOpen, todo, onClose, onSaved, userId }: TodoModalProps) {
     }
   };
 
-  if (!isOpen) return null;
+  const entityTypeOptions = [
+    { value: '', label: 'Typ wählen...' },
+    { value: 'task', label: 'Aufgabe' },
+    { value: 'defect', label: 'Mangel' },
+    { value: 'milestone', label: 'Meilenstein' },
+    { value: 'document', label: 'Dokument' },
+  ];
 
   return (
-    <View style={modalStyles.overlay}>
-      <View style={modalStyles.container}>
-        {/* Header */}
-        <View style={modalStyles.header}>
-          <Text style={modalStyles.title}>{todo ? 'ToDo bearbeiten' : 'Neues ToDo'}</Text>
-          <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
-            <X size={18} color="#64748b" />
-          </TouchableOpacity>
-        </View>
+    <ModernModal
+      visible={isOpen}
+      onClose={onClose}
+      title={todo ? 'ToDo bearbeiten' : 'Neues ToDo'}
+      maxWidth={560}
+    >
+      {/* Name */}
+      <Text style={mStyles.label}>Titel *</Text>
+      <TextInput
+        style={mStyles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="ToDo Titel..."
+        placeholderTextColor="#94a3b8"
+      />
 
-        <ScrollView style={modalStyles.body} showsVerticalScrollIndicator={false}>
-          {/* Name */}
-          <Text style={modalStyles.label}>Titel *</Text>
-          <TextInput
-            style={modalStyles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="ToDo Titel..."
-            placeholderTextColor="#94a3b8"
-          />
+      {/* Description */}
+      <Text style={mStyles.label}>Beschreibung</Text>
+      <TextInput
+        style={[mStyles.input, mStyles.textarea]}
+        value={description}
+        onChangeText={setDescription}
+        placeholder="Optionale Beschreibung..."
+        placeholderTextColor="#94a3b8"
+        multiline
+        numberOfLines={3}
+      />
 
-          {/* Description */}
-          <Text style={modalStyles.label}>Beschreibung</Text>
-          <TextInput
-            style={[modalStyles.input, modalStyles.textarea]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Optionale Beschreibung..."
-            placeholderTextColor="#94a3b8"
-            multiline
-            numberOfLines={3}
-          />
-
-          {/* Status */}
-          <Text style={modalStyles.label}>Status</Text>
-          <View style={modalStyles.statusRow}>
-            {ALL_STATUSES.map(s => {
-              const cfg = STATUS_CONFIG[s];
-              const active = status === s;
-              return (
-                <TouchableOpacity
-                  key={s}
-                  style={[modalStyles.statusChip, active && { backgroundColor: cfg.bgColor, borderColor: cfg.color }]}
-                  onPress={() => setStatus(s)}
-                >
-                  <Text style={[modalStyles.statusChipText, active && { color: cfg.color, fontWeight: '700' }]}>
-                    {cfg.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Due date */}
-          <Text style={modalStyles.label}>Fälligkeitsdatum</Text>
-          <TextInput
-            style={modalStyles.input}
-            value={dueDate}
-            onChangeText={setDueDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#94a3b8"
-          />
-
-          {/* Location */}
-          <Text style={modalStyles.label}>Ort</Text>
-          <TextInput
-            style={modalStyles.input}
-            value={location}
-            onChangeText={setLocation}
-            placeholder="Optionaler Ort..."
-            placeholderTextColor="#94a3b8"
-          />
-        </ScrollView>
-
-        {/* Footer */}
-        <View style={modalStyles.footer}>
-          <TouchableOpacity style={modalStyles.cancelBtn} onPress={onClose}>
-            <Text style={modalStyles.cancelBtnText}>Abbrechen</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[modalStyles.saveBtn, saving && { opacity: 0.6 }]}
-            onPress={handleSave}
-            disabled={saving}
-          >
-            <Text style={modalStyles.saveBtnText}>{saving ? 'Speichern...' : todo ? 'Aktualisieren' : 'Erstellen'}</Text>
-          </TouchableOpacity>
-        </View>
+      {/* Status */}
+      <Text style={mStyles.label}>Status</Text>
+      <View style={mStyles.statusRow}>
+        {ALL_STATUSES.map(s => {
+          const cfg = STATUS_CONFIG[s];
+          const active = status === s;
+          return (
+            <TouchableOpacity
+              key={s}
+              style={[mStyles.statusChip, active && { backgroundColor: cfg.bgColor, borderColor: cfg.color }]}
+              onPress={() => setStatus(s)}
+            >
+              <Text style={[mStyles.statusChipText, active && { color: cfg.color, fontWeight: '700' }]}>
+                {cfg.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </View>
+
+      {/* Due date */}
+      <DatePicker
+        label="Fälligkeitsdatum"
+        value={dueDate}
+        onChange={setDueDate}
+        placeholder="TT.MM.JJJJ"
+      />
+
+      {/* Location */}
+      <Text style={mStyles.label}>Ort</Text>
+      <TextInput
+        style={mStyles.input}
+        value={location}
+        onChangeText={setLocation}
+        placeholder="Optionaler Ort..."
+        placeholderTextColor="#94a3b8"
+      />
+
+      {/* ─── Entity Linking ─────────────────────────────────────────── */}
+      <View style={mStyles.linkSection}>
+        <View style={mStyles.linkHeader}>
+          <Link2 size={15} color={colors.primary} />
+          <Text style={mStyles.linkTitle}>Verknüpfen (optional)</Text>
+        </View>
+
+        {hasPrelink ? (
+          /* Pre-linked from an external detail modal */
+          <View style={mStyles.prelinkBadge}>
+            <Text style={mStyles.prelinkLabel}>
+              Verknüpft mit:{' '}
+              <Text style={{ fontWeight: '700' }}>
+                {prelinkedEntityLabel || prelinkedEntityId}
+              </Text>
+              {' '}({prelinkedEntityType})
+            </Text>
+          </View>
+        ) : (
+          /* Manual linking */
+          <>
+            <Select
+              label="Projekt"
+              value={linkProjectId}
+              options={[{ value: '', label: 'Kein Projekt' }, ...projects]}
+              onChange={v => {
+                setLinkProjectId(String(v));
+                setLinkEntityType('');
+                setLinkEntityId('');
+                setEntities([]);
+              }}
+              placeholder="Projekt auswählen..."
+            />
+
+            {linkProjectId && (
+              <View style={{ marginTop: 12 }}>
+                <Select
+                  label="Element-Typ"
+                  value={linkEntityType}
+                  options={entityTypeOptions}
+                  onChange={v => {
+                    setLinkEntityType(String(v));
+                    setLinkEntityId('');
+                    setEntities([]);
+                  }}
+                  placeholder="Typ wählen..."
+                />
+              </View>
+            )}
+
+            {linkProjectId && linkEntityType && (
+              <View style={{ marginTop: 12 }}>
+                <Select
+                  label="Element"
+                  value={linkEntityId}
+                  options={[
+                    { value: '', label: loadingEntities ? 'Lade...' : 'Element wählen...' },
+                    ...entities,
+                  ]}
+                  onChange={v => setLinkEntityId(String(v))}
+                  placeholder="Element wählen..."
+                />
+              </View>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Footer buttons */}
+      <View style={mStyles.footer}>
+        <TouchableOpacity style={mStyles.cancelBtn} onPress={onClose}>
+          <Text style={mStyles.cancelBtnText}>Abbrechen</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[mStyles.saveBtn, saving && { opacity: 0.6 }]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          <Text style={mStyles.saveBtnText}>
+            {saving ? 'Speichern...' : todo ? 'Aktualisieren' : 'Erstellen'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </ModernModal>
   );
 }
 
-const modalStyles = StyleSheet.create({
-  overlay: {
-    position: 'fixed' as any,
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    width: '100%' as any,
-    maxWidth: 520,
-    maxHeight: '90vh' as any,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.15,
-    shadowRadius: 40,
-    elevation: 20,
-    overflow: 'hidden' as any,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  title: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
-  closeBtn: {
-    width: 32, height: 32,
-    borderRadius: 8,
-    backgroundColor: '#F8FAFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: { paddingHorizontal: 24, paddingTop: 16, maxHeight: '60vh' as any },
+const mStyles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6, marginTop: 14 },
   input: {
     backgroundColor: '#F8FAFC',
@@ -283,6 +414,25 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  linkSection: {
+    marginTop: 20,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+  },
+  linkHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  linkTitle: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  prelinkBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  prelinkLabel: { fontSize: 13, color: '#1D4ED8' },
 });
 
 // ─── TodoCard ──────────────────────────────────────────────────────────────

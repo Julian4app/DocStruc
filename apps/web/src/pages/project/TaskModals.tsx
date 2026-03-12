@@ -17,7 +17,9 @@ import {
   Upload,
   User,
   Calendar as CalendarIcon,
+  CheckSquare,
 } from 'lucide-react';
+import { TodoModal } from '../Todos';
 import { supabase } from '../../lib/supabase';
 import { colors } from '@docstruc/theme';
 import { Select } from '../../components/Select';
@@ -388,6 +390,15 @@ export const TaskDetailModal: React.FC<{
   const [lightboxIndex, setLightboxIndex] = React.useState(0);
   const audioFileInputRef = React.useRef<HTMLInputElement>(null);
   const videoFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isTodoModalOpen, setIsTodoModalOpen] = React.useState(false);
+  const [todoUserId, setTodoUserId] = React.useState('');
+
+  // Resolve current user id for Todo creation
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setTodoUserId(data?.user?.id || '');
+    });
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -506,6 +517,12 @@ export const TaskDetailModal: React.FC<{
                 </>
               ) : (
                 <>
+                  <TouchableOpacity
+                    style={[styles.detailIconButton, { borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' }]}
+                    onPress={() => setIsTodoModalOpen(true)}
+                  >
+                    <CheckSquare size={18} color="#3B82F6" />
+                  </TouchableOpacity>
                   {canEditPerm && (
                     <TouchableOpacity style={styles.detailIconButton} onPress={onToggleEditMode}>
                       <Edit2 size={20} color="#64748b" />
@@ -1192,6 +1209,17 @@ export const TaskDetailModal: React.FC<{
           )}
         </View>
       </View>
+
+      {/* Als ToDo hinzufügen */}
+      <TodoModal
+        isOpen={isTodoModalOpen}
+        onClose={() => setIsTodoModalOpen(false)}
+        onSaved={() => setIsTodoModalOpen(false)}
+        userId={todoUserId}
+        prelinkedEntityType="task"
+        prelinkedEntityId={task.id}
+        prelinkedEntityLabel={task.title}
+      />
     </Modal>
   );
 };
