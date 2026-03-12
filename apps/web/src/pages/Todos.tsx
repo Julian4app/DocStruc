@@ -31,6 +31,7 @@ interface Todo {
   shared_with_user_id: string | null;
   created_at: string;
   updated_at: string;
+  link_count?: number;
 }
 
 const STATUS_CONFIG: Record<TodoStatus, { label: string; color: string; bgColor: string; icon: React.FC<any> }> = {
@@ -145,8 +146,8 @@ export function TodoModal({
   const [availableItems, setAvailableItems] = useState<EntityItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  // Multi-select: set of linked entity IDs (may include prelinked)
-  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
+  // Multi-select: map of linked entity ID → EntityItem (stores type info for save)
+  const [linkedMap, setLinkedMap] = useState<Map<string, EntityItem>>(new Map());
   const [itemSearch, setItemSearch] = useState('');
 
   // Prelinked = external entity already provided (from task/defect/milestone/doc detail)
@@ -168,7 +169,7 @@ export function TodoModal({
     setSelectedTypes(
       prelinkedEntityType ? [prelinkedEntityType as EntityType] : []
     );
-    setLinkedIds(prelinkedEntityId ? new Set([prelinkedEntityId]) : new Set());
+    setLinkedMap(new Map());
     setAvailableItems([]);
     setItemSearch('');
     setLoadError(false);
@@ -204,9 +205,9 @@ export function TodoModal({
         const merged = results.flat();
         setAvailableItems(merged);
         // Remove any previously linked IDs that are no longer valid
-        setLinkedIds(prev => {
+        setLinkedMap(prev => {
           const validIds = new Set(merged.map(i => i.id));
-          const next = new Set([...prev].filter(id => validIds.has(id)));
+          const next = new Map([...prev].filter(([id]) => validIds.has(id)));
           return next;
         });
         setLoadingItems(false);
@@ -227,10 +228,10 @@ export function TodoModal({
     );
   };
 
-  const toggleLinked = (id: string) => {
-    setLinkedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+  const toggleLinked = (item: EntityItem) => {
+    setLinkedMap(prev => {
+      const next = new Map(prev);
+      next.has(item.id) ? next.delete(item.id) : next.set(item.id, item);
       return next;
     });
   };
@@ -286,17 +287,13 @@ export function TodoModal({
             entity_id: prelinkedEntityId,
             project_id: prelinkedProjectId,
           }, { onConflict: 'todo_id,entity_type,entity_id' });
-        } else if (linkProjectId && linkedIds.size > 0) {
-          // Build item map for quick lookup
-          const itemMap = new Map(availableItems.map(i => [i.id, i]));
-          const upserts = [...linkedIds]
-            .filter(id => itemMap.has(id))
-            .map(id => ({
-              todo_id: savedTodoId!,
-              entity_type: itemMap.get(id)!.entityType,
-              entity_id: id,
-              project_id: linkProjectId,
-            }));
+        } else if (linkProjectId && linkedMap.size > 0) {
+          const upserts = [...linkedMap.values()].map(item => ({
+            todo_id: savedTodoId!,
+            entity_type: item.entityType,
+            entity_id: item.id,
+            project_id: linkProjectId,
+          }));
           if (upserts.length > 0) {
             await supabase.from('todo_links').upsert(upserts, { onConflict: 'todo_id,entity_type,entity_id' });
           }
@@ -407,7 +404,7 @@ export function TodoModal({
                 setLinkProjectId(pid);
                 setSelectedTypes([]);
                 setAvailableItems([]);
-                setLinkedIds(new Set());
+                setLinkedMap(new Map());
                 setItemSearch('');
               }}
               placeholder="Projekt wählen..."
@@ -484,12 +481,12 @@ export function TodoModal({
                           {ENTITY_CONFIGS[type as EntityType].label} ({items.length})
                         </Text>
                         {items.map(item => {
-                          const checked = linkedIds.has(item.id);
+                          const checked = linkedMap.has(item.id);
                           return (
                             <TouchableOpacity
                               key={item.id}
                               style={[mStyles.itemRow, checked && mStyles.itemRowChecked]}
-                              onPress={() => toggleLinked(item.id)}
+                              onPress={() => toggleLinked(item)}
                               activeOpacity={0.7}
                             >
                               <View style={[mStyles.checkbox, checked && mStyles.checkboxChecked]}>
@@ -505,12 +502,12 @@ export function TodoModal({
                     ))
                   )}
                 </ScrollView>
-                {linkedIds.size > 0 && (
+                {linkedMap.size > 0 && (
                   <View style={mStyles.selectionSummary}>
                     <Text style={mStyles.selectionSummaryText}>
-                      {linkedIds.size} Element{linkedIds.size !== 1 ? 'e' : ''} verknüpft
+                      {linkedMap.size} Element{linkedMap.size !== 1 ? 'e' : ''} verknüpft
                     </Text>
-                    <TouchableOpacity onPress={() => setLinkedIds(new Set())}>
+                    <TouchableOpacity onPress={() => setLinkedMap(new Map())}>
                       <Text style={mStyles.clearSelectionText}>Auswahl löschen</Text>
                     </TouchableOpacity>
                   </View>
@@ -816,6 +813,13 @@ function TodoCard({ todo, onEdit, onDelete, onStatusChange, onDetail, compact = 
               <Text style={cardStyles.locationText} numberOfLines={1}>{todo.location}</Text>
             </View>
           )}
+
+          {(todo.link_count ?? 0) > 0 && (
+            <View style={cardStyles.linkBadge}>
+              <Link2 size={11} color={colors.primary} />
+              <Text style={cardStyles.linkBadgeText}>{todo.link_count}</Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -872,6 +876,8 @@ const cardStyles = StyleSheet.create({
   dateTextSoon: { color: '#F59E0B', fontWeight: '700' },
   locationBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: '#F8FAFC' },
   locationText: { fontSize: 11, color: '#94a3b8', maxWidth: 100 },
+  linkBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: '#EFF6FF' },
+  linkBadgeText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
 });
 
 // ─── KanbanColumn ──────────────────────────────────────────────────────────
@@ -1024,7 +1030,7 @@ export function Todos() {
     try {
       let query = supabase
         .from('todos')
-        .select('*')
+        .select('*, todo_links(count)')
         .or(`owner_user_id.eq.${userId},shared_with_user_id.eq.${userId}`)
         .order('created_at', { ascending: false })
         .range(pageNum * PAGE_SIZE, (pageNum + 1) * PAGE_SIZE - 1);
@@ -1034,7 +1040,10 @@ export function Todos() {
       const { data, error } = await query;
       if (error) throw error;
 
-      const fetched = (data || []) as Todo[];
+      const fetched: Todo[] = (data || []).map((t: any) => ({
+        ...t,
+        link_count: t.todo_links?.[0]?.count ?? 0,
+      }));
       if (reset) {
         setTodos(fetched);
       } else {
