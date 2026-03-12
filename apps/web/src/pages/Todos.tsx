@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Plus, Trash2, Edit2, X, Calendar, MapPin,
   Circle, CheckCircle2, Clock, PauseCircle, List, Columns,
-  ChevronDown, AlertCircle, Search, Filter, Link2
+  Search, Filter, Link2
 } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 import { ModernModal } from '../components/ModernModal';
@@ -57,14 +57,64 @@ export interface TodoModalProps {
   prelinkedEntityLabel?: string;
 }
 
-interface ProjectOption {
-  value: string;
-  label: string;
+// ─── Entity-linking types ──────────────────────────────────────────────────
+
+type EntityType = 'task' | 'defect' | 'milestone' | 'document' | 'note' | 'message';
+
+interface ProjectOption { value: string; label: string; }
+
+/** Normalised item shown in the entity picker */
+interface EntityItem {
+  id: string;
+  entityType: EntityType;
+  displayTitle: string;
+  projectId: string;
 }
 
-interface EntityOption {
-  value: string;
+// Config for each entity type: which table to query and which column holds the label
+const ENTITY_CONFIGS: Record<EntityType, {
+  table: string;
+  labelCol: string;
   label: string;
+  extraFilter?: (q: any) => any;
+}> = {
+  task:      { table: 'tasks',           labelCol: 'title',   label: 'Aufgaben',       extraFilter: q => q.neq('task_type', 'defect') },
+  defect:    { table: 'tasks',           labelCol: 'title',   label: 'Mängel',         extraFilter: q => q.eq('task_type', 'defect') },
+  milestone: { table: 'timeline_events', labelCol: 'title',   label: 'Meilensteine',   extraFilter: q => q.eq('event_type', 'milestone') },
+  document:  { table: 'project_files',   labelCol: 'name',    label: 'Dokumente' },
+  note:      { table: 'documentation_items', labelCol: 'title', label: 'Notizen' },
+  message:   { table: 'project_messages', labelCol: 'content', label: 'Nachrichten',   extraFilter: q => q.eq('is_deleted', false) },
+};
+
+const ALL_ENTITY_TYPES: EntityType[] = ['task', 'defect', 'milestone', 'document', 'note', 'message'];
+
+/** Fetch all entities of a given type from a specific project */
+async function fetchEntitiesOfType(
+  projectId: string,
+  type: EntityType,
+): Promise<EntityItem[]> {
+  const cfg = ENTITY_CONFIGS[type];
+  let query: any = supabase
+    .from(cfg.table as any)
+    .select(`id, ${cfg.labelCol}`)
+    .eq('project_id', projectId)
+    .order(cfg.labelCol)
+    .limit(200);
+
+  if (cfg.extraFilter) query = cfg.extraFilter(query);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error(`[TodoModal] fetch ${type} error:`, error.message);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    entityType: type,
+    displayTitle: (row[cfg.labelCol] as string | null)?.trim() || `(${cfg.label} ohne Titel)`,
+    projectId,
+  }));
 }
 
 export function TodoModal({
@@ -79,6 +129,8 @@ export function TodoModal({
   prelinkedEntityLabel,
 }: TodoModalProps) {
   const { showToast } = useToast();
+
+  // ── Form fields ──────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TodoStatus>('open');
@@ -86,17 +138,21 @@ export function TodoModal({
   const [location, setLocation] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Entity linking state
+  // ── Linking state ────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [linkProjectId, setLinkProjectId] = useState('');
-  const [linkEntityType, setLinkEntityType] = useState('');
-  const [entities, setEntities] = useState<EntityOption[]>([]);
-  const [linkEntityId, setLinkEntityId] = useState('');
-  const [loadingEntities, setLoadingEntities] = useState(false);
+  const [selectedTypes, setSelectedTypes] = useState<EntityType[]>([]);
+  const [availableItems, setAvailableItems] = useState<EntityItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  // Multi-select: set of linked entity IDs (may include prelinked)
+  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
+  const [itemSearch, setItemSearch] = useState('');
 
-  // Prelinked = external entity already provided (from task/defect/milestone/document detail)
+  // Prelinked = external entity already provided (from task/defect/milestone/doc detail)
   const hasPrelink = !!(prelinkedProjectId && prelinkedEntityType && prelinkedEntityId);
 
+  // ── Reset on open / close ─────────────────────────────────────────────────
   useEffect(() => {
     if (todo) {
       setName(todo.name);
@@ -105,20 +161,20 @@ export function TodoModal({
       setDueDate(todo.due_date ? todo.due_date.split('T')[0] : '');
       setLocation(todo.location || '');
     } else {
-      setName('');
-      setDescription('');
-      setStatus('open');
-      setDueDate('');
-      setLocation('');
+      setName(''); setDescription(''); setStatus('open'); setDueDate(''); setLocation('');
     }
-    // Reset linking state when modal opens
+    // Reset linking state every time the modal opens
     setLinkProjectId(prelinkedProjectId || '');
-    setLinkEntityType(prelinkedEntityType || '');
-    setLinkEntityId(prelinkedEntityId || '');
-    setEntities([]);
+    setSelectedTypes(
+      prelinkedEntityType ? [prelinkedEntityType as EntityType] : []
+    );
+    setLinkedIds(prelinkedEntityId ? new Set([prelinkedEntityId]) : new Set());
+    setAvailableItems([]);
+    setItemSearch('');
+    setLoadError(false);
   }, [todo, isOpen, prelinkedProjectId, prelinkedEntityType, prelinkedEntityId]);
 
-  // Load projects for linking selector
+  // ── Load projects ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen || hasPrelink) return;
     supabase
@@ -130,41 +186,67 @@ export function TodoModal({
       });
   }, [isOpen, hasPrelink]);
 
-  // Load entities when project + type selected
+  // ── Load entities whenever project or selected types change ───────────────
   useEffect(() => {
-    if (!linkProjectId || !linkEntityType || hasPrelink) return;
-    setLoadingEntities(true);
-    setEntities([]);
-    const configs: Record<string, { table: string; labelCol: string; extraFilter?: (q: any) => any }> = {
-      task:      { table: 'tasks',           labelCol: 'title', extraFilter: q => q.neq('task_type', 'defect') },
-      defect:    { table: 'tasks',           labelCol: 'title', extraFilter: q => q.eq('task_type', 'defect') },
-      milestone: { table: 'timeline_events', labelCol: 'title', extraFilter: q => q.eq('event_type', 'milestone') },
-      document:  { table: 'project_files',   labelCol: 'name' },
-    };
-    const cfg = configs[linkEntityType];
-    if (!cfg) { setEntities([]); setLoadingEntities(false); return; }
-
-    let query: any = supabase
-      .from(cfg.table as any)
-      .select(`id, ${cfg.labelCol}`)
-      .eq('project_id', linkProjectId)
-      .order(cfg.labelCol)
-      .limit(100);
-
-    if (cfg.extraFilter) {
-      query = cfg.extraFilter(query);
+    if (!linkProjectId || selectedTypes.length === 0 || hasPrelink) {
+      setAvailableItems([]);
+      return;
     }
 
-    query.then(({ data, error }: { data: any[] | null; error: any }) => {
-      if (error) {
-        console.error('[TodoModal] Entity load error:', error);
-        showToast('Fehler beim Laden der Elemente', 'error');
-      }
-      setEntities((data || []).map((e: any) => ({ value: e.id, label: e[cfg.labelCol] || e.id })));
-      setLoadingEntities(false);
-    });
-  }, [isOpen, linkProjectId, linkEntityType, hasPrelink]);
+    let cancelled = false;
+    setLoadingItems(true);
+    setLoadError(false);
+    setAvailableItems([]);
 
+    Promise.all(selectedTypes.map(t => fetchEntitiesOfType(linkProjectId, t)))
+      .then(results => {
+        if (cancelled) return;
+        const merged = results.flat();
+        setAvailableItems(merged);
+        // Remove any previously linked IDs that are no longer valid
+        setLinkedIds(prev => {
+          const validIds = new Set(merged.map(i => i.id));
+          const next = new Set([...prev].filter(id => validIds.has(id)));
+          return next;
+        });
+        setLoadingItems(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadError(true);
+        setLoadingItems(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [linkProjectId, selectedTypes, hasPrelink]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const toggleType = (type: EntityType) => {
+    setSelectedTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const toggleLinked = (id: string) => {
+    setLinkedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const filteredItems = itemSearch.trim()
+    ? availableItems.filter(i => i.displayTitle.toLowerCase().includes(itemSearch.toLowerCase()))
+    : availableItems;
+
+  // Group items by entityType for display
+  const groupedItems: Record<string, EntityItem[]> = {};
+  for (const item of filteredItems) {
+    if (!groupedItems[item.entityType]) groupedItems[item.entityType] = [];
+    groupedItems[item.entityType].push(item);
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!name.trim()) { showToast('Bitte Namen eingeben', 'error'); return; }
     setSaving(true);
@@ -195,17 +277,30 @@ export function TodoModal({
         showToast('ToDo erstellt', 'success');
       }
 
-      // Insert link if entity selected (prelinked or manually chosen)
-      const finalEntityId = prelinkedEntityId || linkEntityId;
-      const finalEntityType = prelinkedEntityType || linkEntityType;
-      const finalProjectId = prelinkedProjectId || linkProjectId;
-      if (savedTodoId && finalEntityId && finalEntityType) {
-        await supabase.from('todo_links').upsert({
-          todo_id: savedTodoId,
-          entity_type: finalEntityType,
-          entity_id: finalEntityId,
-          project_id: finalProjectId || null,
-        }, { onConflict: 'todo_id,entity_type,entity_id' });
+      if (savedTodoId) {
+        // Prelinked entity from external modal
+        if (hasPrelink) {
+          await supabase.from('todo_links').upsert({
+            todo_id: savedTodoId,
+            entity_type: prelinkedEntityType,
+            entity_id: prelinkedEntityId,
+            project_id: prelinkedProjectId,
+          }, { onConflict: 'todo_id,entity_type,entity_id' });
+        } else if (linkProjectId && linkedIds.size > 0) {
+          // Build item map for quick lookup
+          const itemMap = new Map(availableItems.map(i => [i.id, i]));
+          const upserts = [...linkedIds]
+            .filter(id => itemMap.has(id))
+            .map(id => ({
+              todo_id: savedTodoId!,
+              entity_type: itemMap.get(id)!.entityType,
+              entity_id: id,
+              project_id: linkProjectId,
+            }));
+          if (upserts.length > 0) {
+            await supabase.from('todo_links').upsert(upserts, { onConflict: 'todo_id,entity_type,entity_id' });
+          }
+        }
       }
 
       onSaved();
@@ -217,13 +312,7 @@ export function TodoModal({
     }
   };
 
-  const entityTypeOptions = [
-    { value: 'task', label: 'Aufgabe' },
-    { value: 'defect', label: 'Mangel' },
-    { value: 'milestone', label: 'Meilenstein' },
-    { value: 'document', label: 'Dokument' },
-  ];
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <ModernModal
       visible={isOpen}
@@ -299,58 +388,132 @@ export function TodoModal({
         </View>
 
         {hasPrelink ? (
-          /* Pre-linked from an external detail modal */
           <View style={mStyles.prelinkBadge}>
             <Text style={mStyles.prelinkLabel}>
               Verknüpft mit:{' '}
-              <Text style={{ fontWeight: '700' }}>
-                {prelinkedEntityLabel || prelinkedEntityId}
-              </Text>
+              <Text style={{ fontWeight: '700' }}>{prelinkedEntityLabel || prelinkedEntityId}</Text>
               {' '}({prelinkedEntityType})
             </Text>
           </View>
         ) : (
-          /* Manual linking */
           <>
+            {/* Step 1: project */}
             <Select
-              label="Projekt"
+              label="1. Projekt wählen"
               value={linkProjectId}
               options={[{ value: '', label: 'Kein Projekt' }, ...projects]}
               onChange={v => {
-                setLinkProjectId(String(v));
-                setLinkEntityType('');
-                setLinkEntityId('');
-                setEntities([]);
+                const pid = String(v);
+                setLinkProjectId(pid);
+                setSelectedTypes([]);
+                setAvailableItems([]);
+                setLinkedIds(new Set());
+                setItemSearch('');
               }}
-              placeholder="Kein Projekt"
+              placeholder="Projekt wählen..."
             />
 
+            {/* Step 2: category pills (multi-select) */}
             {linkProjectId && (
-              <Select
-                label="Element-Typ"
-                value={linkEntityType}
-                options={entityTypeOptions}
-                onChange={v => {
-                  setLinkEntityType(String(v));
-                  setLinkEntityId('');
-                  setEntities([]);
-                }}
-                placeholder="Typ wählen..."
-              />
+              <>
+                <Text style={mStyles.label}>2. Kategorien wählen</Text>
+                <View style={mStyles.typeRow}>
+                  {ALL_ENTITY_TYPES.map(type => {
+                    const active = selectedTypes.includes(type);
+                    return (
+                      <TouchableOpacity
+                        key={type}
+                        style={[mStyles.typeChip, active && mStyles.typeChipActive]}
+                        onPress={() => toggleType(type)}
+                      >
+                        <Text style={[mStyles.typeChipText, active && mStyles.typeChipTextActive]}>
+                          {ENTITY_CONFIGS[type].label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
             )}
 
-            {linkProjectId && linkEntityType && (
-              <Select
-                label="Element"
-                value={linkEntityId}
-                options={loadingEntities
-                  ? [{ value: '', label: 'Lade...' }]
-                  : [{ value: '', label: 'Element wählen...' }, ...entities]
-                }
-                onChange={v => setLinkEntityId(String(v))}
-                placeholder={loadingEntities ? 'Lade...' : 'Element wählen...'}
-                disabled={loadingEntities}
-              />
+            {/* Step 3: entity multi-select list */}
+            {linkProjectId && selectedTypes.length > 0 && (
+              <>
+                <Text style={mStyles.label}>3. Elemente wählen</Text>
+
+                {/* Search */}
+                <View style={mStyles.searchRow}>
+                  <Search size={14} color="#94a3b8" />
+                  <TextInput
+                    style={mStyles.searchInput}
+                    value={itemSearch}
+                    onChangeText={setItemSearch}
+                    placeholder="Suchen..."
+                    placeholderTextColor="#94a3b8"
+                  />
+                  {itemSearch ? (
+                    <TouchableOpacity onPress={() => setItemSearch('')}>
+                      <X size={13} color="#94a3b8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Item list */}
+                <View style={mStyles.itemList}>
+                  {loadingItems ? (
+                    <Text style={mStyles.itemListHint}>Lade Elemente...</Text>
+                  ) : loadError ? (
+                    <Text style={[mStyles.itemListHint, { color: '#ef4444' }]}>
+                      Fehler beim Laden. Bitte erneut versuchen.
+                    </Text>
+                  ) : availableItems.length === 0 ? (
+                    <Text style={mStyles.itemListHint}>
+                      Keine Elemente in diesem Projekt gefunden.
+                    </Text>
+                  ) : filteredItems.length === 0 ? (
+                    <Text style={mStyles.itemListHint}>Keine Treffer für „{itemSearch}"</Text>
+                  ) : (
+                    Object.entries(groupedItems).map(([type, items]) => (
+                      <View key={type}>
+                        {/* Group header */}
+                        <Text style={mStyles.groupHeader}>
+                          {ENTITY_CONFIGS[type as EntityType].label} ({items.length})
+                        </Text>
+                        {items.map(item => {
+                          const checked = linkedIds.has(item.id);
+                          return (
+                            <TouchableOpacity
+                              key={item.id}
+                              style={[mStyles.itemRow, checked && mStyles.itemRowChecked]}
+                              onPress={() => toggleLinked(item.id)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={[mStyles.checkbox, checked && mStyles.checkboxChecked]}>
+                                {checked && <Text style={mStyles.checkmark}>✓</Text>}
+                              </View>
+                              <Text style={[mStyles.itemLabel, checked && mStyles.itemLabelChecked]} numberOfLines={2}>
+                                {item.displayTitle}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                {/* Selection summary */}
+                {linkedIds.size > 0 && (
+                  <View style={mStyles.selectionSummary}>
+                    <Text style={mStyles.selectionSummaryText}>
+                      {linkedIds.size} Element{linkedIds.size !== 1 ? 'e' : ''} verknüpft
+                    </Text>
+                    <TouchableOpacity onPress={() => setLinkedIds(new Set())}>
+                      <Text style={mStyles.clearSelectionText}>Auswahl löschen</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
             )}
           </>
         )}
@@ -443,6 +606,55 @@ const mStyles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   prelinkLabel: { fontSize: 13, color: '#1D4ED8' },
+  // ── Category type chips ──────────────────────────────────────────────────
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap' as any, gap: 6, marginBottom: 4 },
+  typeChip: {
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
+  },
+  typeChipActive: { borderColor: colors.primary, backgroundColor: '#EFF6FF' },
+  typeChipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  typeChipTextActive: { color: colors.primary },
+  // ── Search row ────────────────────────────────────────────────────────────
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 6,
+  },
+  searchInput: { flex: 1, fontSize: 13, color: '#0f172a', outlineStyle: 'none' as any },
+  // ── Item list ─────────────────────────────────────────────────────────────
+  itemList: {
+    maxHeight: 240, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10,
+    backgroundColor: '#fff', overflow: 'hidden' as any,
+  },
+  itemListHint: { fontSize: 13, color: '#94a3b8', padding: 14, textAlign: 'center' as any },
+  groupHeader: {
+    fontSize: 11, fontWeight: '800', color: '#64748b', letterSpacing: 0.5,
+    textTransform: 'uppercase' as any, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4,
+    backgroundColor: '#F8FAFC',
+  },
+  itemRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  itemRowChecked: { backgroundColor: '#EFF6FF' },
+  checkbox: {
+    width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,
+    borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { fontSize: 11, color: '#fff', fontWeight: '800', lineHeight: 14 },
+  itemLabel: { flex: 1, fontSize: 13, color: '#374151' },
+  itemLabelChecked: { color: colors.primary, fontWeight: '600' },
+  // ── Selection summary ─────────────────────────────────────────────────────
+  selectionSummary: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 8, paddingHorizontal: 4,
+  },
+  selectionSummaryText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  clearSelectionText: { fontSize: 12, color: '#ef4444', fontWeight: '600' },
 });
 
 // ─── TodoDetailModal ──────────────────────────────────────────────────────
