@@ -424,39 +424,39 @@ export function ProjectManagementDetail() {
     }
   };
 
-  const handleArchive = async () => {
-    if (!confirm('Projekt archivieren?')) return;
-    
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .update({ status: 'archived' })
-        .eq('id', id);
-
-      if (error) throw error;
-      showToast('Projekt archiviert', 'success');
-      navigate('/manage-projects');
-    } catch (error: any) {
-      console.error('Error archiving project:', error);
-      showToast('Fehler beim Archivieren', 'error');
-    }
+  const handleArchive = () => {
+    setConfirmAction('archive');
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Projekt ENDGÜLTIG löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
-    
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
+  const handleDelete = () => {
+    setConfirmAction('delete');
+  };
 
-      if (error) throw error;
-      showToast('Projekt gelöscht', 'success');
-      navigate('/manage-projects');
+  const executeConfirmedAction = async () => {
+    if (!confirmAction) return;
+    const action = confirmAction;
+    setConfirmAction(null);
+    try {
+      if (action === 'archive') {
+        const { error } = await supabase
+          .from('projects')
+          .update({ status: 'archived' })
+          .eq('id', id);
+        if (error) throw error;
+        showToast('Projekt archiviert', 'success');
+        navigate('/manage-projects');
+      } else if (action === 'delete') {
+        const { error } = await supabase
+          .from('projects')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+        showToast('Projekt gelöscht', 'success');
+        navigate('/manage-projects');
+      }
     } catch (error: any) {
-      console.error('Error deleting project:', error);
-      showToast('Fehler beim Löschen', 'error');
+      console.error('Error executing action:', error);
+      showToast('Fehler beim Ausführen der Aktion', 'error');
     }
   };
 

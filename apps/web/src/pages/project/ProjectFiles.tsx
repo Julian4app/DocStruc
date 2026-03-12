@@ -13,6 +13,7 @@ import { ModernModal } from '../../components/ModernModal';
 import { Select } from '../../components/Select';
 import { SearchableSelect } from '../../components/SearchableSelect';
 import { useAuth } from '../../contexts/AuthContext';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   FolderOpen, Upload, File, FileText, Image, Video, Folder, Download, 
   MoreVertical, Edit2, Trash2, Share2, X, Plus, FolderPlus, Clock,
