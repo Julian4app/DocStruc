@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { ProjectCreateModal } from '../components/ProjectCreateModal';
 import { useLayout } from '../layouts/LayoutContext';
 import { useToast } from '../components/ToastProvider';
-import { Folder, TrendingUp, Clock, CheckCircle, AlertCircle, Flag, Calendar as CalendarIcon } from 'lucide-react';
+import { Folder, TrendingUp, Clock, CheckCircle, AlertCircle, Flag, Calendar as CalendarIcon, CheckSquare } from 'lucide-react';
 import { colors } from '@docstruc/theme';
 
 interface TimelineEvent {
@@ -34,6 +34,8 @@ export function Dashboard() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [upcomingMilestones, setUpcomingMilestones] = useState<TimelineEvent[]>([]);
+  const [openTodos, setOpenTodos] = useState<{ id: string; name: string; due_date: string | null; status: string }[]>([]);
+  const [todosLoading, setTodosLoading] = useState(true);
 
   // ── Deduplication: only one fetchProjects in flight at a time ─────────
   // Without this, the visibility handler + useEffect can fire simultaneously,
@@ -98,6 +100,7 @@ export function Dashboard() {
     if (userId) {
       fetchProjects();
       fetchMilestones();
+      fetchOpenTodos();
     }
   }, [userId, fetchProjects]);
 
@@ -108,10 +111,30 @@ export function Dashboard() {
     const handleTabVisible = () => {
       fetchProjects();
       fetchMilestones();
+      fetchOpenTodos();
     };
     window.addEventListener('app:tabvisible', handleTabVisible);
     return () => window.removeEventListener('app:tabvisible', handleTabVisible);
   }, [fetchProjects]);
+
+  const fetchOpenTodos = async () => {
+    if (!userId) return;
+    setTodosLoading(true);
+    try {
+      const { data } = await supabase
+        .from('todos')
+        .select('id, name, due_date, status')
+        .or(`owner_user_id.eq.${userId},shared_with_user_id.eq.${userId}`)
+        .eq('status', 'open')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(5);
+      setOpenTodos(data || []);
+    } catch (_) {
+      // silently ignore
+    } finally {
+      setTodosLoading(false);
+    }
+  };
 
   // ── Safety timeout: if projectsLoading is stuck for >12 seconds, force it off ──
   useEffect(() => {
@@ -277,6 +300,46 @@ export function Dashboard() {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* Open ToDos Section */}
+        <View style={styles.todosSection}>
+          <View style={styles.todosSectionHeader}>
+            <CheckSquare size={20} color={colors.primary} />
+            <Text style={styles.todosSectionTitle}>Meine offenen ToDos</Text>
+            {openTodos.length > 0 && (
+              <View style={styles.todosBadge}>
+                <Text style={styles.todosBadgeText}>{openTodos.length}{openTodos.length >= 5 ? '+' : ''}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.todosAllLink} onPress={() => navigate('/todos')}>
+              <Text style={styles.todosAllLinkText}>Alle anzeigen →</Text>
+            </TouchableOpacity>
+          </View>
+          {todosLoading ? (
+            <Text style={styles.todosEmpty}>Lade...</Text>
+          ) : openTodos.length === 0 ? (
+            <Text style={styles.todosEmpty}>Keine offenen ToDos 🎉</Text>
+          ) : (
+            openTodos.map(todo => {
+              const isOverdue = !!(todo.due_date && new Date(todo.due_date) < new Date());
+              const isDueSoon = !!(todo.due_date && !isOverdue && new Date(todo.due_date) < new Date(Date.now() + 3 * 86400_000));
+              const dateLabel = todo.due_date
+                ? new Date(todo.due_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+                : null;
+              return (
+                <TouchableOpacity key={todo.id} style={styles.todoRow} onPress={() => navigate('/todos')} activeOpacity={0.7}>
+                  <View style={[styles.todoDot, { backgroundColor: '#3B82F6' }]} />
+                  <Text style={styles.todoName} numberOfLines={1}>{todo.name}</Text>
+                  {dateLabel && (
+                    <Text style={[styles.todoDate, isOverdue && styles.todoDateOverdue, isDueSoon && styles.todoDateSoon]}>
+                      {dateLabel}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         {/* Upcoming Milestones Section */}
@@ -545,6 +608,50 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     lineHeight: 22,
   },
+  todosSection: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  todosSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  todosSectionTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a', flex: 1 },
+  todosBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  todosBadgeText: { fontSize: 12, fontWeight: '800', color: colors.primary },
+  todosAllLink: { marginLeft: 4 },
+  todosAllLinkText: { fontSize: 14, fontWeight: '600', color: colors.primary },
+  todosEmpty: { fontSize: 14, color: '#94a3b8', textAlign: 'center' as any, paddingVertical: 12 },
+  todoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  todoDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+  todoName: { flex: 1, fontSize: 14, fontWeight: '500', color: '#0f172a' },
+  todoDate: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  todoDateOverdue: { color: '#ef4444', fontWeight: '700' },
+  todoDateSoon: { color: '#F59E0B', fontWeight: '700' },
+
   milestonesSection: {
     backgroundColor: '#ffffff',
     borderRadius: 16,

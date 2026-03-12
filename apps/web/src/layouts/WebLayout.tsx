@@ -16,7 +16,8 @@ import {
   Bell,
   Smartphone,
   UsersRound,
-  Tags
+  Tags,
+  CheckSquare
 } from 'lucide-react';
 
 export function WebLayout() {
@@ -119,6 +120,7 @@ export function WebLayout() {
       title: 'MENU',
       items: [
         { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+        { label: 'Meine ToDos', path: '/todos', icon: CheckSquare },
       ]
     }
   ];

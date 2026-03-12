@@ -35,6 +35,7 @@ const ProjectCommunication = lazy(() => import('./pages/project/ProjectCommunica
 const ProjectParticipants = lazy(() => import('./pages/project/ProjectParticipants').then(m => ({ default: m.ProjectParticipants })));
 const ProjectReports = lazy(() => import('./pages/project/ProjectReports').then(m => ({ default: m.ProjectReports })));
 const ProjectActivity = lazy(() => import('./pages/project/ProjectActivity').then(m => ({ default: m.ProjectActivity })));
+const Todos = lazy(() => import('./pages/Todos').then(m => ({ default: m.Todos })));
 
 // ─── Prefetch project sub-page chunks when user enters a project ───────────
 // Vite dynamic imports are cached — calling import() again is a no-op after first load.
@@ -219,6 +220,7 @@ function AppRoutes() {
             <Route path="reports" element={<PermissionGuard><ProjectReports /></PermissionGuard>} />
             <Route path="activity" element={<PermissionGuard><ProjectActivity /></PermissionGuard>} />
           </Route>
+          <Route path="/todos" element={<Todos />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/datenschutz" element={<Datenschutz />} />
