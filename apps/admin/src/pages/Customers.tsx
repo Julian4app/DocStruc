@@ -209,7 +209,7 @@ export default function Customers() {
                                 <View style={styles.col}>
                                     <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                                         <User size={14} color="#94a3b8" />
-                                        <Text style={styles.cellText}>{item.employees_count || 0} / {item.accounts_count || 0}</Text>
+                                        <Text style={styles.cellText}>{item.employees_count || 0} / {item.bought_accounts || 0}</Text>
                                     </View>
                                 </View>
                                 
