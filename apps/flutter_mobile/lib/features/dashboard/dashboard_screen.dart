@@ -21,6 +21,8 @@ import '../../core/widgets/shimmer_loading.dart';
 import '../../core/widgets/status_pill.dart';
 import '../../core/widgets/empty_state.dart';
 import 'package:docstruc_mobile/core/widgets/lottie_loader.dart';
+import '../todo/models/todo_model.dart';
+import '../todo/services/todo_service.dart';
 
 /// Shows a bottom sheet on phones; a centered constrained dialog on tablets.
 /// Tablet dialog includes a close (×) button.
@@ -89,6 +91,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _searchQuery = '';
   String _activeFilter = 'Alle';
 
+  // Open ToDos overview
+  List<TodoModel> _openTodos = [];
+  bool _todosLoading = true;
+
   // Photo/map toggle per project: true = show photo, false = show map
   final Map<String, String?> _projectImageUrls = {}; // projectId → image URL
   final Map<String, bool> _showPhoto = {}; // projectId → bool
@@ -125,6 +131,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Use addPostFrameCallback so the widget tree is fully built before loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadProjects();
+      _loadOpenTodos();
     });
   }
 
@@ -297,6 +304,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // Silently handle – empty list shown
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadOpenTodos() async {
+    setState(() => _todosLoading = true);
+    try {
+      final todos = await TodoService.getTodosForUser(
+        statusFilter: 'open',
+        pageSize: 5,
+      );
+      if (mounted) setState(() => _openTodos = todos);
+    } catch (_) {
+      // silently fail – todos section just stays empty
+    } finally {
+      if (mounted) setState(() => _todosLoading = false);
     }
   }
 
@@ -535,33 +557,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     final projects = _filteredProjects;
+    final tablet = isTablet(context);
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     if (projects.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _loadProjects,
+        onRefresh: () async {
+          await Future.wait([_loadProjects(), _loadOpenTodos()]);
+        },
         color: AppColors.primary,
-        child: ListView(
-          children: [
-            SizedBox(height: MediaQuery.of(context).size.height * 0.15),
-            EmptyState(
-              icon: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
-                  ? LucideIcons.searchX
-                  : LucideIcons.folderOpen,
-              title: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
-                  ? 'Keine Projekte gefunden'
-                  : 'Noch keine Projekte',
-              subtitle: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
-                  ? 'Versuchen Sie eine andere Suche oder andere Filter.'
-                  : 'Erstellen Sie Ihr erstes Projekt mit dem Button unten.',
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _buildOpenTodosSection()),
+            SliverFillRemaining(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  EmptyState(
+                    icon: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
+                        ? LucideIcons.searchX
+                        : LucideIcons.folderOpen,
+                    title: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
+                        ? 'Keine Projekte gefunden'
+                        : 'Noch keine Projekte',
+                    subtitle: _searchQuery.isNotEmpty || _activeFilter != 'Alle'
+                        ? 'Versuchen Sie eine andere Suche oder andere Filter.'
+                        : 'Erstellen Sie Ihr erstes Projekt mit dem Button unten.',
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       );
     }
 
-    final tablet = isTablet(context);
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    final itemPadding = EdgeInsets.fromLTRB(
+    final sliverPadding = EdgeInsets.fromLTRB(
       AppSpacing.screenH,
       AppSpacing.m,
       AppSpacing.screenH,
@@ -569,65 +600,246 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
 
     return RefreshIndicator(
-      onRefresh: _loadProjects,
+      onRefresh: () async {
+        await Future.wait([_loadProjects(), _loadOpenTodos()]);
+      },
       color: AppColors.primary,
-      child: tablet
-          ? GridView.builder(
-              padding: itemPadding,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: MediaQuery.of(context).size.width >= 900 ? 3 : 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                mainAxisExtent: 300,
-              ),
-              itemCount: projects.length,
-              itemBuilder: (context, index) {
-                final p = projects[index];
-                final pid = p['id'] as String;
-                return RepaintBoundary(
-                  child: _ProjectCard(
-                  project: p,
-                  color: _projectColor(p),
-                  dateFormat: _dateFormat,
-                  imageUrl: _projectImageUrls[pid],
-                  showPhoto: _showPhoto[pid] ?? false,
-                  onToggleView: (val) => setState(() => _showPhoto[pid] = val),
-                  onTap: () => context.go('/project/${p['id']}'),
-                  onLongPress: () => _showEditSheet(p),
-                ).animate().fadeIn(
-                      duration: 300.ms,
-                      delay: (50 * index).ms,
+      child: CustomScrollView(
+        slivers: [
+          // ── Open ToDos overview ────────────────────────────────────────
+          SliverToBoxAdapter(child: _buildOpenTodosSection()),
+
+          // ── Projects grid / list ───────────────────────────────────────
+          tablet
+              ? SliverPadding(
+                  padding: sliverPadding,
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount:
+                          MediaQuery.of(context).size.width >= 900 ? 3 : 2,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      mainAxisExtent: 300,
                     ),
-                );
-              },
-            )
-          : ListView.builder(
-              padding: itemPadding,
-              itemCount: projects.length,
-              itemBuilder: (context, index) {
-                final p = projects[index];
-                final pid = p['id'] as String;
-                return RepaintBoundary(
-                  child: _ProjectCard(
-                  project: p,
-                  color: _projectColor(p),
-                  dateFormat: _dateFormat,
-                  imageUrl: _projectImageUrls[pid],
-                  showPhoto: _showPhoto[pid] ?? false,
-                  onToggleView: (val) => setState(() => _showPhoto[pid] = val),
-                  onTap: () => context.go('/project/${p['id']}'),
-                  onLongPress: () => _showEditSheet(p),
-                ).animate().fadeIn(
-                      duration: 300.ms,
-                      delay: (50 * index).ms,
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final p = projects[index];
+                        final pid = p['id'] as String;
+                        return RepaintBoundary(
+                          child: _ProjectCard(
+                            project: p,
+                            color: _projectColor(p),
+                            dateFormat: _dateFormat,
+                            imageUrl: _projectImageUrls[pid],
+                            showPhoto: _showPhoto[pid] ?? false,
+                            onToggleView: (val) =>
+                                setState(() => _showPhoto[pid] = val),
+                            onTap: () => context.go('/project/${p['id']}'),
+                            onLongPress: () => _showEditSheet(p),
+                          ).animate().fadeIn(
+                                duration: 300.ms,
+                                delay: (50 * index).ms,
+                              ),
+                        );
+                      },
+                      childCount: projects.length,
                     ),
-                );
-              },
-            ),
+                  ),
+                )
+              : SliverPadding(
+                  padding: sliverPadding,
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final p = projects[index];
+                        final pid = p['id'] as String;
+                        return RepaintBoundary(
+                          child: _ProjectCard(
+                            project: p,
+                            color: _projectColor(p),
+                            dateFormat: _dateFormat,
+                            imageUrl: _projectImageUrls[pid],
+                            showPhoto: _showPhoto[pid] ?? false,
+                            onToggleView: (val) =>
+                                setState(() => _showPhoto[pid] = val),
+                            onTap: () => context.go('/project/${p['id']}'),
+                            onLongPress: () => _showEditSheet(p),
+                          ).animate().fadeIn(
+                                duration: 300.ms,
+                                delay: (50 * index).ms,
+                              ),
+                        );
+                      },
+                      childCount: projects.length,
+                    ),
+                  ),
+                ),
+        ],
+      ),
     );
   }
 
-  // ── Create project bottom sheet ───────────────────────────────────────────
+  // ── Open ToDos overview section ───────────────────────────────────────────
+  Widget _buildOpenTodosSection() {
+    const statusColors = {
+      'open':        Color(0xFF3B82F6),
+      'in_progress': Color(0xFFF59E0B),
+      'waiting':     Color(0xFF8B5CF6),
+      'done':        Color(0xFF22C55E),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenH, 16, AppSpacing.screenH, 4),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                const Icon(LucideIcons.checkSquare,
+                    size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Meine offenen ToDos',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text,
+                    ),
+                  ),
+                ),
+                if (!_todosLoading && _openTodos.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_openTodos.length}${_openTodos.length >= 5 ? '+' : ''}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => context.go('/todos'),
+                  child: const Text(
+                    'Alle →',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Body
+            if (_todosLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.primary),
+                  ),
+                ),
+              )
+            else if (_openTodos.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    'Keine offenen ToDos 🎉',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: _openTodos.take(4).map((todo) {
+                  final dotColor = statusColors['open'] ?? AppColors.primary;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: dotColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            todo.name,
+                            style: const TextStyle(
+                                fontSize: 14, color: AppColors.text),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (todo.dueDate != null)
+                          Text(
+                            _formatDueDate(todo.dueDate!),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _isDueSoon(todo.dueDate!)
+                                  ? const Color(0xFFEF4444)
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDueDate(String isoDate) {
+    try {
+      final dt = DateTime.parse(isoDate);
+      return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  bool _isDueSoon(String isoDate) {
+    try {
+      final dt = DateTime.parse(isoDate);
+      return dt.isBefore(DateTime.now().add(const Duration(days: 3)));
+    } catch (_) {
+      return false;
+    }
+  }
+
+
   void _showCreateSheet() {
     _newNameCtrl.clear();
     _newSubtitleCtrl.clear();
