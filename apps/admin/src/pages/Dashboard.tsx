@@ -105,17 +105,8 @@ export default function Dashboard() {
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      const [
-        usersRes,
-        newUsersRes,
-        projectsRes,
-        companiesRes,
-        feedbackRes,
-        supportRes,
-        subscriptionsRes,
-        recentUsersRes,
-        recentFeedbackRes,
-      ] = await Promise.all([
+      // Use allSettled so a missing table (404) doesn't block the rest
+      const results = await Promise.allSettled([
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('profiles').select('id', { count: 'exact', head: true })
           .gte('created_at', startOfMonth.toISOString()),
@@ -131,11 +122,25 @@ export default function Dashboard() {
           .order('created_at', { ascending: false }).limit(5),
       ]);
 
-      const allProjects = projectsRes.data || [];
+      const val = <T,>(i: number): T | null =>
+        results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<any>).value as T : null;
+
+      const usersRes         = val<{ count: number | null }>(0);
+      const newUsersRes      = val<{ count: number | null }>(1);
+      const projectsRes      = val<{ data: any[] | null }>(2);
+      const companiesRes     = val<{ count: number | null }>(3);
+      const feedbackRes      = val<{ data: any[] | null }>(4);
+      const supportRes       = val<{ count: number | null }>(5);
+      const subscriptionsRes = val<{ count: number | null }>(6);
+      const recentUsersRes   = val<{ data: any[] | null }>(7);
+      const recentFeedbackRes = val<{ data: any[] | null }>(8);
+
+      const allProjects = (projectsRes as any)?.data || [];
       const activeStatuses = ['In Planung', 'Genehmigt', 'In Ausführung', 'active', 'planning'];
       const activeProjects = allProjects.filter((p: any) => activeStatuses.includes(p.status)).length;
 
-      const ratings = (feedbackRes.data || [])
+      const feedbackData = (feedbackRes as any)?.data || [];
+      const ratings = feedbackData
         .map((f: any) => f.rating)
         .filter((r: any): r is number => typeof r === 'number');
       const avgRating = ratings.length > 0
@@ -143,19 +148,19 @@ export default function Dashboard() {
         : null;
 
       setStats({
-        totalUsers: usersRes.count ?? 0,
-        newUsersThisMonth: newUsersRes.count ?? 0,
+        totalUsers: (usersRes as any)?.count ?? 0,
+        newUsersThisMonth: (newUsersRes as any)?.count ?? 0,
         totalProjects: allProjects.length,
         activeProjects,
-        totalCompanies: companiesRes.count ?? 0,
-        totalFeedback: feedbackRes.data?.length ?? 0,
+        totalCompanies: (companiesRes as any)?.count ?? 0,
+        totalFeedback: feedbackData.length,
         avgRating,
-        openSupportMessages: supportRes.count ?? 0,
-        totalSubscriptions: subscriptionsRes.count ?? 0,
+        openSupportMessages: (supportRes as any)?.count ?? 0,
+        totalSubscriptions: (subscriptionsRes as any)?.count ?? 0,
       });
 
-      setRecentUsers(recentUsersRes.data || []);
-      setRecentFeedback(recentFeedbackRes.data || []);
+      setRecentUsers((recentUsersRes as any)?.data || []);
+      setRecentFeedback((recentFeedbackRes as any)?.data || []);
     } catch (e) {
       console.error('Admin Dashboard load error:', e);
     } finally {
