@@ -459,7 +459,11 @@ export function TodoModal({
                 </View>
 
                 {/* Item list */}
-                <View style={mStyles.itemList}>
+                <ScrollView
+                  style={mStyles.itemList}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
                   {loadingItems ? (
                     <Text style={mStyles.itemListHint}>Lade Elemente...</Text>
                   ) : loadError ? (
@@ -500,9 +504,7 @@ export function TodoModal({
                       </View>
                     ))
                   )}
-                </View>
-
-                {/* Selection summary */}
+                </ScrollView>
                 {linkedIds.size > 0 && (
                   <View style={mStyles.selectionSummary}>
                     <Text style={mStyles.selectionSummaryText}>
@@ -625,7 +627,7 @@ const mStyles = StyleSheet.create({
   // ── Item list ─────────────────────────────────────────────────────────────
   itemList: {
     maxHeight: 240, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10,
-    backgroundColor: '#fff', overflow: 'hidden' as any,
+    backgroundColor: '#fff', overflow: 'scroll' as any,
   },
   itemListHint: { fontSize: 13, color: '#94a3b8', padding: 14, textAlign: 'center' as any },
   groupHeader: {
