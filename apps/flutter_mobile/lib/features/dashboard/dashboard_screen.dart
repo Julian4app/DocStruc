@@ -821,22 +821,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  String _formatDueDate(String isoDate) {
-    try {
-      final dt = DateTime.parse(isoDate);
-      return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.';
-    } catch (_) {
-      return '';
-    }
+  String _formatDueDate(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.';
   }
 
-  bool _isDueSoon(String isoDate) {
-    try {
-      final dt = DateTime.parse(isoDate);
-      return dt.isBefore(DateTime.now().add(const Duration(days: 3)));
-    } catch (_) {
-      return false;
-    }
+  bool _isDueSoon(DateTime dt) {
+    return dt.isBefore(DateTime.now().add(const Duration(days: 3)));
   }
 
 

@@ -466,14 +466,6 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
       default: return s ?? '';
     }
   }
-
-  Color _parseHex(String hex) {
-    try {
-      return Color(int.parse(hex.replaceFirst('#', '0xFF')));
-    } catch (_) {
-      return AppColors.primary;
-    }
-  }
 }
 
 // ── Shared Widgets ──────────────────────────────────────────────────────────

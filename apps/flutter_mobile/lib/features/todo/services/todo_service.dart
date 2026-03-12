@@ -14,7 +14,7 @@ class TodoService {
     int page = 0,
     int pageSize = 30,
   }) async {
-    var query = _db
+    var baseQuery = _db
         .from('todos')
         .select('''
           *,
@@ -22,15 +22,15 @@ class TodoService {
           shared_profile:shared_with_user_id(first_name, last_name, avatar_url)
         ''')
         .or('owner_user_id.eq.${SupabaseService.currentUserId},'
-            'shared_with_user_id.eq.${SupabaseService.currentUserId}')
+            'shared_with_user_id.eq.${SupabaseService.currentUserId}');
+
+    final filtered = (statusFilter != null && statusFilter.isNotEmpty)
+        ? baseQuery.eq('status', statusFilter)
+        : baseQuery;
+
+    final res = await filtered
         .order('created_at', ascending: false)
         .range(page * pageSize, (page + 1) * pageSize - 1);
-
-    if (statusFilter != null && statusFilter.isNotEmpty) {
-      query = query.eq('status', statusFilter);
-    }
-
-    final res = await query;
     return (res as List).map((j) => TodoModel.fromJson(j as Map<String, dynamic>)).toList();
   }
 
