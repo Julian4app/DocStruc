@@ -24,9 +24,13 @@ export default function Tags() {
         .select('*')
         .order('title');
       
-      if (tagError) throw tagError;
+      if (tagError) {
+        console.warn('tags table error (may need migration):', tagError.message);
+        setTags([]);
+        return;
+      }
 
-      // 2. Fetch usages to count
+      // 2. Fetch usages to count (ignore errors from missing tables)
       const { data: invData } = await supabase.from('invoices').select('tags');
       const { data: fileData } = await supabase.from('company_files').select('tags');
 

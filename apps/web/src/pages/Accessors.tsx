@@ -6,6 +6,7 @@ import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { ModernModal } from '../components/ModernModal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../contexts/AuthContext';
 import { UserCog, Plus, Trash2, Edit2, Shield, Eye, EyeOff, Check, X, Building2, Crown, Users as UsersIcon, UserPlus } from 'lucide-react';
@@ -117,6 +118,10 @@ export function Accessors() {
   const [savingTeamAdmin, setSavingTeamAdmin] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMemberProfile[]>([]);
   const [viewingTeamMembers, setViewingTeamMembers] = useState<Team | null>(null);
+
+  // Confirm dialog state
+  type ConfirmType = { kind: 'team'; id: string } | { kind: 'role'; id: string } | { kind: 'user'; id: string } | null;
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmType>(null);
 
   useEffect(() => {
     loadData();
@@ -320,29 +325,8 @@ export function Accessors() {
     }
   };
 
-  const deleteTeam = async (teamId: string) => {
-    if (!confirm('Möchten Sie dieses Team wirklich löschen? Alle Mitglieder werden aus dem Team entfernt.')) return;
-
-    try {
-      // Remove all members from team
-      await supabase
-        .from('profiles')
-        .update({ team_id: null, team_role: null, joined_team_at: null })
-        .eq('team_id', teamId);
-
-      // Deactivate team
-      const { error } = await supabase
-        .from('teams')
-        .update({ is_active: false })
-        .eq('id', teamId);
-
-      if (error) throw error;
-
-      showToast('Team erfolgreich gelöscht', 'success');
-      loadTeams();
-    } catch (error: any) {
-      showToast('Fehler beim Löschen: ' + error.message, 'error');
-    }
+  const deleteTeam = (teamId: string) => {
+    setPendingConfirm({ kind: 'team', id: teamId });
   };
 
   const openTeamAdminModal = (team: Team) => {
@@ -569,22 +553,8 @@ export function Accessors() {
     }
   };
 
-  const deleteRole = async (roleId: string) => {
-    if (!confirm('Möchten Sie diese Rolle wirklich löschen?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('roles')
-        .update({ is_active: false })
-        .eq('id', roleId);
-
-      if (error) throw error;
-
-      showToast('Rolle erfolgreich gelöscht', 'success');
-      loadRoles();
-    } catch (error: any) {
-      showToast('Fehler beim Löschen: ' + error.message, 'error');
-    }
+  const deleteRole = (roleId: string) => {
+    setPendingConfirm({ kind: 'role', id: roleId });
   };
 
   const togglePermission = (moduleKey: string, permType: 'can_view' | 'can_create' | 'can_edit' | 'can_delete') => {
@@ -687,21 +657,34 @@ export function Accessors() {
     }
   };
 
-  const deleteUser = async (userId: string) => {
-    if (!confirm('Möchten Sie diesen Zugreifer wirklich entfernen?')) return;
+  const deleteUser = (userId: string) => {
+    setPendingConfirm({ kind: 'user', id: userId });
+  };
 
+  const executeConfirmedDelete = async () => {
+    if (!pendingConfirm) return;
+    const { kind, id } = pendingConfirm;
+    setPendingConfirm(null);
     try {
-      const { error } = await supabase
-        .from('user_accessors')
-        .update({ is_active: false })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      showToast('Zugreifer erfolgreich entfernt', 'success');
-      loadAccessors();
+      if (kind === 'team') {
+        await supabase.from('profiles').update({ team_id: null, team_role: null, joined_team_at: null }).eq('team_id', id);
+        const { error } = await supabase.from('teams').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        showToast('Team erfolgreich gelöscht', 'success');
+        loadTeams();
+      } else if (kind === 'role') {
+        const { error } = await supabase.from('roles').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        showToast('Rolle erfolgreich gelöscht', 'success');
+        loadRoles();
+      } else if (kind === 'user') {
+        const { error } = await supabase.from('user_accessors').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        showToast('Zugreifer erfolgreich entfernt', 'success');
+        loadAccessors();
+      }
     } catch (error: any) {
-      showToast('Fehler beim Entfernen: ' + error.message, 'error');
+      showToast('Fehler beim Löschen: ' + error.message, 'error');
     }
   };
 
@@ -1423,6 +1406,26 @@ export function Accessors() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingConfirm !== null}
+        title={
+          pendingConfirm?.kind === 'team' ? 'Team löschen' :
+          pendingConfirm?.kind === 'role' ? 'Rolle löschen' :
+          'Zugreifer entfernen'
+        }
+        message={
+          pendingConfirm?.kind === 'team'
+            ? 'Möchten Sie dieses Team wirklich löschen? Alle Mitglieder werden aus dem Team entfernt.'
+            : pendingConfirm?.kind === 'role'
+            ? 'Möchten Sie diese Rolle wirklich löschen?'
+            : 'Möchten Sie diesen Zugreifer wirklich entfernen?'
+        }
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={executeConfirmedDelete}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </View>
   );
 }

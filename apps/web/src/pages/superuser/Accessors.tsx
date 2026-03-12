@@ -5,6 +5,7 @@ import { LottieLoader } from '../../components/LottieLoader';
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input, Card } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ImageUploader } from '../../components/ImageUploader';
 import { CountrySelect } from '../../components/CountrySelect';
 import { PhoneInput } from '../../components/PhoneInput';
@@ -36,6 +37,9 @@ export function Accessors() {
   const [isEditing, setIsEditing] = useState(false);
   const { userId } = useAuth();
   const [assignedProjects, setAssignedProjects] = useState<any[]>([]);
+
+  // Confirm dialog state
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   // Generic Item State (for Create/Edit)
   const [personForm, setPersonForm] = useState({
@@ -216,23 +220,27 @@ export function Accessors() {
   const resetForms = () => {
       setPersonForm({ first_name: '', last_name: '', email: '', phone: '', phone_country: 'DE', personal_number: '', department: '', company_name: '', street: '', zip: '', city: '', country: 'DE', notes: '', avatar_url: '' });
       setSubForm({ name: '', trade: '', street: '', zip: '', city: '', country: 'DE', website: '', logo_url: '', contacts: [] });
-  };  const handleDelete = async (id: string) => {
-      if (!confirm('Are you sure you want to delete this entry?')) return;
-      
-      const ALLOWED_TABLES = ['subcontractors', 'crm_contacts'] as const;
-      const table = activeTab === 'subcontractors' ? 'subcontractors' : 'crm_contacts';
-      if (!ALLOWED_TABLES.includes(table)) return;
-      const { error } = await supabase.from(table).delete().eq('id', id);
-      
-      if (error) {
-          showToast('Error deleting: ' + error.message, 'error');
-      } else {
-          showToast('Deleted successfully', 'success');
-          setIsDetailOpen(false);
-          // Invalidate cache
-          delete cache.current[activeTab];
-          fetchData();
-      }
+  };  const handleDelete = (id: string) => {
+    setPendingDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
+    const ALLOWED_TABLES = ['subcontractors', 'crm_contacts'] as const;
+    const table = activeTab === 'subcontractors' ? 'subcontractors' : 'crm_contacts';
+    if (!ALLOWED_TABLES.includes(table)) return;
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) {
+        showToast('Error deleting: ' + error.message, 'error');
+    } else {
+        showToast('Deleted successfully', 'success');
+        setIsDetailOpen(false);
+        // Invalidate cache
+        delete cache.current[activeTab];
+        fetchData();
+    }
   };
 
   const handleSave = async () => {
@@ -653,9 +661,19 @@ export function Accessors() {
                              </View>
                          )}
                      </View>
-                </ScrollView>
+        </ScrollView>
             </ModernModal>
         )}
+
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        title="Eintrag löschen"
+        message="Möchten Sie diesen Eintrag wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </>
   );
 }

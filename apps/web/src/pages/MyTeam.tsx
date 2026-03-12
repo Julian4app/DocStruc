@@ -6,6 +6,7 @@ import { Card, Button, Input } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
 import { ModernModal } from '../components/ModernModal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../contexts/AuthContext';
 import { Users, Plus, Trash2, Edit2, Shield, Eye, Mail, Phone, Building2, UserPlus, Crown, UserMinus } from 'lucide-react';
@@ -82,6 +83,10 @@ export function MyTeam() {
   const [roleName, setRoleName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
   const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermission>>({});
+
+  // Confirm dialog state
+  type TeamConfirm = { kind: 'removeMember'; member: TeamMember } | { kind: 'deleteRole'; roleId: string } | null;
+  const [pendingTeamConfirm, setPendingTeamConfirm] = useState<TeamConfirm>(null);
 
   useEffect(() => {
     loadTeamData();
@@ -265,26 +270,8 @@ export function MyTeam() {
     }
   };
 
-  const removeMember = async (member: TeamMember) => {
-    if (!confirm(`Möchten Sie ${member.first_name || member.email} wirklich aus dem Team entfernen?`)) return;
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          team_id: null,
-          team_role: 'member',
-          joined_team_at: null,
-        })
-        .eq('id', member.id);
-
-      if (error) throw error;
-
-      showToast('Mitarbeiter aus dem Team entfernt', 'success');
-      loadTeamData();
-    } catch (error: any) {
-      showToast('Fehler: ' + error.message, 'error');
-    }
+  const removeMember = (member: TeamMember) => {
+    setPendingTeamConfirm({ kind: 'removeMember', member });
   };
 
   // ==========================================
@@ -403,15 +390,28 @@ export function MyTeam() {
     }
   };
 
-  const deleteRole = async (roleId: string) => {
-    if (!confirm('Möchten Sie diese Rolle wirklich löschen?')) return;
+  const deleteRole = (roleId: string) => {
+    setPendingTeamConfirm({ kind: 'deleteRole', roleId });
+  };
+
+  const executeTeamConfirm = async () => {
+    if (!pendingTeamConfirm) return;
+    const action = pendingTeamConfirm;
+    setPendingTeamConfirm(null);
     try {
-      const { error } = await supabase.from('roles').update({ is_active: false }).eq('id', roleId);
-      if (error) throw error;
-      showToast('Rolle erfolgreich gelöscht', 'success');
-      loadRoles();
+      if (action.kind === 'removeMember') {
+        const { error } = await supabase.from('profiles').update({ team_id: null, team_role: null, joined_team_at: null }).eq('id', action.member.id);
+        if (error) throw error;
+        showToast('Mitglied entfernt', 'success');
+        loadTeamData();
+      } else if (action.kind === 'deleteRole') {
+        const { error } = await supabase.from('roles').update({ is_active: false }).eq('id', action.roleId);
+        if (error) throw error;
+        showToast('Rolle erfolgreich gelöscht', 'success');
+        loadRoles();
+      }
     } catch (error: any) {
-      showToast('Fehler beim Löschen: ' + error.message, 'error');
+      showToast('Fehler: ' + error.message, 'error');
     }
   };
 
@@ -639,6 +639,20 @@ export function MyTeam() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingTeamConfirm !== null}
+        title={pendingTeamConfirm?.kind === 'deleteRole' ? 'Rolle löschen' : 'Mitglied entfernen'}
+        message={
+          pendingTeamConfirm?.kind === 'deleteRole'
+            ? 'Möchten Sie diese Rolle wirklich löschen?'
+            : `Möchten Sie ${pendingTeamConfirm?.kind === 'removeMember' ? ((pendingTeamConfirm.member.first_name || pendingTeamConfirm.member.email)) : ''} wirklich aus dem Team entfernen?`
+        }
+        confirmLabel={pendingTeamConfirm?.kind === 'deleteRole' ? 'Löschen' : 'Entfernen'}
+        variant="danger"
+        onConfirm={executeTeamConfirm}
+        onCancel={() => setPendingTeamConfirm(null)}
+      />
     </View>
   );
 }

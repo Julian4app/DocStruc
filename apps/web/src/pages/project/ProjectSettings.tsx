@@ -8,6 +8,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { DatePicker } from '../../components/DatePicker';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Settings, Archive, Trash2, Save, AlertTriangle } from 'lucide-react';
 
 interface Project {
@@ -37,6 +38,7 @@ export function ProjectSettings() {
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('Deutschland');
+  const [confirmAction, setConfirmAction] = useState<'archive' | 'delete' | null>(null);
 
   useEffect(() => {
     if (id) loadProject();
@@ -93,28 +95,30 @@ export function ProjectSettings() {
     }
   };
 
-  const handleArchive = async () => {
-    if (!confirm('Projekt archivieren?')) return;
-    try {
-      const { error } = await supabase.from('projects').update({ status: 'archived' }).eq('id', id);
-      if (error) throw error;
-      showToast('Projekt archiviert', 'success');
-      navigate('/projects');
-    } catch (error: any) {
-      showToast('Fehler beim Archivieren', 'error');
-    }
-  };
+  const handleArchive = () => setConfirmAction('archive');
+  const handleDelete = () => setConfirmAction('delete');
 
-  const handleDelete = async () => {
-    if (!confirm('Projekt ENDGÜLTIG löschen?')) return;
-    try {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
-      if (error) throw error;
-      showToast('Projekt gelöscht', 'success');
-      navigate('/projects');
-    } catch (error: any) {
-      showToast('Fehler beim Löschen', 'error');
+  const executeConfirmedAction = async () => {
+    if (confirmAction === 'archive') {
+      try {
+        const { error } = await supabase.from('projects').update({ status: 'archived' }).eq('id', id);
+        if (error) throw error;
+        showToast('Projekt archiviert', 'success');
+        navigate('/projects');
+      } catch (error: any) {
+        showToast('Fehler beim Archivieren', 'error');
+      }
+    } else if (confirmAction === 'delete') {
+      try {
+        const { error } = await supabase.from('projects').delete().eq('id', id);
+        if (error) throw error;
+        showToast('Projekt gelöscht', 'success');
+        navigate('/projects');
+      } catch (error: any) {
+        showToast('Fehler beim Löschen', 'error');
+      }
     }
+    setConfirmAction(null);
   };
 
   if (loading) {
@@ -187,6 +191,20 @@ export function ProjectSettings() {
           </View>
         </Card>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmAction !== null}
+        title={confirmAction === 'delete' ? 'Projekt löschen' : 'Projekt archivieren'}
+        message={
+          confirmAction === 'delete'
+            ? 'Möchten Sie dieses Projekt ENDGÜLTIG löschen? Diese Aktion kann nicht rückgängig gemacht werden.'
+            : 'Möchten Sie dieses Projekt archivieren? Es wird aus der aktiven Projektliste entfernt.'
+        }
+        confirmLabel={confirmAction === 'delete' ? 'Löschen' : 'Archivieren'}
+        variant={confirmAction === 'delete' ? 'danger' : 'warning'}
+        onConfirm={executeConfirmedAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </View>
   );
 }

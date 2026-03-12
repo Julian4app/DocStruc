@@ -4,6 +4,7 @@ import { LottieLoader } from '../../components/LottieLoader';
 import { useLayout } from '../../layouts/LayoutContext';
 import { Button, Input } from '@docstruc/ui';
 import { ModernModal } from '../../components/ModernModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -52,6 +53,9 @@ export function TagManagement() {
 
   // Expanded project accordion
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
+
+  // Confirm dialog
+  const [pendingDeleteTag, setPendingDeleteTag] = useState<SuperuserTag | null>(null);
 
   useEffect(() => {
     setTitle('Tag-Verwaltung');
@@ -151,8 +155,14 @@ export function TagManagement() {
     }
   };
 
-  const deleteTag = async (tag: SuperuserTag) => {
-    if (!confirm(`Tag "${tag.name}" wirklich löschen? Er wird aus allen Projekten entfernt.`)) return;
+  const deleteTag = (tag: SuperuserTag) => {
+    setPendingDeleteTag(tag);
+  };
+
+  const confirmDeleteTag = async () => {
+    if (!pendingDeleteTag) return;
+    const tag = pendingDeleteTag;
+    setPendingDeleteTag(null);
     const { error } = await supabase.from('superuser_tags').delete().eq('id', tag.id);
     if (error) showToast('Fehler: ' + error.message, 'error');
     else {
@@ -389,6 +399,16 @@ export function TagManagement() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingDeleteTag !== null}
+        title="Tag löschen"
+        message={`Tag "${pendingDeleteTag?.name ?? ''}" wirklich löschen? Er wird aus allen Projekten entfernt.`}
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmDeleteTag}
+        onCancel={() => setPendingDeleteTag(null)}
+      />
     </ScrollView>
   );
 }

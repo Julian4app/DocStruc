@@ -14,6 +14,7 @@ import { useToast } from '../../components/ToastProvider';
 import { Info, MapPin, Image as ImageIcon, Mic, Save, ExternalLink, Plus, Trash2, Edit2, Upload, ChevronLeft, ChevronRight, X, ZoomIn } from 'lucide-react';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import DOMPurify from 'dompurify';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface VoiceMessage {
   id: string;
@@ -70,6 +71,8 @@ export function ProjectGeneralInfo() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [project, setProject] = useState<Project | null>(ctxProject || null);
+  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<{ id: string; storagePath: string; carouselIndex: number } | null>(null);
+  const [pendingDeleteVoiceMessage, setPendingDeleteVoiceMessage] = useState<{ id: string; storagePath: string } | null>(null);
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
   const [images, setImages] = useState<ProjectInfoImage[]>([]);
   const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
@@ -1063,7 +1066,7 @@ export function ProjectGeneralInfo() {
                       )}
                       {canDelete && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); if (confirm('Bild wirklich löschen?')) { handleDeleteImage(images[carouselIndex].id, images[carouselIndex].storage_path); if (carouselIndex >= images.length - 1) setCarouselIndex(Math.max(0, images.length - 2)); } }}
+                          onClick={(e) => { e.stopPropagation(); setPendingDeleteImageId({ id: images[carouselIndex].id, storagePath: images[carouselIndex].storage_path, carouselIndex }); }}
                           style={{ background: 'rgba(220,38,38,0.75)', border: 'none', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontSize: 11, fontWeight: 600 }}
                         >
                           <Trash2 size={12} color="#fff" /> Löschen
@@ -1264,9 +1267,7 @@ export function ProjectGeneralInfo() {
                 {canEdit && (
                   <TouchableOpacity
                     onPress={() => {
-                      if (confirm('Sprachnachricht wirklich löschen?')) {
-                        deleteVoiceMessage(voice.id, voice.storage_path);
-                      }
+                      setPendingDeleteVoiceMessage({ id: voice.id, storagePath: voice.storage_path });
                     }}
                     style={styles.deleteVoiceButton}
                   >
@@ -1418,6 +1419,39 @@ export function ProjectGeneralInfo() {
           </View>
         </ModernModal>
       )}
+
+      <ConfirmDialog
+        visible={pendingDeleteImageId !== null}
+        title="Bild löschen"
+        message="Soll dieses Bild wirklich gelöscht werden?"
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={() => {
+          if (pendingDeleteImageId) {
+            handleDeleteImage(pendingDeleteImageId.id, pendingDeleteImageId.storagePath);
+            if (pendingDeleteImageId.carouselIndex >= images.length - 1) setCarouselIndex(Math.max(0, images.length - 2));
+            setPendingDeleteImageId(null);
+          }
+        }}
+        onCancel={() => setPendingDeleteImageId(null)}
+      />
+
+      <ConfirmDialog
+        visible={pendingDeleteVoiceMessage !== null}
+        title="Sprachnachricht löschen"
+        message="Soll diese Sprachnachricht wirklich gelöscht werden?"
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={() => {
+          if (pendingDeleteVoiceMessage) {
+            deleteVoiceMessage(pendingDeleteVoiceMessage.id, pendingDeleteVoiceMessage.storagePath);
+            setPendingDeleteVoiceMessage(null);
+          }
+        }}
+        onCancel={() => setPendingDeleteVoiceMessage(null)}
+      />
     </ScrollView>
   );
 }

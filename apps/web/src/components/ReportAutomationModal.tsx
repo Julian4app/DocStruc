@@ -20,6 +20,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ModernModal } from './ModernModal';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../lib/supabase';
@@ -422,6 +423,7 @@ export function ReportAutomationModal({ visible, onClose, projectId, reportTempl
   const [loading, setLoading]         = useState(false);
   const [saving, setSaving]           = useState(false);
   const [showForm, setShowForm]       = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   // Load automations for this project / user
   useEffect(() => {
@@ -482,8 +484,14 @@ export function ReportAutomationModal({ visible, onClose, projectId, reportTempl
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Automatisierung wirklich löschen?')) return;
+  const handleDelete = (id: string) => {
+    setPendingDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
     try {
       const { error } = await supabase.from('report_automations').delete().eq('id', id);
       if (error) throw error;
@@ -501,6 +509,16 @@ export function ReportAutomationModal({ visible, onClose, projectId, reportTempl
       title="Report-Automatisierung"
       maxWidth={680}
     >
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        title="Automatisierung löschen"
+        message="Möchten Sie diese Automatisierung wirklich löschen?"
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
+        zIndex={25000}
+      />
       <View style={modalStyles.root}>
         {/* Info banner */}
         <View style={modalStyles.infoBanner}>

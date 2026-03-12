@@ -24,11 +24,14 @@ export default function ContactPersons() {
         .select('*')
         .order('surname');
       
-      if (error) throw error;
-      setContacts(data || []);
+      if (error) {
+        console.warn('contact_persons table error (may need migration):', error.message);
+        setContacts([]);
+      } else {
+        setContacts(data || []);
+      }
     } catch (e) {
       console.error(e);
-      // alert('Error loading contacts');
     } finally {
       setLoading(false);
     }

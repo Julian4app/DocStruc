@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../contexts/AuthContext';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   Users, Plus, Trash2, Edit2, Shield, Eye, Check, Mail, Building, 
   Phone, UserPlus, Send, UserX, UserCheck, RefreshCw, MoreVertical, UsersRound,
@@ -72,6 +73,11 @@ export function ProjectParticipants() {
   const [loading, setLoading] = useState(true);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
   const [hasTeamAccess, setHasTeamAccess] = useState(false);
+  const [pendingParticipantConfirm, setPendingParticipantConfirm] = useState<
+    | { kind: 'inactive'; member: ProjectMember }
+    | { kind: 'remove'; memberId: string }
+    | null
+  >(null);
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'members' | 'freigaben'>('members');
@@ -485,15 +491,9 @@ export function ProjectParticipants() {
     }
   };
 
-  const setMemberInactive = async (member: ProjectMember) => {
-    const name = `${member.accessor?.accessor_first_name || ''} ${member.accessor?.accessor_last_name || ''}`.trim();
-    if (!confirm(`${name} als inaktiv setzen? Die Person kann das Projekt nicht mehr sehen.`)) return;
+  const setMemberInactive = (member: ProjectMember) => {
     setActionMenuMemberId(null);
-    try {
-      await supabase.from('project_members').update({ status: 'inactive' }).eq('id', member.id);
-      showToast('Mitglied inaktiv gesetzt', 'success');
-      loadMembers();
-    } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
+    setPendingParticipantConfirm({ kind: 'inactive', member });
   };
 
   const reactivateMember = async (member: ProjectMember) => {
@@ -505,13 +505,24 @@ export function ProjectParticipants() {
     } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
   };
 
-  const removeMember = async (memberId: string) => {
-    if (!confirm('Mitglied endgültig entfernen?')) return;
+  const removeMember = (memberId: string) => {
     setActionMenuMemberId(null);
+    setPendingParticipantConfirm({ kind: 'remove', memberId });
+  };
+
+  const confirmParticipantAction = async () => {
+    if (!pendingParticipantConfirm) return;
+    const action = pendingParticipantConfirm;
+    setPendingParticipantConfirm(null);
     try {
-      await supabase.from('project_member_permissions').delete().eq('project_member_id', memberId);
-      await supabase.from('project_members').delete().eq('id', memberId);
-      showToast('Mitglied entfernt', 'success');
+      if (action.kind === 'inactive') {
+        await supabase.from('project_members').update({ status: 'inactive' }).eq('id', action.member.id);
+        showToast('Mitglied inaktiv gesetzt', 'success');
+      } else if (action.kind === 'remove') {
+        await supabase.from('project_member_permissions').delete().eq('project_member_id', action.memberId);
+        await supabase.from('project_members').delete().eq('id', action.memberId);
+        showToast('Mitglied entfernt', 'success');
+      }
       loadMembers();
     } catch (error: any) { showToast('Fehler: ' + error.message, 'error'); }
   };
@@ -1453,6 +1464,27 @@ export function ProjectParticipants() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingParticipantConfirm !== null}
+        title={
+          pendingParticipantConfirm?.kind === 'inactive'
+            ? 'Mitglied deaktivieren'
+            : 'Mitglied entfernen'
+        }
+        message={
+          pendingParticipantConfirm?.kind === 'inactive'
+            ? `${
+                `${pendingParticipantConfirm.member.accessor?.accessor_first_name || ''} ${pendingParticipantConfirm.member.accessor?.accessor_last_name || ''}`.trim()
+              } als inaktiv setzen? Die Person kann das Projekt nicht mehr sehen.`
+            : 'Mitglied endgültig aus dem Projekt entfernen?'
+        }
+        confirmLabel={pendingParticipantConfirm?.kind === 'inactive' ? 'Deaktivieren' : 'Entfernen'}
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={confirmParticipantAction}
+        onCancel={() => setPendingParticipantConfirm(null)}
+      />
     </View>
   );
 }

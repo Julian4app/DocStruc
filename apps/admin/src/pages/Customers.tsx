@@ -37,11 +37,15 @@ export default function Customers() {
             .from('companies')
             .select('*')
             .order('name');
-        
-        if (error) throw error;
-        setCustomers(data || []);
+        if (error) {
+            // 404 = table not yet created via migration; show empty list
+            console.warn('Customers table error (may need migration):', error.message);
+            setCustomers([]);
+        } else {
+            setCustomers(data || []);
+        }
     } catch (e) {
-        console.error(e);
+        console.error('Customers fetch error:', e);
     } finally {
         setLoading(false);
     }
@@ -59,8 +63,7 @@ export default function Customers() {
           if (data) navigate(`/customers/${data.id}`);
       } catch (e: any) {
           console.error('Error creating customer:', e);
-          const msg = e?.message || JSON.stringify(e);
-          alert(`Could not create customer: ${msg}`);
+          alert('Kunden-Tabelle fehlt noch. Bitte zuerst die SQL-Migration über den Supabase SQL-Editor ausführen.');
       }
   };
 

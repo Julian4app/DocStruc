@@ -13,6 +13,7 @@ import { useContentVisibility } from '../../hooks/useContentVisibility';
 import { VisibilityDropdown, VisibilitySelector, VisibilityLevel } from '../../components/VisibilityControls';
 import { DatePicker } from '../../components/DatePicker';
 import { Calendar, Clock, CheckCircle, Plus, Flag, Link2, X, ChevronDown, AlertCircle, CheckSquare, Info, Edit2, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { TaskDetailModal } from './TaskModals';
 
 interface TimelineEvent {
@@ -451,12 +452,15 @@ export function ProjectSchedule() {
     }
   };
 
+  // Strip ISO timestamp down to YYYY-MM-DD for the DatePicker
+  const toDateOnly = (iso: string): string => (iso ? iso.split('T')[0].substring(0, 10) : '');
+
   const handleEditMilestone = () => {
     if (!selectedMilestone) return;
     setTitle(selectedMilestone.title);
     setDescription(selectedMilestone.description || '');
-    setEventDate(selectedMilestone.start_date);
-    setEndDate(selectedMilestone.end_date || '');
+    setEventDate(toDateOnly(selectedMilestone.start_date));
+    setEndDate(selectedMilestone.end_date ? toDateOnly(selectedMilestone.end_date) : '');
     setColor(selectedMilestone.color || '#3B82F6');
     setEventType(selectedMilestone.event_type as any);
     
@@ -469,11 +473,8 @@ export function ProjectSchedule() {
       priority: item.priority
     }));
     setSelectedItems(linkedItems);
-    
-    // Use setTimeout to ensure state updates in correct order
-    setTimeout(() => {
-      setIsEditMilestoneMode(true);
-    }, 0);
+    // Switch to edit mode immediately — no setTimeout — keeps the same modal open
+    setIsEditMilestoneMode(true);
   };
 
   const handleUpdateMilestone = async () => {
@@ -534,13 +535,16 @@ export function ProjectSchedule() {
     }
   };
 
-  const handleDeleteMilestone = async () => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteMilestone = () => {
     if (!selectedMilestone) return;
+    setShowDeleteConfirm(true);
+  };
 
-    if (!window.confirm(`Möchten Sie den Meilenstein "${selectedMilestone.title}" wirklich löschen?`)) {
-      return;
-    }
-
+  const confirmDeleteMilestone = async () => {
+    if (!selectedMilestone) return;
+    setShowDeleteConfirm(false);
     try {
       const { error } = await supabase
         .from('timeline_events')
@@ -551,6 +555,7 @@ export function ProjectSchedule() {
 
       showToast('Meilenstein erfolgreich gelöscht', 'success');
       setSelectedMilestone(null);
+      setIsEditMilestoneMode(false);
       loadScheduleData();
     } catch (error: any) {
       console.error('Error deleting milestone:', error);
@@ -1751,17 +1756,34 @@ export function ProjectSchedule() {
         </View>
       </ModernModal>
 
-      {/* Milestone Detail Modal */}
-      {selectedMilestone && !isEditMilestoneMode && (
+      {/* ConfirmDialog for milestone delete */}
+      <ConfirmDialog
+        visible={showDeleteConfirm}
+        title="Meilenstein löschen"
+        message={`Möchten Sie den Meilenstein "${selectedMilestone?.title ?? ''}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`}
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmDeleteMilestone}
+        onCancel={() => setShowDeleteConfirm(false)}
+        zIndex={20000}
+      />
+
+      {/* Unified Milestone Modal — stays open when switching between view and edit mode */}
+      {selectedMilestone && (
         <ModernModal
           visible={true}
           onClose={() => {
             setSelectedMilestone(null);
             setSelectedMilestoneLinkedItems([]);
+            setIsEditMilestoneMode(false);
+            resetForm();
           }}
-          title={selectedMilestone.title}
+          title={isEditMilestoneMode ? 'Meilenstein bearbeiten' : selectedMilestone.title}
           maxWidth={700}
+          zIndex={isEditMilestoneMode ? 15000 : 10000}
         >
+          {/* ── VIEW MODE ── */}
+          {!isEditMilestoneMode && (
           <View style={styles.milestoneDetailContent}>
             {/* Action Buttons Row */}
             <View style={styles.modalActionButtons}>
@@ -1943,22 +1965,10 @@ export function ProjectSchedule() {
               </Button>
             </View>
           </View>
-        </ModernModal>
-      )}
+          )}
 
-      {/* Edit Milestone Modal */}
-      {selectedMilestone && isEditMilestoneMode && (
-        <ModernModal
-          visible={true}
-          onClose={() => {
-            setIsEditMilestoneMode(false);
-            setSelectedMilestone(null);
-            resetForm();
-          }}
-          title="Meilenstein bearbeiten"
-          maxWidth={700}
-          zIndex={15000}
-        >
+          {/* ── EDIT MODE ── */}
+          {isEditMilestoneMode && (
           <View style={styles.modalContent}>
             {/* Title */}
             <Input
@@ -2249,6 +2259,7 @@ export function ProjectSchedule() {
               </Button>
             </View>
           </View>
+          )}
         </ModernModal>
       )}
 

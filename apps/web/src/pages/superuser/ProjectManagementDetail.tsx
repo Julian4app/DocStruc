@@ -18,6 +18,7 @@ import {
   Settings, Archive, Trash2, Save, AlertTriangle, Building2, MapPin, 
   Calendar, Image, Users, FileText, Briefcase, ArrowLeft, Shield, UsersRound 
 } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface Project {
   id: string;
@@ -45,6 +46,7 @@ export function ProjectManagementDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'archive' | 'delete' | null>(null);
   
   // Basic Information
   const [name, setName] = useState('');
@@ -813,6 +815,21 @@ export function ProjectManagementDetail() {
           </View>
         </Card>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmAction !== null}
+        title={confirmAction === 'archive' ? 'Projekt archivieren' : 'Projekt löschen'}
+        message={
+          confirmAction === 'archive'
+            ? 'Soll dieses Projekt wirklich archiviert werden?'
+            : 'Projekt ENDGÜLTIG löschen? Diese Aktion kann nicht rükgängig gemacht werden.'
+        }
+        confirmLabel={confirmAction === 'archive' ? 'Archivieren' : 'Löschen'}
+        cancelLabel="Abbrechen"
+        variant={confirmAction === 'archive' ? 'warning' : 'danger'}
+        onConfirm={executeConfirmedAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </View>
   );
 }

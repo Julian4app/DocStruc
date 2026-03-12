@@ -8,6 +8,7 @@ import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../components/ToastProvider';
 import { ModernModal } from '../../components/ModernModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
 import {
@@ -931,6 +932,15 @@ export function ProjectObjektplan() {
   const [planElements, setPlanElements] = useState<CanvasElement[]>([]);
   const [expandedApartments, setExpandedApartments] = useState<Set<string>>(new Set());
 
+  // Confirm dialog state
+  type ObjektplanConfirm =
+    | { kind: 'staircase'; item: Staircase }
+    | { kind: 'floor'; item: Floor }
+    | { kind: 'apartment'; item: Apartment }
+    | { kind: 'attachment'; item: Attachment }
+    | null;
+  const [pendingObjektplanDelete, setPendingObjektplanDelete] = useState<ObjektplanConfirm>(null);
+
   const [isStaircaseModalOpen, setIsStaircaseModalOpen] = useState(false);
   const [isFloorModalOpen, setIsFloorModalOpen] = useState(false);
   const [isApartmentModalOpen, setIsApartmentModalOpen] = useState(false);
@@ -1043,17 +1053,32 @@ export function ProjectObjektplan() {
     } catch { showToast('Fehler beim Speichern', 'error'); }
   };
 
-  const handleDeleteStaircase = async (sc: Staircase) => {
-    if (!window.confirm(`Treppenhaus "${sc.name}" wirklich löschen?`)) return;
-    try { await supabase.from('building_staircases').delete().eq('id', sc.id); showToast('Treppenhaus gelöscht', 'success'); loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
-  };
-  const handleDeleteFloor = async (fl: Floor) => {
-    if (!window.confirm(`Stockwerk "${fl.name}" wirklich löschen?`)) return;
-    try { await supabase.from('building_floors').delete().eq('id', fl.id); showToast('Stockwerk gelöscht', 'success'); loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
-  };
-  const handleDeleteApartment = async (apt: Apartment) => {
-    if (!window.confirm(`Wohnung "${apt.name}" wirklich löschen?`)) return;
-    try { await supabase.from('building_apartments').delete().eq('id', apt.id); showToast('Wohnung gelöscht', 'success'); if (selectedApartment?.id === apt.id) { setSelectedApartment(null); setPlanMode(null); } loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
+  const handleDeleteStaircase = (sc: Staircase) => setPendingObjektplanDelete({ kind: 'staircase', item: sc });
+  const handleDeleteFloor = (fl: Floor) => setPendingObjektplanDelete({ kind: 'floor', item: fl });
+  const handleDeleteApartment = (apt: Apartment) => setPendingObjektplanDelete({ kind: 'apartment', item: apt });
+  const handleDeleteAttachment = (att: Attachment) => setPendingObjektplanDelete({ kind: 'attachment', item: att });
+
+  const confirmObjektplanDelete = async () => {
+    if (!pendingObjektplanDelete) return;
+    const { kind, item } = pendingObjektplanDelete;
+    setPendingObjektplanDelete(null);
+    try {
+      if (kind === 'staircase') {
+        await supabase.from('building_staircases').delete().eq('id', item.id);
+        showToast('Treppenhaus gelöscht', 'success');
+      } else if (kind === 'floor') {
+        await supabase.from('building_floors').delete().eq('id', item.id);
+        showToast('Stockwerk gelöscht', 'success');
+      } else if (kind === 'apartment') {
+        await supabase.from('building_apartments').delete().eq('id', item.id);
+        showToast('Wohnung gelöscht', 'success');
+        if (selectedApartment?.id === item.id) { setSelectedApartment(null); setPlanMode(null); }
+      } else if (kind === 'attachment') {
+        await supabase.from('building_attachments').delete().eq('id', item.id);
+        showToast('Anlage gelöscht', 'success');
+      }
+      loadData();
+    } catch { showToast('Fehler beim Löschen', 'error'); }
   };
 
   /** Convert a color value that might be a Flutter ARGB integer to a CSS hex string. */
@@ -1126,11 +1151,6 @@ export function ProjectObjektplan() {
       showToast('Anlage hochgeladen', 'success'); setIsAttachmentModalOpen(false); loadData();
     } catch { showToast('Fehler beim Hochladen', 'error'); }
   };
-  const handleDeleteAttachment = async (att: Attachment) => {
-    if (!window.confirm(`"${att.name}" wirklich löschen?`)) return;
-    try { await supabase.from('building_attachments').delete().eq('id', att.id); showToast('Anlage gelöscht', 'success'); loadData(); } catch { showToast('Fehler beim Löschen', 'error'); }
-  };
-
   const toggleStaircase = (id: string) => { setExpandedStaircases(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleFloor = (id: string) => { setExpandedFloors(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
   const toggleApartment = (id: string) => { setExpandedApartments(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); };
@@ -1407,6 +1427,29 @@ export function ProjectObjektplan() {
           )}
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingObjektplanDelete !== null}
+        title={
+          pendingObjektplanDelete?.kind === 'staircase' ? 'Treppenhaus löschen' :
+          pendingObjektplanDelete?.kind === 'floor' ? 'Stockwerk löschen' :
+          pendingObjektplanDelete?.kind === 'apartment' ? 'Wohnung löschen' :
+          'Anlage löschen'
+        }
+        message={
+          pendingObjektplanDelete?.kind === 'staircase'
+            ? `Treppenhaus "${'name' in (pendingObjektplanDelete?.item ?? {}) ? (pendingObjektplanDelete!.item as Staircase).name : ''}" wirklich löschen?`
+            : pendingObjektplanDelete?.kind === 'floor'
+            ? `Stockwerk "${'name' in (pendingObjektplanDelete?.item ?? {}) ? (pendingObjektplanDelete!.item as Floor).name : ''}" wirklich löschen?`
+            : pendingObjektplanDelete?.kind === 'apartment'
+            ? `Wohnung "${'name' in (pendingObjektplanDelete?.item ?? {}) ? (pendingObjektplanDelete!.item as Apartment).name : ''}" wirklich löschen?`
+            : `"${'name' in (pendingObjektplanDelete?.item ?? {}) ? (pendingObjektplanDelete!.item as Attachment).name : ''}" wirklich löschen?`
+        }
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmObjektplanDelete}
+        onCancel={() => setPendingObjektplanDelete(null)}
+      />
     </View>
   );
 }

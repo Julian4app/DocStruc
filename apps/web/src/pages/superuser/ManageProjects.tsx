@@ -15,6 +15,7 @@ import { ProjectEditModal } from '../../components/ProjectEditModal';
 import { STATUS_OPTIONS } from '../../components/StatusSelect';
 import { colors } from '@docstruc/theme';
 import { Edit2, Trash2, MapPin } from 'lucide-react';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 export function ManageProjects() {
     const navigate = useNavigate();
@@ -31,6 +32,7 @@ export function ManageProjects() {
 
     const [loading, setLoading] = useState(false);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
 
     // Edit Mode
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -56,8 +58,14 @@ export function ManageProjects() {
         setLoading(false);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Möchten Sie dieses Projekt wirklich löschen?')) return;
+    const handleDelete = (id: string) => {
+        setPendingDeleteProjectId(id);
+    };
+
+    const confirmDeleteProject = async () => {
+        if (!pendingDeleteProjectId) return;
+        const id = pendingDeleteProjectId;
+        setPendingDeleteProjectId(null);
         const { error } = await supabase.from('projects').delete().eq('id', id);
         if (error) showToast('Fehler beim Löschen: ' + error.message, 'error');
         else {
@@ -123,6 +131,17 @@ export function ManageProjects() {
                     )}
                 </View>
             )}
+
+            <ConfirmDialog
+                visible={pendingDeleteProjectId !== null}
+                title="Projekt löschen"
+                message="Möchten Sie dieses Projekt wirklich löschen?"
+                confirmLabel="Löschen"
+                cancelLabel="Abbrechen"
+                variant="danger"
+                onConfirm={confirmDeleteProject}
+                onCancel={() => setPendingDeleteProjectId(null)}
+            />
         </>
     );
 }

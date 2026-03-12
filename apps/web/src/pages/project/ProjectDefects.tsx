@@ -16,6 +16,7 @@ import { DatePicker } from '../../components/DatePicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import { useAuth } from '../../contexts/AuthContext';
 import DOMPurify from 'dompurify';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   Plus, AlertCircle, Calendar, Image as ImageIcon, FileText, Mic, Video,
   Upload, User, Calendar as CalendarIcon, X, Trash2, Edit2, Check,
@@ -89,6 +90,7 @@ export function ProjectDefects() {
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDefect, setSelectedDefect] = useState<Defect | null>(null);
+  const [showDeleteDefectConfirm, setShowDeleteDefectConfirm] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'info' | 'docs'>('info');
 
@@ -384,11 +386,14 @@ export function ProjectDefects() {
     }
   };
 
-  const handleDeleteDefect = async () => {
+  const handleDeleteDefect = () => {
     if (!selectedDefect) return;
-    
-    if (!confirm('Möchten Sie diesen Mangel wirklich löschen?')) return;
+    setShowDeleteDefectConfirm(true);
+  };
 
+  const confirmDeleteDefect = async () => {
+    if (!selectedDefect) return;
+    setShowDeleteDefectConfirm(false);
     try {
       const { error } = await supabase
         .from('tasks')
@@ -1583,6 +1588,17 @@ export function ProjectDefects() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        visible={showDeleteDefectConfirm}
+        title="Mangel löschen"
+        message="Soll dieser Mangel wirklich gelöscht werden?"
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={confirmDeleteDefect}
+        onCancel={() => setShowDeleteDefectConfirm(false)}
+      />
     </>
   );
 }

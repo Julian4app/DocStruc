@@ -121,6 +121,7 @@ export function ProjectFiles() {
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<ProjectFolder | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<ProjectFile | null>(null);
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'folders' | 'all-documents'>('folders');
@@ -597,9 +598,14 @@ export function ProjectFiles() {
     loadFiles();
   };
 
-  const handleFileDelete = async (file: ProjectFile) => {
-    if (!confirm('Möchten Sie diese Datei wirklich löschen?')) return;
+  const handleFileDelete = (file: ProjectFile) => {
+    setPendingDeleteFile(file);
+  };
 
+  const confirmFileDelete = async () => {
+    if (!pendingDeleteFile) return;
+    const file = pendingDeleteFile;
+    setPendingDeleteFile(null);
     try {
       // Delete from storage
       const { error: storageError } = await supabase.storage
@@ -1863,6 +1869,17 @@ export function ProjectFiles() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingDeleteFile !== null}
+        title="Datei löschen"
+        message={`Möchten Sie die Datei "${pendingDeleteFile?.name}" wirklich löschen?`}
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={confirmFileDelete}
+        onCancel={() => setPendingDeleteFile(null)}
+      />
     </View>
   );
 }

@@ -16,6 +16,7 @@ import { Select } from '../../components/Select';
 import { DatePicker } from '../../components/DatePicker';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadMoreButton } from '../../components/LoadMoreButton';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   Plus, Search, Filter, CheckCircle, Clock, XCircle, AlertCircle, 
   Calendar, List, LayoutGrid, Edit, Trash2, Image as ImageIcon, 
@@ -111,6 +112,8 @@ export function ProjectTasks() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalTasks, setTotalTasks] = useState<number | null>(null);
   
+  const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState<string | null>(null);
+
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -495,9 +498,14 @@ export function ProjectTasks() {
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Aufgabe wirklich löschen?')) return;
+  const handleDeleteTask = (taskId: string) => {
+    setPendingDeleteTaskId(taskId);
+  };
 
+  const confirmDeleteTask = async () => {
+    if (!pendingDeleteTaskId) return;
+    const taskId = pendingDeleteTaskId;
+    setPendingDeleteTaskId(null);
     try {
       const { error } = await supabase
         .from('tasks')
@@ -1534,6 +1542,17 @@ export function ProjectTasks() {
           setIsEditMode(false);
         }}
         getUserName={getUserName}
+      />
+
+      <ConfirmDialog
+        visible={pendingDeleteTaskId !== null}
+        title="Aufgabe löschen"
+        message="Soll diese Aufgabe wirklich gelöscht werden?"
+        confirmLabel="Löschen"
+        cancelLabel="Abbrechen"
+        variant="danger"
+        onConfirm={confirmDeleteTask}
+        onCancel={() => setPendingDeleteTaskId(null)}
       />
     </>
   );

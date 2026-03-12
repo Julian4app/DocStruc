@@ -51,17 +51,24 @@ export default function Subscriptions() {
                     companies (id, name, logo_url),
                     subscription_types (title, price)
                 `);
-            if (error) throw error;
-            setData(subs || []);
+            if (error) {
+                console.warn('company_subscriptions table error (may need migration):', error.message);
+                setData([]);
+            } else {
+                setData(subs || []);
+            }
         } else {
             const { data: t, error } = await supabase.from('subscription_types').select('*').order('price');
-            if (error) throw error;
-            setTypes(t || []);
+            if (error) {
+                console.warn('subscription_types table error (may need migration):', error.message);
+                setTypes([]);
+            } else {
+                setTypes(t || []);
+            }
         }
 
     } catch (e) {
         console.error(e);
-        showToast('Error loading data', 'error');
     } finally {
         setLoading(false);
     }

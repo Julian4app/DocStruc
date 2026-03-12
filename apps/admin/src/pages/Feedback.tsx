@@ -115,8 +115,12 @@ export default function FeedbackAdmin() {
     setLoading(true);
     try {
       const { data, error } = await supabase.from('feedback').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      setEntries(data || []);
+      if (error) {
+        console.warn('feedback table error (may need migration):', error.message);
+        setEntries([]);
+      } else {
+        setEntries(data || []);
+      }
     } catch (e:any) { showToast(e.message, 'error'); }
     finally { setLoading(false); }
   }, []);

@@ -32,11 +32,14 @@ export default function SubscriptionTypes() {
         .select('*')
         .order('price');
       
-      if (error) throw error;
-      setTypes(data || []);
+      if (error) {
+        console.warn('subscription_types table error (may need migration):', error.message);
+        setTypes([]);
+      } else {
+        setTypes(data || []);
+      }
     } catch (e) {
       console.error(e);
-      // alert('Error loading subscription types');
     } finally {
       setLoading(false);
     }

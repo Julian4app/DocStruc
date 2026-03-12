@@ -7,6 +7,7 @@ import { Card, Button } from '@docstruc/ui';
 import { colors } from '@docstruc/theme';
 import { supabase } from '../../lib/supabase';
 import { ModernModal } from '../../components/ModernModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { useProjectPermissionContext } from '../../components/PermissionGuard';
 import { useContentVisibility } from '../../hooks/useContentVisibility';
@@ -61,6 +62,7 @@ export function ProjectCommunication() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sending, setSending] = useState(false);
   const [createVisibility, setCreateVisibility] = useState<VisibilityLevel>('all_participants');
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState<Message | null>(null);
 
   // Pagination state
   const MESSAGES_PAGE_SIZE = 50;
@@ -382,11 +384,14 @@ export function ProjectCommunication() {
     setIsNoteModalOpen(true);
   };
 
-  const handleDeleteMessage = async (message: Message) => {
-    if (!confirm('Möchten Sie diese ' + (message.message_type === 'message' ? 'Nachricht' : 'Notiz') + ' wirklich löschen?')) {
-      return;
-    }
+  const handleDeleteMessage = (message: Message) => {
+    setPendingDeleteMessage(message);
+  };
 
+  const confirmDeleteMessage = async () => {
+    if (!pendingDeleteMessage) return;
+    const message = pendingDeleteMessage;
+    setPendingDeleteMessage(null);
     try {
       const { error } = await supabase
         .from('project_messages')
@@ -642,6 +647,16 @@ export function ProjectCommunication() {
           </View>
         </View>
       </ModernModal>
+
+      <ConfirmDialog
+        visible={pendingDeleteMessage !== null}
+        title={pendingDeleteMessage?.message_type === 'message' ? 'Nachricht löschen' : 'Notiz löschen'}
+        message={`Möchten Sie diese ${pendingDeleteMessage?.message_type === 'message' ? 'Nachricht' : 'Notiz'} wirklich löschen?`}
+        confirmLabel="Löschen"
+        variant="danger"
+        onConfirm={confirmDeleteMessage}
+        onCancel={() => setPendingDeleteMessage(null)}
+      />
     </View>
   );
 }
