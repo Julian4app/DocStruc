@@ -17,7 +17,8 @@ import {
   UserCircle,
   BookOpen,
   MessageCircle,
-  MessageSquare
+  MessageSquare,
+  Inbox
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -69,6 +70,7 @@ export function AdminLayout({ children, title, subtitle, actions }: AdminLayoutP
       title: 'ANALYTICS & CRM',
       items: [
         { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+        { label: 'Leads', path: '/leads', icon: Inbox },
         { label: 'Customers', path: '/customers', icon: Users },
         { label: 'Contact Persons', path: '/contacts', icon: Contact },
         { label: 'Subscriptions', path: '/subscriptions', icon: CreditCard },

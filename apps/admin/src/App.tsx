@@ -25,6 +25,7 @@ import Feedback from './pages/Feedback';
 import Help from './pages/Help';
 import HelpContent from './pages/HelpContent';
 import HelpMessages from './pages/HelpMessages';
+import Leads from './pages/Leads';
 import { AdminLayout } from './layouts/AdminLayout';
 import { Button } from '@docstruc/ui';
 import { ToastProvider } from './components/ToastContext';
@@ -227,6 +228,14 @@ export default function App() {
           <ProtectedRoute>
              <LayoutWrapper title="Feedback">
                 <Feedback />
+             </LayoutWrapper>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/leads" element={
+          <ProtectedRoute>
+             <LayoutWrapper title="Website Leads">
+                <Leads />
              </LayoutWrapper>
           </ProtectedRoute>
         } />
